@@ -1,0 +1,11 @@
+/* Variable fonts — single HTTP request, full weight range */
+@import url('https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300..800;1,14..32,300..700&family=Plus+Jakarta+Sans:ital,wght@0,300..800;1,300..700&display=swap');
+
+:root {
+  --font-heading: 'Plus Jakarta Sans', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-body:    'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono:    'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  font-family: var(--font-body);
+  font-feature-settings: 'cv02', 'cv03', 'cv04', 'cv11';  /* Inter stylistic sets */
+  font-optical-sizing: auto;
+}
