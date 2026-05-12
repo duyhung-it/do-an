@@ -739,3 +739,164 @@ export interface BannerConfig {
   startDate: string;
   endDate: string;
 }
+
+// ============================================================
+// Loyalty Program (B2C)
+// ============================================================
+export type LoyaltyTier = 'Đồng' | 'Bạc' | 'Vàng' | 'Kim cương';
+export type LoyaltyTxnType = 'Tích' | 'Tiêu' | 'Hết hạn' | 'Thưởng';
+
+export interface LoyaltyProgram {
+  id: string;
+  customerId: string;
+  customerName: string;
+  tier: LoyaltyTier;
+  points: number;
+  totalSpend: number;
+  joinedAt: string;
+  pointsExpiry?: string;
+  nextTierThreshold?: number;
+  nextTierName?: LoyaltyTier;
+}
+
+export interface LoyaltyTransaction {
+  id: string;
+  programId: string;
+  type: LoyaltyTxnType;
+  points: number;
+  description: string;
+  orderId?: string;
+  createdAt: string;
+}
+
+export interface LoyaltyReward {
+  id: string;
+  name: string;
+  description: string;
+  pointsCost: number;
+  category: string;
+  available: boolean;
+  stock: number;
+}
+
+// ============================================================
+// Warranty Claim (B2C — khách hàng yêu cầu bảo hành)
+// ============================================================
+export type ClaimStatus = 'Mới' | 'Đang xử lý' | 'Đã giải quyết' | 'Từ chối';
+export type ClaimType = 'Sửa chữa' | 'Thay thế' | 'Hoàn tiền';
+
+export interface WarrantyClaim {
+  id: string;
+  warrantyId: string;
+  customerId: string;
+  customerName: string;
+  productId: string;
+  productName: string;
+  claimType: ClaimType;
+  description: string;
+  status: ClaimStatus;
+  resolution?: string;
+  resolvedAt?: string;
+  createdAt: string;
+}
+
+// ============================================================
+// Shipment & Payment (cho B2C dashboard)
+// ============================================================
+export type ShipmentStatus = 'Chờ lấy hàng' | 'Đang vận chuyển' | 'Đã giao' | 'Thất bại';
+
+export interface Shipment {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  trackingNumber: string;
+  carrierName: string;
+  status: ShipmentStatus;
+  estimatedDelivery: string;
+  actualDelivery?: string;
+}
+
+export type PaymentStatus = 'Chưa thanh toán' | 'Đã thanh toán' | 'Quá hạn' | 'Hoàn tiền';
+
+export interface Payment {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  customerId: string;
+  amount: number;
+  remainingAmount: number;
+  dueDate: string;
+  status: PaymentStatus;
+  method: string;
+  paidAt?: string;
+}
+
+// ============================================================
+// Invoice (Hóa đơn mua hàng B2C)
+// ============================================================
+export type InvoiceStatus = 'Chờ thanh toán' | 'Đã thanh toán' | 'Quá hạn' | 'Đã huỷ';
+
+export interface Invoice {
+  id: string;
+  invoiceNumber: string;
+  orderId: string;
+  orderNumber: string;
+  customerId: string;
+  customerName: string;
+  totalAmount: number;
+  status: InvoiceStatus;
+  issueDate: string;
+  dueDate: string;
+  paidAt?: string;
+  taxAmount?: number;
+}
+
+// ============================================================
+// Phone Store specific types (mới)
+// ============================================================
+export interface StaffMember {
+  id: string;
+  fullName: string;
+  email: string;
+  phone: string;
+  role: 'Quản lý cửa hàng' | 'Tư vấn viên' | 'Nhân viên kho' | 'Kỹ thuật viên' | 'Thu ngân';
+  branchId: string;
+  branchName: string;
+  isActive: boolean;
+  joinedAt: string;
+}
+
+export interface InternalSupplier {
+  id: string;
+  name: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  address: string;
+  categories: string[];
+  paymentTerms: string;
+  isActive: boolean;
+  createdAt: string;
+}
+
+export interface InstallmentPlan {
+  id: string;
+  bankName: string;
+  logoUrl?: string;
+  months: number[];
+  interestRate: number;
+  minAmount: number;
+  maxAmount?: number;
+  isActive: boolean;
+}
+
+export interface Branch {
+  id: string;
+  name: string;
+  address: string;
+  district: string;
+  city: string;
+  phone: string;
+  managerId?: string;
+  isActive: boolean;
+}

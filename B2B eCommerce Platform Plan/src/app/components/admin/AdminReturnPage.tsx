@@ -122,35 +122,35 @@ export function AdminReturnPage() {
   };
 
   const columns = [
-    { key: 'id', label: 'Mã trả', render: (v: string) => <span className="font-mono text-xs text-muted-foreground">{v}</span> },
+    { key: 'id', label: 'Mã trả', render: (item: ReturnRequest) => <span className="font-mono text-xs text-muted-foreground">{item.id}</span> },
     {
       key: 'buyerName', label: 'Buyer → NCC',
-      render: (v: string, row: ReturnRequest) => (
+      render: (item: ReturnRequest) => (
         <div>
-          <p className="font-medium text-sm">{v}</p>
-          <p className="text-xs text-muted-foreground">→ {row.sellerName}</p>
-          <p className="text-xs text-blue-600">{row.orderNumber}</p>
+          <p className="font-medium text-sm">{item.buyerName}</p>
+          <p className="text-xs text-muted-foreground">→ {item.sellerName}</p>
+          <p className="text-xs text-blue-600">{item.orderNumber}</p>
         </div>
       ),
     },
     {
       key: 'reason', label: 'Lý do',
-      render: (v: string) => <p className="text-sm line-clamp-2 max-w-48">{v}</p>,
+      render: (item: ReturnRequest) => <p className="text-sm line-clamp-2 max-w-48">{item.reason}</p>,
     },
     {
       key: 'amount', label: 'Số tiền',
-      render: (v: number) => <span className="text-primary font-semibold">{formatCurrency(v)}</span>,
+      render: (item: ReturnRequest) => <span className="text-primary font-semibold">{formatCurrency(item.amount)}</span>,
     },
-    { key: 'createdAt', label: 'Ngày tạo', render: (v: string) => <span className="text-xs">{formatDate(v)}</span> },
-    { key: 'status', label: 'Trạng thái', render: (v: string) => <StatusBadge status={v} /> },
+    { key: 'createdAt', label: 'Ngày tạo', render: (item: ReturnRequest) => <span className="text-xs">{formatDate(item.createdAt)}</span> },
+    { key: 'status', label: 'Trạng thái', render: (item: ReturnRequest) => <StatusBadge status={item.status} /> },
     {
       key: 'actions', label: '',
-      render: (_: unknown, row: ReturnRequest) => (
+      render: (item: ReturnRequest) => (
         <div className="flex gap-1">
-          <Button size="sm" variant="ghost" onClick={() => setSelected(row)}><Eye className="h-4 w-4" /></Button>
-          {row.status === 'Đang tranh chấp' && (
+          <Button size="sm" variant="ghost" onClick={() => setSelected(item)}><Eye className="h-4 w-4" /></Button>
+          {item.status === 'Đang tranh chấp' && (
             <Button size="sm" variant="ghost" className="text-orange-600" title="Can thiệp"
-              onClick={() => { setSelected(row); setShowIntervene('intervene'); }}>
+              onClick={() => { setSelected(item); setShowIntervene('intervene'); }}>
               <Shield className="h-4 w-4" />
             </Button>
           )}
@@ -191,11 +191,11 @@ export function AdminReturnPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <StatsCard title="Tổng yêu cầu" value={stats.total} icon={<RotateCcw className="h-5 w-5 text-primary" />} />
-        <StatsCard title="Chờ xử lý" value={stats.pending} icon={<Clock className="h-5 w-5 text-orange-500" />} color="warning" />
-        <StatsCard title="Tranh chấp" value={stats.disputed} icon={<AlertTriangle className="h-5 w-5 text-red-500" />} color="danger" />
-        <StatsCard title="Đã hoàn tiền" value={stats.refunded} icon={<CheckCircle className="h-5 w-5 text-green-500" />} color="success" />
-        <StatsCard title="TB thời gian xử lý" value={`${stats.avgDays} ngày`} icon={<DollarSign className="h-5 w-5 text-blue-500" />} color="info" />
+        <StatsCard title="Tổng yêu cầu" value={stats.total} icon={RotateCcw} />
+        <StatsCard title="Chờ xử lý" value={stats.pending} icon={Clock} variant="warning" />
+        <StatsCard title="Tranh chấp" value={stats.disputed} icon={AlertTriangle} variant="danger" />
+        <StatsCard title="Đã hoàn tiền" value={stats.refunded} icon={CheckCircle} variant="success" />
+        <StatsCard title="TB thời gian xử lý" value={stats.avgDays} format={(n) => `${n} ngày`} icon={Clock} variant="info" />
       </div>
 
       {/* Alert tranh chấp */}
@@ -212,7 +212,7 @@ export function AdminReturnPage() {
         filters={[{ key: 'status', label: 'Trạng thái', value: statusFilter, onChange: setStatusFilter, options: statusOptions }]}
       />
 
-      <DataTable columns={columns} data={filtered} loading={loading} emptyMessage="Không có yêu cầu trả hàng nào" pagination />
+      <DataTable columns={columns} data={filtered} loading={loading} emptyMessage="Không có yêu cầu trả hàng nào" pagination getId={item => item.id} />
 
       {/* Detail Dialog */}
       <Dialog open={!!selected && !showIntervene} onOpenChange={() => setSelected(null)}>

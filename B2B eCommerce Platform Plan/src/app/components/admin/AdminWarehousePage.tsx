@@ -1,5 +1,5 @@
-﻿﻿// ============================================================
-// AdminWarehousePage — Tổng quan kho hàng toàn hệ thống (D14)
+// ============================================================
+// AdminWarehousePage — Tổng quan kho hàng (D14)
 // Stats, DataTable kho, Map giả lập, PieChart phân bổ, Chi tiết
 // ============================================================
 
@@ -22,7 +22,7 @@ const formatCurrency = (n: number) =>
 
 interface WarehouseData {
   id: string;
-  sellerName: string;
+  branchName: string;
   name: string;
   type: string;
   city: string;
@@ -35,12 +35,12 @@ interface WarehouseData {
 }
 
 const mockWarehouses: WarehouseData[] = [
-  { id: 'WH-01', sellerName: 'Tech Solutions VN', name: 'Kho HCM Chính', type: 'Kho chính', city: 'TP. HCM', address: '123 Nguyễn Văn Linh, Q.7', capacity: 10000, currentUsage: 8200, totalValue: 15200000000, transfers: 24, status: 'Hoạt động' },
-  { id: 'WH-02', sellerName: 'Tech Solutions VN', name: 'Kho Hà Nội', type: 'Kho vùng', city: 'Hà Nội', address: '45 Khu CN Nội Bài, Sóc Sơn', capacity: 5000, currentUsage: 4100, totalValue: 8400000000, transfers: 12, status: 'Hoạt động' },
-  { id: 'WH-03', sellerName: 'Digital World', name: 'Kho Đà Nẵng', type: 'Kho vùng', city: 'Đà Nẵng', address: '88 KCN Hòa Khánh', capacity: 3000, currentUsage: 1800, totalValue: 3200000000, transfers: 8, status: 'Hoạt động' },
-  { id: 'WH-04', sellerName: 'Network Pro', name: 'Kho Hải Phòng', type: 'Kho chính', city: 'Hải Phòng', address: '27 KCN Đình Vũ', capacity: 4000, currentUsage: 3600, totalValue: 5800000000, transfers: 15, status: 'Hoạt động' },
-  { id: 'WH-05', sellerName: 'Office World', name: 'Kho Cần Thơ', type: 'Kho phụ', city: 'Cần Thơ', address: '12 KCN Trà Nóc', capacity: 2000, currentUsage: 300, totalValue: 480000000, transfers: 3, status: 'Ít hoạt động' },
-  { id: 'WH-06', sellerName: 'Smart Devices Co', name: 'Kho HCM Phụ', type: 'Kho phụ', city: 'TP. HCM', address: '55 Đường D2, Bình Thạnh', capacity: 1500, currentUsage: 1420, totalValue: 2100000000, transfers: 18, status: 'Sắp đầy' },
+  { id: 'WH-01', branchName: 'CN HCM Quận 7', name: 'Kho HCM Chính', type: 'Kho chính', city: 'TP. HCM', address: '123 Nguyễn Văn Linh, Q.7', capacity: 10000, currentUsage: 8200, totalValue: 15200000000, transfers: 24, status: 'Hoạt động' },
+  { id: 'WH-02', branchName: 'CN Hà Nội Cầu Giấy', name: 'Kho Hà Nội', type: 'Kho vùng', city: 'Hà Nội', address: '45 Xuân Thủy, Cầu Giấy', capacity: 5000, currentUsage: 4100, totalValue: 8400000000, transfers: 12, status: 'Hoạt động' },
+  { id: 'WH-03', branchName: 'CN Đà Nẵng', name: 'Kho Đà Nẵng', type: 'Kho vùng', city: 'Đà Nẵng', address: '88 Nguyễn Văn Linh, Hải Châu', capacity: 3000, currentUsage: 1800, totalValue: 3200000000, transfers: 8, status: 'Hoạt động' },
+  { id: 'WH-04', branchName: 'CN Hải Phòng', name: 'Kho Hải Phòng', type: 'Kho phụ', city: 'Hải Phòng', address: '27 Đinh Tiên Hoàng, Hồng Bàng', capacity: 4000, currentUsage: 3600, totalValue: 5800000000, transfers: 15, status: 'Hoạt động' },
+  { id: 'WH-05', branchName: 'CN Cần Thơ', name: 'Kho Cần Thơ', type: 'Kho phụ', city: 'Cần Thơ', address: '12 Nguyễn Trãi, Ninh Kiều', capacity: 2000, currentUsage: 300, totalValue: 480000000, transfers: 3, status: 'Ít hoạt động' },
+  { id: 'WH-06', branchName: 'CN HCM Bình Thạnh', name: 'Kho HCM Phụ', type: 'Kho phụ', city: 'TP. HCM', address: '55 Xô Viết Nghệ Tĩnh, Bình Thạnh', capacity: 1500, currentUsage: 1420, totalValue: 2100000000, transfers: 18, status: 'Sắp đầy' },
 ];
 
 const cityDist = [
@@ -52,9 +52,9 @@ const cityDist = [
 ];
 
 const typeDist = [
-  { name: 'Kho chính', value: 2 },
+  { name: 'Kho chính', value: 1 },
   { name: 'Kho vùng', value: 2 },
-  { name: 'Kho phụ', value: 2 },
+  { name: 'Kho phụ', value: 3 },
 ];
 
 const cityOptions = ['Tất cả', 'TP. HCM', 'Hà Nội', 'Đà Nẵng', 'Hải Phòng', 'Cần Thơ'];
@@ -78,7 +78,7 @@ export function AdminWarehousePage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const filtered = warehouses.filter(w => {
-    const matchSearch = !search || w.name.toLowerCase().includes(search.toLowerCase()) || w.sellerName.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = !search || w.name.toLowerCase().includes(search.toLowerCase()) || w.branchName.toLowerCase().includes(search.toLowerCase());
     const matchCity = cityFilter === 'Tất cả' || w.city === cityFilter;
     const matchType = typeFilter === 'Tất cả' || w.type === typeFilter;
     return matchSearch && matchCity && matchType;
@@ -95,29 +95,29 @@ export function AdminWarehousePage() {
   const overallUsagePct = Math.round(stats.totalUsage / stats.totalCapacity * 100);
 
   const columns = [
-    { key: 'sellerName', label: 'NCC', render: (v: string) => <span className="font-medium text-sm">{v}</span> },
+    { key: 'branchName', label: 'Chi nhánh', render: (item: WarehouseData) => <span className="font-medium text-sm">{item.branchName}</span> },
     {
       key: 'name', label: 'Kho hàng',
-      render: (v: string, row: WarehouseData) => (
+      render: (item: WarehouseData) => (
         <div>
-          <p className="font-medium">{v}</p>
-          <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{row.address}</p>
+          <p className="font-medium">{item.name}</p>
+          <p className="text-xs text-muted-foreground flex items-center gap-1"><MapPin className="h-3 w-3" />{item.address}</p>
         </div>
       ),
     },
     {
       key: 'type', label: 'Loại',
-      render: (v: string) => <Badge variant="outline">{v}</Badge>,
+      render: (item: WarehouseData) => <Badge variant="outline">{item.type}</Badge>,
     },
-    { key: 'city', label: 'Thành phố', render: (v: string) => <span className="text-sm">{v}</span> },
+    { key: 'city', label: 'Thành phố', render: (item: WarehouseData) => <span className="text-sm">{item.city}</span> },
     {
       key: 'currentUsage', label: 'Sử dụng',
-      render: (v: number, row: WarehouseData) => {
-        const pct = Math.round(v / row.capacity * 100);
+      render: (item: WarehouseData) => {
+        const pct = Math.round(item.currentUsage / item.capacity * 100);
         return (
           <div className="w-28">
             <div className="flex justify-between text-xs mb-1">
-              <span>{v.toLocaleString()}</span>
+              <span>{item.currentUsage.toLocaleString()}</span>
               <span className={pct > 90 ? 'text-red-500 font-bold' : ''}>{pct}%</span>
             </div>
             <Progress value={pct} className={`h-1.5 ${pct > 90 ? '[&>div]:bg-red-500' : pct > 70 ? '[&>div]:bg-yellow-500' : ''}`} />
@@ -127,30 +127,30 @@ export function AdminWarehousePage() {
     },
     {
       key: 'totalValue', label: 'Giá trị tồn',
-      render: (v: number) => <span className="text-primary font-medium">{formatCurrency(v)}</span>,
+      render: (item: WarehouseData) => <span className="text-primary font-medium">{formatCurrency(item.totalValue)}</span>,
     },
     {
       key: 'status', label: 'Trạng thái',
-      render: (v: string) => (
-        <Badge variant={v === 'Hoạt động' ? 'default' : v === 'Sắp đầy' ? 'destructive' : 'outline'}>{v}</Badge>
+      render: (item: WarehouseData) => (
+        <Badge variant={item.status === 'Hoạt động' ? 'default' : item.status === 'Sắp đầy' ? 'destructive' : 'outline'}>{item.status}</Badge>
       ),
     },
     {
       key: 'actions', label: '',
-      render: (_: unknown, row: WarehouseData) => (
-        <Button size="sm" variant="ghost" onClick={() => setSelected(row)}><Eye className="h-4 w-4" /></Button>
+      render: (item: WarehouseData) => (
+        <Button size="sm" variant="ghost" onClick={() => setSelected(item)}><Eye className="h-4 w-4" /></Button>
       ),
     },
   ];
 
   return (
     <div className="space-y-6">
-      <AppBreadcrumb items={[{ label: 'Admin', href: '/admin' }, { label: 'Kho hàng toàn sàn' }]} />
+      <AppBreadcrumb items={[{ label: 'Admin', href: '/admin' }, { label: 'Kho hàng' }]} />
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="flex items-center gap-2"><Warehouse className="h-6 w-6 text-primary" /> Tổng quan kho hàng toàn sàn</h1>
-          <p className="text-muted-foreground">Quản lý và giám sát kho hàng của tất cả nhà cung cấp</p>
+          <h1 className="flex items-center gap-2"><Warehouse className="h-6 w-6 text-primary" /> Tổng quan kho hàng</h1>
+          <p className="text-muted-foreground">Quản lý và giám sát kho hàng của tất cả chi nhánh</p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchData}><RefreshCw className="h-4 w-4 mr-1" /> Làm mới</Button>
       </div>
@@ -165,11 +165,11 @@ export function AdminWarehousePage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <StatsCard title="Tổng số kho" value={stats.total} icon={<Warehouse className="h-5 w-5 text-primary" />} />
-        <StatsCard title="Giá trị tổng" value={formatCurrency(stats.totalValue)} icon={<Package className="h-5 w-5 text-green-500" />} color="success" />
-        <StatsCard title="Sử dụng chung" value={`${overallUsagePct}%`} icon={<TrendingUp className="h-5 w-5 text-blue-500" />} color="info" />
-        <StatsCard title="Số NCC có kho" value={new Set(warehouses.map(w => w.sellerName)).size} icon={<Package className="h-5 w-5 text-purple-500" />} />
-        <StatsCard title="Lệnh chuyển kho" value={stats.totalTransfers} icon={<Package className="h-5 w-5 text-orange-500" />} color="warning" />
+        <StatsCard title="Tổng số kho" value={stats.total} icon={Warehouse} />
+        <StatsCard title="Giá trị tổng" value={stats.totalValue} format={formatCurrency} icon={Package} variant="success" />
+        <StatsCard title="Sử dụng chung" value={overallUsagePct} format={(n) => `${n}%`} icon={TrendingUp} variant="info" />
+        <StatsCard title="Số chi nhánh" value={new Set(warehouses.map(w => w.branchName)).size} icon={Package} variant="purple" />
+        <StatsCard title="Lệnh chuyển kho" value={stats.totalTransfers} icon={Package} variant="warning" />
       </div>
 
       {/* Charts */}
@@ -217,7 +217,6 @@ export function AdminWarehousePage() {
             <div className="absolute inset-0 flex items-center justify-center">
               <p className="text-muted-foreground text-sm">Bản đồ kho hàng (Tích hợp Google Maps API)</p>
             </div>
-            {/* Giả lập markers */}
             {[
               { city: 'Hà Nội', top: '15%', left: '52%', count: 1 },
               { city: 'Hải Phòng', top: '18%', left: '58%', count: 1 },
@@ -239,13 +238,13 @@ export function AdminWarehousePage() {
       {/* Filter + Table */}
       <FilterBar
         search={search} onSearchChange={setSearch}
-        searchPlaceholder="Tìm tên kho, NCC..."
+        searchPlaceholder="Tìm tên kho, chi nhánh..."
         filters={[
           { key: 'city', label: 'Thành phố', value: cityFilter, onChange: setCityFilter, options: cityOptions },
           { key: 'type', label: 'Loại kho', value: typeFilter, onChange: setTypeFilter, options: typeOptions },
         ]}
       />
-      <DataTable columns={columns} data={filtered} loading={loading} emptyMessage="Không tìm thấy kho nào" pagination />
+      <DataTable columns={columns} data={filtered} loading={loading} emptyMessage="Không tìm thấy kho nào" pagination getId={item => item.id} />
 
       {/* Detail Dialog */}
       <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
@@ -256,7 +255,7 @@ export function AdminWarehousePage() {
           {selected && (
             <div className="space-y-4 text-sm">
               <div className="grid grid-cols-2 gap-3">
-                <div><span className="text-muted-foreground">NCC:</span> <strong>{selected.sellerName}</strong></div>
+                <div><span className="text-muted-foreground">Chi nhánh:</span> <strong>{selected.branchName}</strong></div>
                 <div><span className="text-muted-foreground">Loại kho:</span> <Badge variant="outline">{selected.type}</Badge></div>
                 <div className="col-span-2"><span className="text-muted-foreground">Địa chỉ:</span> {selected.address}, {selected.city}</div>
               </div>

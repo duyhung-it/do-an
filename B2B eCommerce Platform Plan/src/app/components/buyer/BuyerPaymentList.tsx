@@ -31,7 +31,6 @@ import { StatusBadge } from '../shared/StatusBadge';
 import { IconWrapper } from '../shared/IconWrapper';
 import { AnimatedNumber } from '../shared/AnimatedNumber';
 import { AppBreadcrumb } from '../shared/AppBreadcrumb';
-import { BuyerCreditSection } from './BuyerCreditSection';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RTooltip,
   ResponsiveContainer,
@@ -476,9 +475,6 @@ export function BuyerPaymentList() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Credit section */}
-      <BuyerCreditSection />
 
       <FilterBar
         filters={filterConfigs}

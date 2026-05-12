@@ -72,38 +72,38 @@ export function AdminStorePage() {
   const columns = [
     {
       key: 'name', label: 'Tên cửa hàng',
-      render: (v: string, row: StoreLocation) => (
+      render: (item: StoreLocation) => (
         <div>
-          <p className="font-medium">{v}</p>
+          <p className="font-medium">{item.name}</p>
           <p className="text-xs text-muted-foreground flex items-center gap-1">
-            <MapPin className="h-3 w-3" />{row.address}, {row.district}
+            <MapPin className="h-3 w-3" />{item.address}, {item.district}
           </p>
         </div>
       ),
     },
-    { key: 'city', label: 'Thành phố', render: (v: string) => <span className="text-sm">{v}</span> },
+    { key: 'city', label: 'Thành phố', render: (item: StoreLocation) => <span className="text-sm">{item.city}</span> },
     {
       key: 'phone', label: 'Điện thoại',
-      render: (v: string) => (
-        <span className="flex items-center gap-1 text-sm"><Phone className="h-3 w-3 text-muted-foreground" />{v}</span>
+      render: (item: StoreLocation) => (
+        <span className="flex items-center gap-1 text-sm"><Phone className="h-3 w-3 text-muted-foreground" />{item.phone}</span>
       ),
     },
     {
       key: 'workingHours', label: 'Giờ làm việc',
-      render: (v: string) => (
-        <span className="flex items-center gap-1 text-sm"><Clock className="h-3 w-3 text-muted-foreground" />{v}</span>
+      render: (item: StoreLocation) => (
+        <span className="flex items-center gap-1 text-sm"><Clock className="h-3 w-3 text-muted-foreground" />{item.workingHours}</span>
       ),
     },
     {
       key: 'isActive', label: 'Trạng thái',
-      render: (v: boolean) => <Badge variant={v ? 'default' : 'secondary'}>{v ? 'Hoạt động' : 'Tạm đóng'}</Badge>,
+      render: (item: StoreLocation) => <Badge variant={item.isActive ? 'default' : 'secondary'}>{item.isActive ? 'Hoạt động' : 'Tạm đóng'}</Badge>,
     },
     {
       key: 'actions', label: '',
-      render: (_: unknown, row: StoreLocation) => (
+      render: (item: StoreLocation) => (
         <div className="flex gap-1">
-          <Button size="sm" variant="ghost" onClick={() => openEdit(row)}><Edit2 className="h-4 w-4" /></Button>
-          <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(row)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+          <Button size="sm" variant="ghost" onClick={() => openEdit(item)}><Edit2 className="h-4 w-4" /></Button>
+          <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
         </div>
       ),
     },
@@ -128,10 +128,10 @@ export function AdminStorePage() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatsCard title="Tổng cửa hàng" value={stores.length} icon={<Building2 className="h-5 w-5 text-primary" />} />
-        <StatsCard title="Đang hoạt động" value={activeCount} icon={<Building2 className="h-5 w-5 text-green-500" />} color="success" />
-        <StatsCard title="Tạm đóng" value={stores.length - activeCount} icon={<Building2 className="h-5 w-5 text-yellow-500" />} color="warning" />
-        <StatsCard title="Số thành phố" value={cityCount} icon={<MapPin className="h-5 w-5 text-blue-500" />} color="info" />
+        <StatsCard title="Tổng cửa hàng" value={stores.length} icon={Building2} />
+        <StatsCard title="Đang hoạt động" value={activeCount} icon={Building2} variant="success" />
+        <StatsCard title="Tạm đóng" value={stores.length - activeCount} icon={Building2} variant="warning" />
+        <StatsCard title="Số thành phố" value={cityCount} icon={MapPin} variant="info" />
       </div>
 
       {/* Map preview */}

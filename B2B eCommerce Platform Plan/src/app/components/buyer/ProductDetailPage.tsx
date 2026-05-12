@@ -25,6 +25,7 @@ import { DetailSkeleton } from '../shared/PageSkeleton';
 import {
   StarDistributionBar, ReviewFilterBar, ReviewItem, WriteReviewDialog,
 } from '../shared/ReviewComponents';
+import { InstallmentSection } from '../shared/InstallmentSection';
 import { productApi, supplierApi, reviewApi, chatApi, promotionApi, comboApi } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
@@ -625,6 +626,9 @@ export function ProductDetailPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* ---- Installment Plans ---- */}
+      <InstallmentSection productPrice={currentPrice} productName={product.name} />
 
       {/* ---- Combo Deals ---- */}
       {combos.length > 0 && (

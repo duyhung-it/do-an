@@ -1,6 +1,6 @@
 // ============================================================
 // AdminLoyaltyPage — Quản lý chương trình khách hàng thân thiết (D10)
-// Stats, Phân bố tier, DataTable buyer, Cấu hình tier, Quản lý phần thưởng
+// Stats, Phân bố tier, DataTable khách hàng, Cấu hình tier, Quản lý phần thưởng
 // ============================================================
 
 import { useState, useEffect, useCallback } from 'react';
@@ -29,42 +29,42 @@ const TIER_COLORS: Record<string, string> = {
 };
 
 const TIER_CONFIG = [
-  { tier: 'Đồng', minSpend: 0, maxSpend: 50000000, pointRate: 1, color: '#b87333' },
-  { tier: 'Bạc', minSpend: 50000000, maxSpend: 200000000, pointRate: 1.5, color: '#94a3b8' },
-  { tier: 'Vàng', minSpend: 200000000, maxSpend: 500000000, pointRate: 2, color: '#eab308' },
-  { tier: 'Kim cương', minSpend: 500000000, maxSpend: Infinity, pointRate: 3, color: '#3b82f6' },
+  { tier: 'Đồng',      minSpend: 0,          maxSpend: 5000000,    pointRate: 1,   color: '#b87333' },
+  { tier: 'Bạc',       minSpend: 5000000,     maxSpend: 20000000,   pointRate: 1.5, color: '#94a3b8' },
+  { tier: 'Vàng',      minSpend: 20000000,    maxSpend: 50000000,   pointRate: 2,   color: '#eab308' },
+  { tier: 'Kim cương', minSpend: 50000000,    maxSpend: Infinity,   pointRate: 3,   color: '#3b82f6' },
 ];
 
 const formatCurrency = (n: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', notation: 'compact' }).format(n);
 
-const mockPrograms: (LoyaltyProgram & { buyerName: string; companyName: string })[] = [
-  { id: 'LP-001', buyerId: 'B01', buyerName: 'Nguyễn Văn A', companyName: 'Công ty ABC', tier: 'Vàng', points: 12500, totalSpend: 320000000, pointsExpiry: '2026-12-31', joinedAt: '2025-01-10', transactions: [], rewards: [] },
-  { id: 'LP-002', buyerId: 'B02', buyerName: 'Trần Thị B', companyName: 'Tập đoàn XYZ', tier: 'Kim cương', points: 48000, totalSpend: 850000000, pointsExpiry: '2026-12-31', joinedAt: '2024-06-15', transactions: [], rewards: [] },
-  { id: 'LP-003', buyerId: 'B03', buyerName: 'Lê Văn C', companyName: 'Ngân hàng DEF', tier: 'Bạc', points: 3200, totalSpend: 95000000, pointsExpiry: '2026-12-31', joinedAt: '2025-08-20', transactions: [], rewards: [] },
-  { id: 'LP-004', buyerId: 'B04', buyerName: 'Phạm Thị D', companyName: 'Công ty GHI', tier: 'Đồng', points: 850, totalSpend: 22000000, pointsExpiry: '2026-06-30', joinedAt: '2026-01-05', transactions: [], rewards: [] },
-  { id: 'LP-005', buyerId: 'B05', buyerName: 'Hoàng Văn E', companyName: 'Công ty JKL', tier: 'Vàng', points: 18200, totalSpend: 410000000, pointsExpiry: '2026-12-31', joinedAt: '2024-11-01', transactions: [], rewards: [] },
+const mockPrograms: LoyaltyProgram[] = [
+  { id: 'LP-001', customerId: 'C01', customerName: 'Nguyễn Văn An', tier: 'Vàng',      points: 12500, totalSpend: 32000000,  pointsExpiry: '2026-12-31', joinedAt: '2025-01-10', nextTierThreshold: 50000000, nextTierName: 'Kim cương' },
+  { id: 'LP-002', customerId: 'C02', customerName: 'Trần Thị Bình',  tier: 'Kim cương', points: 48000, totalSpend: 85000000,  pointsExpiry: '2026-12-31', joinedAt: '2024-06-15' },
+  { id: 'LP-003', customerId: 'C03', customerName: 'Lê Hoàng Cường', tier: 'Bạc',       points: 3200,  totalSpend: 9500000,   pointsExpiry: '2026-12-31', joinedAt: '2025-08-20', nextTierThreshold: 20000000, nextTierName: 'Vàng' },
+  { id: 'LP-004', customerId: 'C04', customerName: 'Phạm Minh Đức',  tier: 'Đồng',      points: 850,   totalSpend: 2200000,   pointsExpiry: '2026-06-30', joinedAt: '2026-01-05', nextTierThreshold: 5000000, nextTierName: 'Bạc' },
+  { id: 'LP-005', customerId: 'C05', customerName: 'Hoàng Thị Hà',   tier: 'Vàng',      points: 18200, totalSpend: 41000000,  pointsExpiry: '2026-12-31', joinedAt: '2024-11-01', nextTierThreshold: 50000000, nextTierName: 'Kim cương' },
 ];
 
 const mockRewards: LoyaltyReward[] = [
-  { id: 'R-001', name: 'Giảm 100K đơn hàng', description: 'Voucher giảm giá 100.000₫', pointsRequired: 1000, type: 'Voucher', value: 100000, isActive: true, stock: 50 },
-  { id: 'R-002', name: 'Giao hàng miễn phí', description: 'Miễn phí vận chuyển 1 đơn hàng', pointsRequired: 500, type: 'Dịch vụ', value: 0, isActive: true, stock: 100 },
-  { id: 'R-003', name: 'Giảm 5% đơn hàng', description: 'Voucher giảm % không giới hạn', pointsRequired: 2000, type: 'Voucher', value: 0, isActive: true, stock: 20 },
-  { id: 'R-004', name: 'Ưu tiên xử lý RFQ', description: 'Đẩy RFQ lên đầu danh sách trong 7 ngày', pointsRequired: 3000, type: 'Dịch vụ', value: 0, isActive: true, stock: 30 },
-  { id: 'R-005', name: 'Bảo hành mở rộng 6 tháng', description: 'Tặng thêm 6 tháng bảo hành', pointsRequired: 5000, type: 'Dịch vụ', value: 0, isActive: false, stock: 10 },
+  { id: 'R-001', name: 'Voucher giảm 100K', description: 'Voucher giảm giá 100.000₫ cho đơn từ 2 triệu', pointsCost: 1000, category: 'Voucher', available: true, stock: 50 },
+  { id: 'R-002', name: 'Miễn phí vận chuyển', description: 'Miễn phí vận chuyển 1 đơn hàng', pointsCost: 500, category: 'Ưu đãi giao hàng', available: true, stock: 100 },
+  { id: 'R-003', name: 'Voucher giảm 5%', description: 'Voucher giảm 5% không giới hạn giá trị', pointsCost: 2000, category: 'Voucher', available: true, stock: 20 },
+  { id: 'R-004', name: 'Bảo hành mở rộng 6 tháng', description: 'Tặng thêm 6 tháng bảo hành sản phẩm', pointsCost: 5000, category: 'Dịch vụ', available: true, stock: 30 },
+  { id: 'R-005', name: 'Trade-in +10%', description: 'Cộng thêm 10% giá trị thu mua khi đổi máy cũ', pointsCost: 3000, category: 'Dịch vụ', available: false, stock: 10 },
 ];
 
 const tierOptions = ['Tất cả', 'Đồng', 'Bạc', 'Vàng', 'Kim cương'];
 
 export function AdminLoyaltyPage() {
-  const [programs, setPrograms] = useState<typeof mockPrograms>([]);
+  const [programs, setPrograms] = useState<LoyaltyProgram[]>([]);
   const [rewards, setRewards] = useState<LoyaltyReward[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [tierFilter, setTierFilter] = useState('Tất cả');
   const [tab, setTab] = useState<'members' | 'rewards' | 'config'>('members');
   const [showRewardForm, setShowRewardForm] = useState(false);
-  const [rewardForm, setRewardForm] = useState({ name: '', description: '', pointsRequired: '', stock: '' });
+  const [rewardForm, setRewardForm] = useState({ name: '', description: '', pointsCost: '', stock: '' });
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -77,7 +77,7 @@ export function AdminLoyaltyPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const filtered = programs.filter(p => {
-    const matchSearch = !search || p.buyerName.toLowerCase().includes(search.toLowerCase()) || p.companyName.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = !search || p.customerName.toLowerCase().includes(search.toLowerCase());
     const matchTier = tierFilter === 'Tất cả' || p.tier === tierFilter;
     return matchSearch && matchTier;
   });
@@ -96,51 +96,51 @@ export function AdminLoyaltyPage() {
   };
 
   const memberColumns = [
-    { key: 'buyerName', label: 'Thành viên', render: (v: string, row: typeof mockPrograms[0]) => (
+    { key: 'customerName', label: 'Khách hàng', render: (item: LoyaltyProgram) => (
       <div>
-        <p className="font-medium">{v}</p>
-        <p className="text-xs text-muted-foreground">{row.companyName}</p>
+        <p className="font-medium">{item.customerName}</p>
+        <p className="text-xs text-muted-foreground">ID: {item.customerId}</p>
       </div>
     )},
     {
-      key: 'tier', label: 'Tier',
-      render: (v: string) => (
-        <Badge style={{ backgroundColor: `${TIER_COLORS[v]}20`, color: TIER_COLORS[v], borderColor: TIER_COLORS[v] }}>
-          <Star className="h-3 w-3 mr-1" fill="currentColor" /> {v}
+      key: 'tier', label: 'Hạng',
+      render: (item: LoyaltyProgram) => (
+        <Badge style={{ backgroundColor: `${TIER_COLORS[item.tier]}20`, color: TIER_COLORS[item.tier], borderColor: TIER_COLORS[item.tier] }}>
+          <Star className="h-3 w-3 mr-1" fill="currentColor" /> {item.tier}
         </Badge>
       ),
     },
-    { key: 'points', label: 'Điểm hiện có', render: (v: number) => <span className="font-bold text-primary">{v.toLocaleString()} pt</span> },
-    { key: 'totalSpend', label: 'Chi tiêu tích lũy', render: (v: number) => <span>{formatCurrency(v)}</span> },
-    { key: 'joinedAt', label: 'Ngày tham gia', render: (v: string) => <span className="text-xs">{new Date(v).toLocaleDateString('vi-VN')}</span> },
+    { key: 'points', label: 'Điểm hiện có', render: (item: LoyaltyProgram) => <span className="font-bold text-primary">{item.points.toLocaleString()} pt</span> },
+    { key: 'totalSpend', label: 'Chi tiêu tích lũy', render: (item: LoyaltyProgram) => <span>{formatCurrency(item.totalSpend)}</span> },
+    { key: 'joinedAt', label: 'Ngày tham gia', render: (item: LoyaltyProgram) => <span className="text-xs">{new Date(item.joinedAt).toLocaleDateString('vi-VN')}</span> },
   ];
 
   const rewardColumns = [
-    { key: 'name', label: 'Phần thưởng', render: (v: string, row: LoyaltyReward) => (
+    { key: 'name', label: 'Phần thưởng', render: (item: LoyaltyReward) => (
       <div>
-        <p className="font-medium">{v}</p>
-        <p className="text-xs text-muted-foreground">{row.description}</p>
+        <p className="font-medium">{item.name}</p>
+        <p className="text-xs text-muted-foreground">{item.description}</p>
       </div>
     )},
-    { key: 'pointsRequired', label: 'Điểm cần', render: (v: number) => <Badge variant="outline">{v.toLocaleString()} pt</Badge> },
-    { key: 'type', label: 'Loại', render: (v: string) => <Badge variant="secondary">{v}</Badge> },
-    { key: 'stock', label: 'Tồn', render: (v: number) => <span>{v}</span> },
+    { key: 'pointsCost', label: 'Điểm cần', render: (item: LoyaltyReward) => <Badge variant="outline">{item.pointsCost.toLocaleString()} pt</Badge> },
+    { key: 'category', label: 'Loại', render: (item: LoyaltyReward) => <Badge variant="secondary">{item.category}</Badge> },
+    { key: 'stock', label: 'Tồn', render: (item: LoyaltyReward) => <span>{item.stock}</span> },
     {
-      key: 'isActive', label: 'Trạng thái',
-      render: (v: boolean) => <Badge variant={v ? 'default' : 'outline'}>{v ? 'Hoạt động' : 'Tạm ngừng'}</Badge>,
+      key: 'available', label: 'Trạng thái',
+      render: (item: LoyaltyReward) => <Badge variant={item.available ? 'default' : 'outline'}>{item.available ? 'Hoạt động' : 'Tạm ngừng'}</Badge>,
     },
     {
       key: 'actions', label: '',
-      render: (_: unknown, row: LoyaltyReward) => (
+      render: (item: LoyaltyReward) => (
         <div className="flex gap-1">
           <Button size="sm" variant="ghost" onClick={() => {
-            setRewards(prev => prev.map(r => r.id === row.id ? { ...r, isActive: !r.isActive } : r));
-            toast.success(row.isActive ? 'Đã tạm ngừng phần thưởng' : 'Đã kích hoạt phần thưởng');
+            setRewards(prev => prev.map(r => r.id === item.id ? { ...r, available: !r.available } : r));
+            toast.success(item.available ? 'Đã tạm ngừng phần thưởng' : 'Đã kích hoạt phần thưởng');
           }}>
-            {row.isActive ? 'Tạm ngừng' : 'Kích hoạt'}
+            {item.available ? 'Tạm ngừng' : 'Kích hoạt'}
           </Button>
           <Button size="sm" variant="ghost" className="text-destructive" onClick={() => {
-            setRewards(prev => prev.filter(r => r.id !== row.id));
+            setRewards(prev => prev.filter(r => r.id !== item.id));
             toast.success('Đã xóa phần thưởng');
           }}>
             <Trash2 className="h-4 w-4" />
@@ -151,19 +151,18 @@ export function AdminLoyaltyPage() {
   ];
 
   const handleAddReward = () => {
-    if (!rewardForm.name || !rewardForm.pointsRequired) return;
+    if (!rewardForm.name || !rewardForm.pointsCost) return;
     const newReward: LoyaltyReward = {
       id: `R-${Date.now()}`,
       name: rewardForm.name,
       description: rewardForm.description,
-      pointsRequired: parseInt(rewardForm.pointsRequired),
-      type: 'Voucher',
-      value: 0,
-      isActive: true,
+      pointsCost: parseInt(rewardForm.pointsCost),
+      category: 'Voucher',
+      available: true,
       stock: parseInt(rewardForm.stock) || 10,
     };
     setRewards(prev => [...prev, newReward]);
-    setRewardForm({ name: '', description: '', pointsRequired: '', stock: '' });
+    setRewardForm({ name: '', description: '', pointsCost: '', stock: '' });
     setShowRewardForm(false);
     toast.success('Đã thêm phần thưởng mới');
   };
@@ -175,22 +174,22 @@ export function AdminLoyaltyPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="flex items-center gap-2"><Award className="h-6 w-6 text-primary" /> Chương trình Khách hàng thân thiết</h1>
-          <p className="text-muted-foreground">Quản lý thành viên, phần thưởng và cấu hình tier</p>
+          <p className="text-muted-foreground">Quản lý thành viên, phần thưởng và cấu hình hạng thành viên</p>
         </div>
         <Button variant="outline" size="sm" onClick={fetchData}><RefreshCw className="h-4 w-4 mr-1" /> Làm mới</Button>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatsCard title="Tổng thành viên" value={stats.total} icon={<Users className="h-5 w-5 text-primary" />} />
-        <StatsCard title="Kim cương" value={stats.diamond} icon={<Star className="h-5 w-5 text-blue-500" />} color="info" />
-        <StatsCard title="Tổng điểm đã phát" value={`${(stats.totalPoints / 1000).toFixed(1)}K pt`} icon={<Coins className="h-5 w-5 text-yellow-500" />} color="warning" />
-        <StatsCard title="Chi tiêu tích lũy" value={formatCurrency(stats.totalSpend)} icon={<Gift className="h-5 w-5 text-purple-500" />} color="success" />
+        <StatsCard title="Tổng thành viên" value={stats.total} icon={Users} />
+        <StatsCard title="Kim cương" value={stats.diamond} icon={Star} variant="info" />
+        <StatsCard title="Tổng điểm đã phát" value={stats.totalPoints / 1000} format={(n) => `${n.toFixed(1)}K pt`} icon={Coins} variant="warning" />
+        <StatsCard title="Chi tiêu tích lũy" value={stats.totalSpend} format={formatCurrency} icon={Gift} variant="success" />
       </div>
 
       {/* Tabs */}
       <div className="flex border-b gap-4">
-        {[{ key: 'members', label: 'Thành viên', icon: Users }, { key: 'rewards', label: 'Phần thưởng', icon: Gift }, { key: 'config', label: 'Cấu hình tier', icon: Settings2 }].map(t => (
+        {[{ key: 'members', label: 'Thành viên', icon: Users }, { key: 'rewards', label: 'Phần thưởng', icon: Gift }, { key: 'config', label: 'Cấu hình hạng', icon: Settings2 }].map(t => (
           <button
             key={t.key}
             onClick={() => setTab(t.key as typeof tab)}
@@ -205,7 +204,7 @@ export function AdminLoyaltyPage() {
         <div className="space-y-4">
           <div className="grid lg:grid-cols-3 gap-6">
             <Card>
-              <CardHeader><CardTitle>Phân bố Tier</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Phân bố Hạng thành viên</CardTitle></CardHeader>
               <CardContent>
                 <div className="h-52">
                   <ResponsiveContainer width="100%" height="100%">
@@ -226,13 +225,13 @@ export function AdminLoyaltyPage() {
             <div className="lg:col-span-2">
               <FilterBar
                 search={search} onSearchChange={setSearch}
-                searchPlaceholder="Tìm thành viên, công ty..."
-                filters={[{ key: 'tier', label: 'Tier', value: tierFilter, onChange: setTierFilter, options: tierOptions }]}
+                searchPlaceholder="Tìm tên khách hàng..."
+                filters={[{ key: 'tier', label: 'Hạng', value: tierFilter, onChange: setTierFilter, options: tierOptions }]}
               />
             </div>
           </div>
 
-          <DataTable columns={memberColumns} data={filtered} loading={loading} emptyMessage="Không có thành viên nào" pagination />
+          <DataTable columns={memberColumns} data={filtered} loading={loading} emptyMessage="Không có thành viên nào" pagination getId={item => item.id} />
         </div>
       )}
 
@@ -241,14 +240,14 @@ export function AdminLoyaltyPage() {
           <div className="flex justify-end">
             <Button onClick={() => setShowRewardForm(true)} size="sm"><Plus className="h-4 w-4 mr-1" /> Thêm phần thưởng</Button>
           </div>
-          <DataTable columns={rewardColumns} data={rewards} loading={loading} emptyMessage="Chưa có phần thưởng" />
+          <DataTable columns={rewardColumns} data={rewards} loading={loading} emptyMessage="Chưa có phần thưởng" getId={item => item.id} />
         </div>
       )}
 
       {tab === 'config' && (
         <div className="space-y-4">
           <Card>
-            <CardHeader><CardTitle>Điều kiện tier & tỷ lệ tích điểm</CardTitle></CardHeader>
+            <CardHeader><CardTitle>Điều kiện hạng & tỷ lệ tích điểm</CardTitle></CardHeader>
             <CardContent>
               <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
                 {TIER_CONFIG.map(t => (
@@ -287,13 +286,13 @@ export function AdminLoyaltyPage() {
             <div><Label>Tên phần thưởng</Label><Input value={rewardForm.name} onChange={e => setRewardForm(p => ({ ...p, name: e.target.value }))} placeholder="VD: Voucher giảm 200K" /></div>
             <div><Label>Mô tả</Label><Input value={rewardForm.description} onChange={e => setRewardForm(p => ({ ...p, description: e.target.value }))} placeholder="Mô tả chi tiết" /></div>
             <div className="grid grid-cols-2 gap-3">
-              <div><Label>Điểm cần</Label><Input type="number" value={rewardForm.pointsRequired} onChange={e => setRewardForm(p => ({ ...p, pointsRequired: e.target.value }))} placeholder="1000" /></div>
+              <div><Label>Điểm cần</Label><Input type="number" value={rewardForm.pointsCost} onChange={e => setRewardForm(p => ({ ...p, pointsCost: e.target.value }))} placeholder="1000" /></div>
               <div><Label>Số lượng</Label><Input type="number" value={rewardForm.stock} onChange={e => setRewardForm(p => ({ ...p, stock: e.target.value }))} placeholder="50" /></div>
             </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowRewardForm(false)}>Hủy</Button>
-            <Button onClick={handleAddReward} disabled={!rewardForm.name || !rewardForm.pointsRequired}>Thêm phần thưởng</Button>
+            <Button onClick={handleAddReward} disabled={!rewardForm.name || !rewardForm.pointsCost}>Thêm phần thưởng</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

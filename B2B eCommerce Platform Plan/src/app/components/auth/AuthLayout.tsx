@@ -4,9 +4,9 @@
 // Carousel với animated stats, trust signals
 // ============================================================
 
-import { useState, useEffect } from 'react';
-import { Outlet, Navigate, Link } from 'react-router';
-import { Globe, Shield, TrendingUp, Users, CheckCircle, Star, Lock, Zap } from 'lucide-react';
+import { CheckCircle, Globe, Lock, Shield, Star, TrendingUp, Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Link, Navigate, Outlet } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
 
 const slides = [
@@ -84,7 +84,7 @@ export function AuthLayout() {
       {/* Left — Form area */}
       <div className="flex-1 flex flex-col">
         {/* Mobile branding header */}
-        <div className="lg:hidden p-4" style={{ background: 'linear-gradient(135deg, #1e1b4b, #3730a3)' }}>
+        <div className="lg:hidden p-4" style={{ background: 'linear-gradient(135deg, #8a0e23, #c91432)' }}>
           <Link to="/" className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/20">
               <span className="text-white text-xs font-black" style={{ fontFamily: 'var(--font-heading)' }}>B2B</span>
@@ -112,54 +112,52 @@ export function AuthLayout() {
 
       {/* Right — Branding panel (desktop only) */}
       <div className="hidden lg:flex w-[480px] xl:w-[540px] relative overflow-hidden">
-        {/* Multi-layer background */}
-        <div className="absolute inset-0" style={{ background: 'linear-gradient(145deg, #0d0f1a 0%, #1e1b4b 40%, #312e81 100%)' }} />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(99,102,241,0.25),transparent_55%)]" />
-        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,rgba(59,130,246,0.15),transparent_55%)]" />
-        {/* Grid pattern */}
-        <div className="absolute inset-0 opacity-[0.04]" style={{
+        {/* Multi-layer background with brand colors */}
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, #6b0b1c 0%, #8a0e23 25%, #a8102a 50%, #c91432 75%, #e31837 100%)' }} />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,rgba(227,24,55,0.2),transparent_50%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom_left,rgba(201,20,50,0.15),transparent_55%)]" />
+        {/* Subtle grid pattern */}
+        <div className="absolute inset-0 opacity-[0.03]" style={{
           backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'40\' height=\'40\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M0 0h40v40H0z\' fill=\'none\' stroke=\'white\' stroke-width=\'.5\'/%3E%3C/svg%3E")',
         }} />
-        {/* Glow orbs */}
-        <div className="absolute top-20 -right-10 w-60 h-60 rounded-full bg-indigo-500/15 blur-3xl" />
-        <div className="absolute bottom-20 -left-10 w-48 h-48 rounded-full bg-blue-500/10 blur-2xl" />
+        {/* Premium glow orbs */}
+        <div className="absolute top-32 -right-20 w-72 h-72 rounded-full bg-red-400/20 blur-3xl" />
+        <div className="absolute -bottom-10 -left-10 w-64 h-64 rounded-full bg-red-500/10 blur-2xl" />
 
         <div className="relative z-10 flex flex-col items-center justify-between p-10 text-white w-full">
           {/* Top: Logo */}
           <Link to="/" className="flex items-center gap-3 self-start group">
-            <div className="h-11 w-11 rounded-xl bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center group-hover:bg-white/15 transition-colors">
+            <div className="h-12 w-12 rounded-xl bg-white/15 backdrop-blur-md border border-white/30 flex items-center justify-center group-hover:bg-white/20 transition-all">
               <span className="text-white font-black text-sm" style={{ fontFamily: 'var(--font-heading)' }}>B2B</span>
             </div>
             <div>
               <p className="text-white font-black text-xl leading-none" style={{ fontFamily: 'var(--font-heading)' }}>VietB2B</p>
-              <p className="text-indigo-300/60 text-xs mt-0.5">Nền tảng B2B #1 Việt Nam</p>
+              <p className="text-red-100/50 text-xs mt-0.5">Nền tảng B2B #1 Việt Nam</p>
             </div>
           </Link>
 
           {/* Center: Carousel */}
           <div className="flex-1 flex flex-col items-center justify-center text-center max-w-sm py-8">
             {/* Icon */}
-            <div className={`h-20 w-20 mx-auto mb-6 rounded-2xl bg-gradient-to-br ${slide.accent} bg-opacity-20 p-0.5 transition-all duration-500 ${animating ? 'opacity-0 scale-90' : 'opacity-100 scale-100'}`}>
-              <div className="h-full w-full rounded-2xl bg-white/10 backdrop-blur-sm flex items-center justify-center">
-                <slide.icon className="h-10 w-10 text-white" />
-              </div>
+            <div className={`h-24 w-24 mx-auto mb-8 rounded-3xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center transition-all duration-500 ${animating ? 'opacity-0 scale-90' : 'opacity-100 scale-100'}`}>
+              <slide.icon className="h-12 w-12 text-white" />
             </div>
 
             {/* Stat highlight */}
-            <div className={`mb-5 transition-all duration-500 ${animating ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}>
-              <div className={`inline-flex flex-col items-center bg-gradient-to-br ${slide.accent} bg-opacity-10 rounded-2xl px-8 py-4 border border-white/10`}>
-                <span className="text-5xl font-black text-white" style={{ fontFamily: 'var(--font-heading)' }}>
+            <div className={`mb-8 transition-all duration-500 ${animating ? 'opacity-0 translate-y-4' : 'opacity-100 translate-y-0'}`}>
+              <div className={`inline-flex flex-col items-center bg-white/10 backdrop-blur-md rounded-2xl px-8 py-5 border border-white/20`}>
+                <span className="text-6xl font-black text-white" style={{ fontFamily: 'var(--font-heading)' }}>
                   {slide.stat}
                 </span>
-                <span className="text-white/60 text-sm mt-1">{slide.statLabel}</span>
+                <span className="text-white/70 text-xs mt-2 uppercase tracking-wide font-medium">{slide.statLabel}</span>
               </div>
             </div>
 
-            <h3 className={`text-white font-bold text-xl mb-3 transition-all duration-500 ${animating ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}`}
+            <h3 className={`text-white font-black text-2xl mb-4 transition-all duration-500 ${animating ? 'opacity-0 translate-y-2' : 'opacity-100 translate-y-0'}`}
               style={{ fontFamily: 'var(--font-heading)' }}>
               {slide.title}
             </h3>
-            <p className={`text-indigo-200/70 leading-relaxed transition-all duration-500 ${animating ? 'opacity-0' : 'opacity-100'}`}>
+            <p className={`text-white/80 leading-relaxed transition-all duration-500 ${animating ? 'opacity-0' : 'opacity-100'}`}>
               {slide.description}
             </p>
 
@@ -176,17 +174,17 @@ export function AuthLayout() {
           </div>
 
           {/* Bottom: Trust badges */}
-          <div className="w-full border-t border-white/10 pt-6">
-            <p className="text-white/40 text-xs text-center mb-4 uppercase tracking-wider">Được tin tưởng bởi</p>
-            <div className="grid grid-cols-4 gap-3">
+          <div className="w-full border-t border-white/15 pt-7">
+            <p className="text-white/50 text-xs text-center mb-5 uppercase tracking-wider font-semibold">Được tin tưởng bởi</p>
+            <div className="grid grid-cols-4 gap-2">
               {trustBadges.map(badge => (
-                <div key={badge.label} className="flex flex-col items-center gap-1.5 p-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
-                  <badge.icon className="h-4 w-4 text-indigo-300" />
-                  <span className="text-white/50 text-[10px] text-center leading-tight">{badge.label}</span>
+                <div key={badge.label} className="flex flex-col items-center gap-2 p-3 rounded-xl bg-white/10 backdrop-blur-sm hover:bg-white/15 transition-all border border-white/10">
+                  <badge.icon className="h-5 w-5 text-white" />
+                  <span className="text-white/70 text-[11px] text-center leading-tight font-medium">{badge.label}</span>
                 </div>
               ))}
             </div>
-            <p className="text-white/25 text-xs text-center mt-5">
+            <p className="text-white/40 text-xs text-center mt-6">
               © 2025 VietB2B · Bảo mật · Điều khoản
             </p>
           </div>

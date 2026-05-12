@@ -9,7 +9,6 @@ import { Eye, EyeOff, UserPlus, Check, X, ArrowLeft, ArrowRight, Chrome, Monitor
 import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import type { RegisterData } from '../../types';
@@ -132,10 +131,6 @@ export function RegisterPage() {
       else if (form.fullName.length > 50) errs.fullName = 'Họ tên tối đa 50 ký tự';
       if (!form.phone.trim()) errs.phone = 'Vui lòng nhập số điện thoại';
       else if (!/^0\d{9}$/.test(form.phone)) errs.phone = 'Số điện thoại không hợp lệ (VD: 0901234567)';
-      // DB-A.09: Tên công ty bắt buộc cho cả Người mua & NCC
-      if (!form.companyName?.trim()) {
-        errs.companyName = 'Vui lòng nhập tên công ty / tổ chức';
-      }
     }
 
     setErrors(errs);
@@ -158,8 +153,7 @@ export function RegisterPage() {
       const { confirmPassword: _, ...data } = form;
       const authUser = await register(data);
       toast.success('Đăng ký thành công!');
-      const redirectTo = authUser.role === 'Nhà cung cấp' ? '/seller' : '/';
-      navigate(redirectTo, { replace: true });
+      navigate('/', { replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Đăng ký thất bại');
     } finally {
@@ -174,15 +168,15 @@ export function RegisterPage() {
         <div className="hidden lg:flex items-center gap-2.5 mb-6">
           <Link to="/" className="inline-flex items-center gap-2.5 group">
             <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center shadow-lg shadow-indigo-200 group-hover:shadow-indigo-300 transition-shadow">
-              <span className="text-white text-sm" style={{ fontFamily: 'var(--font-heading)', fontWeight: 700 }}>B2B</span>
+              <span className="text-white text-sm" style={{ fontFamily: 'var(--font-heading)', fontWeight: 700 }}>CPS</span>
             </div>
-            <span className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)' }}>VietB2B</span>
+            <span className="text-lg font-bold" style={{ fontFamily: 'var(--font-heading)' }}>CellPhones Store</span>
           </Link>
         </div>
         <h2 className="text-2xl font-black" style={{ fontFamily: 'var(--font-heading)' }}>
           Tạo tài khoản 🚀
         </h2>
-        <p className="text-muted-foreground mt-1">Tham gia sàn TMĐT B2B hàng đầu Việt Nam</p>
+        <p className="text-muted-foreground mt-1">Đăng ký thành viên để nhận ưu đãi độc quyền</p>
       </div>
 
       {/* D16.06: Step indicator */}
@@ -310,20 +304,6 @@ export function RegisterPage() {
       {currentStep === 1 && (
         <div className="space-y-4">
           <div className="grid gap-2">
-            <Label>Vai trò *</Label>
-            <Select
-              value={form.role}
-              onValueChange={v => updateField('role', v as RegisterData['role'])}
-            >
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Người mua">Người mua</SelectItem>
-                <SelectItem value="Nhà cung cấp">Nhà cung cấp</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-
-          <div className="grid gap-2">
             <Label>Họ và tên *</Label>
             <Input
               value={form.fullName}
@@ -346,16 +326,13 @@ export function RegisterPage() {
             {errors.phone && <p className="text-destructive text-xs">{errors.phone}</p>}
           </div>
 
-          {/* DB-A.09: Tên công ty luôn hiển thị (bắt buộc cho B2B) */}
           <div className="grid gap-2">
-            <Label>Tên công ty / Tổ chức *</Label>
+            <Label>Tên công ty / Tổ chức <span className="text-muted-foreground text-xs">(tuỳ chọn)</span></Label>
             <Input
               value={form.companyName}
               onChange={e => updateField('companyName', e.target.value)}
-              placeholder="Công ty TNHH..."
-              className={errors.companyName ? 'border-destructive' : ''}
+              placeholder="Công ty TNHH... (nếu mua cho doanh nghiệp)"
             />
-            {errors.companyName && <p className="text-destructive text-xs">{errors.companyName}</p>}
           </div>
 
           {/* DB-A.09: Mã số thuế (tuỳ chọn) */}
@@ -407,7 +384,6 @@ export function RegisterPage() {
                 { label: 'Email', value: form.email },
                 { label: 'Họ tên', value: form.fullName },
                 { label: 'Điện thoại', value: form.phone },
-                { label: 'Vai trò', value: form.role },
                 ...(form.companyName ? [{ label: 'Công ty', value: form.companyName }] : []),
                 ...(form.taxCode ? [{ label: 'Mã số thuế', value: form.taxCode }] : []),
                 ...(form.city ? [{ label: 'Thành phố', value: form.city }] : []),

@@ -84,33 +84,33 @@ export function AdminBlogPage() {
   const columns = [
     {
       key: 'title', label: 'Tiêu đề',
-      render: (v: string, row: BlogPost) => (
+      render: (item: BlogPost) => (
         <div>
-          <p className="font-medium line-clamp-1">{v}</p>
-          <p className="text-xs text-muted-foreground">{row.author} · {row.viewCount.toLocaleString()} lượt xem</p>
+          <p className="font-medium line-clamp-1">{item.title}</p>
+          <p className="text-xs text-muted-foreground">{item.author} · {item.viewCount.toLocaleString()} lượt xem</p>
         </div>
       ),
     },
-    { key: 'category', label: 'Danh mục', render: (v: string) => <Badge variant="outline">{v}</Badge> },
+    { key: 'category', label: 'Danh mục', render: (item: BlogPost) => <Badge variant="outline">{item.category}</Badge> },
     {
       key: 'isPublished', label: 'Trạng thái',
-      render: (v: boolean) => (
-        <Badge variant={v ? 'default' : 'secondary'}>{v ? 'Đã đăng' : 'Nháp'}</Badge>
+      render: (item: BlogPost) => (
+        <Badge variant={item.isPublished ? 'default' : 'secondary'}>{item.isPublished ? 'Đã đăng' : 'Nháp'}</Badge>
       ),
     },
     {
       key: 'publishedAt', label: 'Ngày đăng',
-      render: (v: string) => <span className="text-sm text-muted-foreground">{new Date(v).toLocaleDateString('vi-VN')}</span>,
+      render: (item: BlogPost) => <span className="text-sm text-muted-foreground">{new Date(item.publishedAt).toLocaleDateString('vi-VN')}</span>,
     },
     {
       key: 'actions', label: '',
-      render: (_: unknown, row: BlogPost) => (
+      render: (item: BlogPost) => (
         <div className="flex gap-1">
-          <Button size="sm" variant="ghost" onClick={() => setSelected(row)}><Eye className="h-4 w-4" /></Button>
-          <Button size="sm" variant="ghost" onClick={() => handleTogglePublish(row)}>
-            {row.isPublished ? <Eye className="h-4 w-4 text-yellow-500" /> : <Eye className="h-4 w-4 text-green-500" />}
+          <Button size="sm" variant="ghost" onClick={() => setSelected(item)}><Eye className="h-4 w-4" /></Button>
+          <Button size="sm" variant="ghost" onClick={() => handleTogglePublish(item)}>
+            {item.isPublished ? <Eye className="h-4 w-4 text-yellow-500" /> : <Eye className="h-4 w-4 text-green-500" />}
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(row)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+          <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
         </div>
       ),
     },
@@ -135,10 +135,10 @@ export function AdminBlogPage() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatsCard title="Tổng bài viết" value={total} icon={<FileText className="h-5 w-5 text-primary" />} />
-        <StatsCard title="Đã đăng" value={published} icon={<Eye className="h-5 w-5 text-green-500" />} color="success" />
-        <StatsCard title="Bản nháp" value={total - published} icon={<Edit2 className="h-5 w-5 text-yellow-500" />} color="warning" />
-        <StatsCard title="Tổng lượt xem" value={totalViews.toLocaleString()} icon={<BookOpen className="h-5 w-5 text-blue-500" />} color="info" />
+        <StatsCard title="Tổng bài viết" value={total} icon={FileText} />
+        <StatsCard title="Đã đăng" value={published} icon={Eye} variant="success" />
+        <StatsCard title="Bản nháp" value={total - published} icon={Edit2} variant="warning" />
+        <StatsCard title="Tổng lượt xem" value={totalViews} icon={BookOpen} variant="info" />
       </div>
 
       <FilterBar
