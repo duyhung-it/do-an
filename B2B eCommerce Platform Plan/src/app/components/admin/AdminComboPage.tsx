@@ -71,44 +71,44 @@ export function AdminComboPage() {
   const columns = [
     {
       key: 'name', label: 'Tên Combo',
-      render: (v: string, row: ProductCombo) => (
+      render: (item: ProductCombo) => (
         <div>
-          <p className="font-medium">{v}</p>
-          <p className="text-xs text-muted-foreground">{row.products.length} sản phẩm</p>
+          <p className="font-medium">{item.name}</p>
+          <p className="text-xs text-muted-foreground">{item.products.length} sản phẩm</p>
         </div>
       ),
     },
     {
       key: 'comboPrice', label: 'Giá Combo',
-      render: (v: number, row: ProductCombo) => (
+      render: (item: ProductCombo) => (
         <div>
-          <p className="font-medium text-primary">{formatCurrency(v)}</p>
-          <p className="text-xs line-through text-muted-foreground">{formatCurrency(row.totalOriginalPrice)}</p>
+          <p className="font-medium text-primary">{formatCurrency(item.comboPrice)}</p>
+          <p className="text-xs line-through text-muted-foreground">{formatCurrency(item.totalOriginalPrice)}</p>
         </div>
       ),
     },
     {
       key: 'savingsPercent', label: 'Tiết kiệm',
-      render: (v: number, row: ProductCombo) => (
+      render: (item: ProductCombo) => (
         <div>
-          <Badge variant="destructive" className="text-xs">-{v}%</Badge>
-          <p className="text-xs text-muted-foreground mt-0.5">{formatCurrency(row.savings)}</p>
+          <Badge variant="destructive" className="text-xs">-{item.savingsPercent}%</Badge>
+          <p className="text-xs text-muted-foreground mt-0.5">{formatCurrency(item.savings)}</p>
         </div>
       ),
     },
     {
       key: 'isActive', label: 'Trạng thái',
-      render: (v: boolean) => <Badge variant={v ? 'default' : 'secondary'}>{v ? 'Hoạt động' : 'Tạm ẩn'}</Badge>,
+      render: (item: ProductCombo) => <Badge variant={item.isActive ? 'default' : 'secondary'}>{item.isActive ? 'Hoạt động' : 'Tạm ẩn'}</Badge>,
     },
     {
       key: 'actions', label: '',
-      render: (_: unknown, row: ProductCombo) => (
+      render: (item: ProductCombo) => (
         <div className="flex gap-1">
-          <Button size="sm" variant="ghost" onClick={() => setSelected(row)}><Eye className="h-4 w-4" /></Button>
-          <Button size="sm" variant="ghost" onClick={() => handleToggle(row)}>
-            <Tag className={`h-4 w-4 ${row.isActive ? 'text-yellow-500' : 'text-green-500'}`} />
+          <Button size="sm" variant="ghost" onClick={() => setSelected(item)}><Eye className="h-4 w-4" /></Button>
+          <Button size="sm" variant="ghost" onClick={() => handleToggle(item)}>
+            <Tag className={`h-4 w-4 ${item.isActive ? 'text-yellow-500' : 'text-green-500'}`} />
           </Button>
-          <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(row)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
+          <Button size="sm" variant="ghost" onClick={() => setDeleteTarget(item)}><Trash2 className="h-4 w-4 text-destructive" /></Button>
         </div>
       ),
     },
@@ -134,10 +134,10 @@ export function AdminComboPage() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatsCard title="Tổng combo" value={combos.length} icon={<Package className="h-5 w-5 text-primary" />} />
-        <StatsCard title="Đang hoạt động" value={activeCount} icon={<Tag className="h-5 w-5 text-green-500" />} color="success" />
-        <StatsCard title="Giảm TB" value={`${avgDiscount}%`} icon={<TrendingUp className="h-5 w-5 text-blue-500" />} color="info" />
-        <StatsCard title="Tổng tiết kiệm" value={formatCurrency(totalSavings)} icon={<TrendingUp className="h-5 w-5 text-purple-500" />} />
+        <StatsCard title="Tổng combo" value={combos.length} icon={Package} />
+        <StatsCard title="Đang hoạt động" value={activeCount} icon={Tag} variant="success" />
+        <StatsCard title="Giảm TB" value={avgDiscount} format={(n) => `${n}%`} icon={TrendingUp} variant="info" />
+        <StatsCard title="Tổng tiết kiệm" value={totalSavings} format={formatCurrency} icon={TrendingUp} variant="purple" />
       </div>
 
       <FilterBar

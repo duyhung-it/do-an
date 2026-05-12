@@ -102,41 +102,41 @@ export function AdminWarrantyPage() {
   };
 
   const columns = [
-    { key: 'id', label: 'Mã Claim', render: (v: string) => <span className="font-mono text-xs text-muted-foreground">{v}</span> },
+    { key: 'id', label: 'Mã Claim', render: (item: typeof mockClaims[0]) => <span className="font-mono text-xs text-muted-foreground">{item.id}</span> },
     {
       key: 'productName', label: 'Sản phẩm',
-      render: (v: string, row: typeof mockClaims[0]) => (
+      render: (item: typeof mockClaims[0]) => (
         <div>
-          <p className="font-medium text-sm">{v}</p>
-          <p className="text-xs text-muted-foreground">{row.buyerName} → {row.sellerName}</p>
+          <p className="font-medium text-sm">{item.productName}</p>
+          <p className="text-xs text-muted-foreground">{item.buyerName} → {item.sellerName}</p>
         </div>
       ),
     },
     {
       key: 'claimType', label: 'Loại',
-      render: (v: string) => (
+      render: (item: typeof mockClaims[0]) => (
         <Badge variant="outline" className={
-          v === 'Hoàn tiền' ? 'border-red-300 text-red-600' :
-          v === 'Thay thế' ? 'border-blue-300 text-blue-600' :
+          item.claimType === 'Hoàn tiền' ? 'border-red-300 text-red-600' :
+          item.claimType === 'Thay thế' ? 'border-blue-300 text-blue-600' :
           'border-orange-300 text-orange-600'
-        }>{v}</Badge>
+        }>{item.claimType}</Badge>
       ),
     },
     {
       key: 'status', label: 'Trạng thái',
-      render: (v: string) => <StatusBadge status={v} />,
+      render: (item: typeof mockClaims[0]) => <StatusBadge status={item.status} />,
     },
     {
       key: 'createdAt', label: 'Ngày gửi',
-      render: (v: string) => <span className="text-xs">{formatDate(v)}</span>,
+      render: (item: typeof mockClaims[0]) => <span className="text-xs">{formatDate(item.createdAt)}</span>,
     },
     {
       key: 'actions', label: '',
-      render: (_: unknown, row: typeof mockClaims[0]) => (
+      render: (item: typeof mockClaims[0]) => (
         <div className="flex gap-1">
-          <Button size="sm" variant="ghost" onClick={() => setSelected(row)}><Eye className="h-4 w-4" /></Button>
-          {['Mới gửi', 'Chờ phản hồi NCC'].includes(row.status) && (
-            <Button size="sm" variant="ghost" className="text-orange-600" onClick={() => { setSelected(row); setShowIntervene(true); }}>
+          <Button size="sm" variant="ghost" onClick={() => setSelected(item)}><Eye className="h-4 w-4" /></Button>
+          {['Mới gửi', 'Chờ phản hồi NCC'].includes(item.status) && (
+            <Button size="sm" variant="ghost" className="text-orange-600" onClick={() => { setSelected(item); setShowIntervene(true); }}>
               <Wrench className="h-4 w-4" />
             </Button>
           )}
@@ -181,11 +181,11 @@ export function AdminWarrantyPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <StatsCard title="Tổng Claim" value={stats.total} icon={<Shield className="h-5 w-5 text-primary" />} />
-        <StatsCard title="Đang xử lý" value={stats.processing} icon={<Clock className="h-5 w-5 text-orange-500" />} color="warning" />
-        <StatsCard title="Đã giải quyết" value={stats.resolved} icon={<CheckCircle className="h-5 w-5 text-green-500" />} color="success" />
-        <StatsCard title="Từ chối" value={stats.rejected} icon={<XCircle className="h-5 w-5 text-red-500" />} color="danger" />
-        <StatsCard title="TG xử lý TB" value={`${stats.avgDays} ngày`} icon={<Clock className="h-5 w-5 text-blue-500" />} color="info" />
+        <StatsCard title="Tổng Claim" value={stats.total} icon={Shield} />
+        <StatsCard title="Đang xử lý" value={stats.processing} icon={Clock} variant="warning" />
+        <StatsCard title="Đã giải quyết" value={stats.resolved} icon={CheckCircle} variant="success" />
+        <StatsCard title="Từ chối" value={stats.rejected} icon={XCircle} variant="danger" />
+        <StatsCard title="TG xử lý TB" value={stats.avgDays} format={(n) => `${n} ngày`} icon={Clock} variant="info" />
       </div>
 
       <FilterBar
@@ -197,7 +197,7 @@ export function AdminWarrantyPage() {
         ]}
       />
 
-      <DataTable columns={columns} data={filtered} loading={loading} emptyMessage="Không có claim bảo hành nào" pagination />
+      <DataTable columns={columns} data={filtered} loading={loading} emptyMessage="Không có claim bảo hành nào" pagination getId={item => item.id} />
 
       {/* Detail Dialog */}
       <Dialog open={!!selected && !showIntervene} onOpenChange={() => setSelected(null)}>

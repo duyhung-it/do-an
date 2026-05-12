@@ -34,13 +34,14 @@ import { IconWrapper } from '../shared/IconWrapper';
 import { AnimatedNumber } from '../shared/AnimatedNumber';
 import { AppBreadcrumb } from '../shared/AppBreadcrumb';
 import { invoiceBuyerApi } from '../../services/api';
-import { debitCreditApi } from '../../services/debitCreditApi';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import type {
-  Invoice, DebitCreditNote, PaginationParams, SortParams,
+  Invoice, PaginationParams, SortParams,
   ActiveFilter, FilterConfig, ColumnConfig,
 } from '../../types';
+
+type DebitCreditNote = { id: string; amount: number; status: string; type: string };
 
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(price);
@@ -239,12 +240,9 @@ export function BuyerInvoiceListPage() {
     setLoading(true);
     setDcLoading(true);
     try {
-      const [res, dcRes] = await Promise.all([
-        invoiceBuyerApi.getByBuyer(buyerId, pagination, sort, filters),
-        debitCreditApi.getByBuyer(buyerId, { page: 1, pageSize: 50 }),
-      ]);
+      const res = await invoiceBuyerApi.getByBuyer(buyerId, pagination, sort, filters);
       setAllInvoices(res.data);
-      setDcNotes(dcRes.data);
+      setDcNotes([]);
     } finally {
       setLoading(false);
       setDcLoading(false);

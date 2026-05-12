@@ -83,7 +83,7 @@ const txnColumns: (ColumnConfig & { render?: (item: LoyaltyTransaction) => React
 function TierHero({ program }: { program: LoyaltyProgram }) {
   const config = TIER_CONFIG[program.tier] || TIER_CONFIG['Đồng'];
   const progressPercent = program.nextTierThreshold
-    ? Math.min(100, Math.round((program.currentPoints / program.nextTierThreshold) * 100))
+    ? Math.min(100, Math.round((program.points / program.nextTierThreshold) * 100))
     : 100;
 
   return (
@@ -115,11 +115,11 @@ function TierHero({ program }: { program: LoyaltyProgram }) {
                 <span className="text-sm text-muted-foreground">Member</span>
               </div>
               <p className="text-4xl">
-                {program.currentPoints.toLocaleString()}
+                {program.points.toLocaleString()}
                 <span className="text-base text-muted-foreground ml-2">điểm</span>
               </p>
               <p className="text-sm text-muted-foreground mt-0.5">
-                Chi tiêu tích luỹ: {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(program.lifetimeSpend)}
+                Chi tiêu tích luỹ: {new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(program.totalSpend)}
               </p>
             </div>
           </div>
@@ -138,7 +138,7 @@ function TierHero({ program }: { program: LoyaltyProgram }) {
                   />
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
-                  Còn <span className="font-medium">{(program.nextTierThreshold - program.currentPoints).toLocaleString()}</span> điểm để lên hạng
+                  Còn <span className="font-medium">{(program.nextTierThreshold - program.points).toLocaleString()}</span> điểm để lên hạng
                 </p>
               </div>
             ) : (
@@ -168,7 +168,7 @@ function OverviewTab({ program, stats }: {
         <Card>
           <CardContent className="p-4 text-center">
             <Star className="h-5 w-5 mx-auto mb-1 text-yellow-500" />
-            <p className="text-2xl">{program.currentPoints.toLocaleString()}</p>
+            <p className="text-2xl">{program.points.toLocaleString()}</p>
             <p className="text-xs text-muted-foreground">Điểm hiện có</p>
           </CardContent>
         </Card>
@@ -182,7 +182,7 @@ function OverviewTab({ program, stats }: {
         <Card>
           <CardContent className="p-4 text-center">
             <ShoppingBag className="h-5 w-5 mx-auto mb-1 text-blue-500" />
-            <p className="text-xl">{fmtCur(program.lifetimeSpend)}</p>
+            <p className="text-xl">{fmtCur(program.totalSpend)}</p>
             <p className="text-xs text-muted-foreground">Chi tiêu tích luỹ</p>
           </CardContent>
         </Card>
@@ -355,7 +355,7 @@ function RewardsTab({ program, onRedeemed }: { program: LoyaltyProgram; onRedeem
     <>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
         {rewards.map(r => {
-          const canAfford = program.currentPoints >= r.pointsCost;
+          const canAfford = program.points >= r.pointsCost;
           return (
             <Card key={r.id} className={`transition-all ${canAfford ? 'hover:shadow-md' : 'opacity-70'}`}>
               <CardContent className="p-4 flex flex-col gap-3">
@@ -393,9 +393,9 @@ function RewardsTab({ program, onRedeemed }: { program: LoyaltyProgram; onRedeem
             </DialogDescription>
           </DialogHeader>
           <div className="text-sm text-muted-foreground">
-            Điểm hiện có: <span className="font-medium text-foreground">{program.currentPoints.toLocaleString()}</span>
+            Điểm hiện có: <span className="font-medium text-foreground">{program.points.toLocaleString()}</span>
             <br />
-            Sau khi đổi: <span className="font-medium text-foreground">{((program.currentPoints - (confirmReward?.pointsCost ?? 0))).toLocaleString()}</span>
+            Sau khi đổi: <span className="font-medium text-foreground">{((program.points - (confirmReward?.pointsCost ?? 0))).toLocaleString()}</span>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmReward(null)}>Huỷ</Button>

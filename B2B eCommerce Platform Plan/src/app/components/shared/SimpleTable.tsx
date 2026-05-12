@@ -80,7 +80,7 @@ export function SimpleTable<T extends Record<string, unknown>>({
                   {columns.map(col => (
                     <TableCell key={col.key} className="py-3 px-4">
                       {col.render
-                        ? col.render(row[col.key], row)
+                        ? col.render(row)
                         : String(row[col.key] ?? '')}
                     </TableCell>
                   ))}
