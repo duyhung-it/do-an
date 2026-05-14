@@ -9,6 +9,7 @@ import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -58,6 +59,14 @@ public class OrderController {
 		OrderService.CustomerSnapshot customer = new OrderService.CustomerSnapshot(userName, userEmail, userPhone);
 		return ResponseEntity.status(HttpStatus.CREATED)
 				.body(ApiResponse.ok(orders.create(userId(userId), customer, request)));
+	}
+
+	@DeleteMapping("/{id}/cancel")
+	public ApiResponse<OrderDto> cancel(
+			@RequestHeader(name = "X-User-Id", required = false) String userId,
+			@PathVariable String id,
+			@Valid @RequestBody(required = false) CancelOrderRequest request) {
+		return ApiResponse.ok(orders.cancel(userId(userId), id, request));
 	}
 
 	private UUID userId(String value) {

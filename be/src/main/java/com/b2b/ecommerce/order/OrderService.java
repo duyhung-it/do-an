@@ -178,6 +178,34 @@ public class OrderService {
 				null, order.cancelReason(), order.cancelledAt(), history, order.createdAt(), order.updatedAt());
 	}
 
+	@Transactional
+	public OrderDto cancel(UUID userId, String id, CancelOrderRequest request) {
+		UUID orderId = uuid(id, "id");
+		OrderRecord order = orderRecord(userId, orderId);
+		if (!"PENDING".equals(order.status()) && !"CONFIRMED".equals(order.status())) {
+			throw new AppException(ErrorCode.ORDER_CANNOT_CANCEL);
+		}
+		String reason = request == null || request.reason() == null || request.reason().isBlank()
+				? "Khach hang huy don"
+				: request.reason().trim();
+		jdbc.update("""
+				UPDATE orders
+				SET status = 'CANCELLED',
+				    cancel_reason = ?,
+				    cancelled_at = NOW(),
+				    updated_at = NOW()
+				WHERE id = ? AND customer_id = ?
+				""", reason, orderId, userId);
+		jdbc.update("""
+				INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by, changed_by_name, note)
+				VALUES (?, ?, ?::order_status, 'CANCELLED', ?, ?, ?)
+				""", UUID.randomUUID(), orderId, order.status(), userId, order.customerName(), reason);
+		if (order.promotionId() != null) {
+			jdbc.update("UPDATE promotions SET used_count = GREATEST(used_count - 1, 0) WHERE id = ?", order.promotionId());
+		}
+		return order(userId, id);
+	}
+
 	private OrderLine line(OrderItemRequest item) {
 		UUID productId = uuid(item.productId(), "productId");
 		UUID variantId = item.variantId() == null || item.variantId().isBlank() ? null : uuid(item.variantId(), "variantId");
