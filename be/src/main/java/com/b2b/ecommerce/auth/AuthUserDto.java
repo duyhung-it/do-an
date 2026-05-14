@@ -7,7 +7,7 @@ public record AuthUserDto(
 		String role,
 		String companyName,
 		String supplierId,
-		String avatar,
+		String avatarUrl,
 		String token
 ) {
 }

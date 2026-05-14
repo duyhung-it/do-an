@@ -2,294 +2,530 @@ package com.b2b.ecommerce.catalog;
 
 import java.math.BigDecimal;
 import java.text.Normalizer;
-import java.time.Instant;
-import java.util.ArrayList;
-import java.util.Comparator;
+import java.time.format.DateTimeFormatter;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NoSuchElementException;
 import java.util.UUID;
-import java.util.concurrent.CopyOnWriteArrayList;
-import java.util.function.Predicate;
 
+import com.b2b.ecommerce.common.AppException;
+import com.b2b.ecommerce.common.ErrorCode;
 import com.b2b.ecommerce.common.PageRequestParams;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
+import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class CatalogService {
-	private final List<CategoryDto> categories = new CopyOnWriteArrayList<>();
-	private final List<SupplierDto> suppliers = new CopyOnWriteArrayList<>();
-	private final List<ProductDto> products = new CopyOnWriteArrayList<>();
+	private final CategoryRepository categories;
+	private final ProductRepository products;
+	private final ProductVariantRepository variants;
+	private final ProductImageRepository images;
 
-	public CatalogService() {
-		seed();
+	public CatalogService(
+			CategoryRepository categories,
+			ProductRepository products,
+			ProductVariantRepository variants,
+			ProductImageRepository images) {
+		this.categories = categories;
+		this.products = products;
+		this.variants = variants;
+		this.images = images;
 	}
 
-	public List<CategoryDto> categoryTree() {
-		List<CategoryDto> roots = categories.stream()
-				.filter(category -> category.parentId() == null)
-				.sorted(Comparator.comparingInt(CategoryDto::sortOrder))
-				.map(this::attachChildren)
+	@Transactional(readOnly = true)
+	public List<CategoryDto> categoryTree(boolean includeInactive) {
+		List<CategoryEntity> all = includeInactive ? categories.findAllByOrderBySortOrderAscNameAsc()
+				: categories.findByIsActiveTrueOrderBySortOrderAscNameAsc();
+		return all.stream()
+				.filter(category -> category.getParent() == null)
+				.map(category -> categoryDto(category, children(category, all)))
 				.toList();
-		return roots;
 	}
 
+	@Transactional(readOnly = true)
 	public CategoryDto category(String id) {
-		return categories.stream()
-				.filter(category -> category.id().equals(id))
-				.findFirst()
+		CategoryEntity category = categoryEntity(id);
+		return categoryDto(category, categories.findByParentIdOrderBySortOrderAscNameAsc(category.getId()).stream()
+				.map(child -> categoryDto(child, List.of()))
+				.toList());
+	}
+
+	@Transactional(readOnly = true)
+	public CategoryDto categoryBySlug(String slug) {
+		CategoryEntity category = categories.findBySlug(slug)
+				.orElseThrow(() -> new NoSuchElementException("Khong tim thay danh muc"));
+		return category(category.getId().toString());
+	}
+
+	@Transactional
+	public CategoryDto createCategory(CategoryRequest request) {
+		if (request.name() == null || request.name().isBlank()) {
+			throw new IllegalArgumentException("Ten danh muc la bat buoc");
+		}
+		String slug = slug(request.slug(), request.name());
+		if (categories.existsBySlug(slug)) {
+			throw new IllegalArgumentException("Slug danh muc da ton tai");
+		}
+		CategoryEntity parent = request.parentId() == null ? null : categoryEntity(request.parentId());
+		CategoryEntity category = new CategoryEntity();
+		applyCategory(category, request, slug, parent);
+		return categoryDto(categories.save(category), List.of());
+	}
+
+	@Transactional
+	public CategoryDto updateCategory(String id, CategoryRequest request) {
+		CategoryEntity category = categoryEntity(id);
+		String slug = slug(request.slug(), request.name() == null ? category.getName() : request.name());
+		if (categories.existsBySlugAndIdNot(slug, category.getId())) {
+			throw new IllegalArgumentException("Slug danh muc da ton tai");
+		}
+		CategoryEntity parent = request.parentId() == null ? null : categoryEntity(request.parentId());
+		if (parent != null && parent.getId().equals(category.getId())) {
+			throw new IllegalArgumentException("Danh muc cha khong hop le");
+		}
+		applyCategory(category, request, slug, parent);
+		return categoryDto(categories.save(category), categories.findByParentIdOrderBySortOrderAscNameAsc(category.getId())
+				.stream().map(child -> categoryDto(child, List.of())).toList());
+	}
+
+	@Transactional
+	public void deleteCategory(String id) {
+		CategoryEntity category = categoryEntity(id);
+		if (category.getProductCount() > 0 || products.existsByCategoryId(category.getId())) {
+			throw new IllegalArgumentException("Danh muc con san pham, khong the xoa");
+		}
+		if (categories.existsByParentId(category.getId())) {
+			throw new IllegalArgumentException("Danh muc con danh muc con, khong the xoa");
+		}
+		categories.delete(category);
+	}
+
+	@Transactional(readOnly = true)
+	public Page<ProductDto> products(PageRequestParams params, ProductFilter filter) {
+		Pageable pageable = PageRequest.of(params.normalizedPage() - 1, params.normalizedPageSize(), sort(params));
+		return products.findAll(specification(filter), pageable).map(this::productDto);
+	}
+
+	@Transactional
+	public ProductDto product(String id) {
+		ProductEntity product = productEntity(id);
+		product.setViewCount(product.getViewCount() + 1);
+		return productDto(products.save(product));
+	}
+
+	@Transactional
+	public ProductDto productBySlug(String slug) {
+		ProductEntity product = products.findBySlug(slug)
+				.orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
+		product.setViewCount(product.getViewCount() + 1);
+		return productDto(products.save(product));
+	}
+
+	@Transactional(readOnly = true)
+	public List<ProductDto> similarProducts(String id, int limit) {
+		ProductEntity product = productEntity(id);
+		Pageable pageable = PageRequest.of(0, Math.max(1, Math.min(limit, 24)), Sort.by(Sort.Direction.DESC, "createdAt"));
+		Specification<ProductEntity> spec = (root, query, cb) -> cb.and(
+				cb.notEqual(root.get("id"), product.getId()),
+				cb.equal(root.get("status"), ProductStatus.ACTIVE),
+				cb.or(
+						cb.equal(root.get("category").get("id"), product.getCategory().getId()),
+						cb.equal(root.get("brand"), product.getBrand())));
+		return products.findAll(spec, pageable).stream().map(this::productDto).toList();
+	}
+
+	@Transactional(readOnly = true)
+	public List<ProductDto> accessories(String id, int limit) {
+		productEntity(id);
+		Pageable pageable = PageRequest.of(0, Math.max(1, Math.min(limit, 24)), Sort.by(Sort.Direction.DESC, "createdAt"));
+		Specification<ProductEntity> spec = (root, query, cb) -> cb.and(
+				cb.equal(root.get("status"), ProductStatus.ACTIVE),
+				cb.like(cb.lower(root.get("categoryName")), "%phu kien%"));
+		return products.findAll(spec, pageable).stream().map(this::productDto).toList();
+	}
+
+	@Transactional(readOnly = true)
+	public List<ProductDto> featured(int limit) {
+		return products.findByIsFeaturedTrueAndStatusOrderByCreatedAtDesc(ProductStatus.ACTIVE, limit(limit)).stream()
+				.map(this::productDto).toList();
+	}
+
+	@Transactional(readOnly = true)
+	public List<ProductDto> hot(int limit) {
+		return products.findByIsHotTrueAndStatusOrderByCreatedAtDesc(ProductStatus.ACTIVE, limit(limit)).stream()
+				.map(this::productDto).toList();
+	}
+
+	@Transactional(readOnly = true)
+	public List<ProductDto> newest(int limit) {
+		List<ProductEntity> byFlag = products.findByIsNewTrueAndStatusOrderByCreatedAtDesc(ProductStatus.ACTIVE, limit(limit));
+		List<ProductEntity> result = byFlag.isEmpty()
+				? products.findByStatusOrderByCreatedAtDesc(ProductStatus.ACTIVE, limit(limit))
+				: byFlag;
+		return result.stream().map(this::productDto).toList();
+	}
+
+	@Transactional(readOnly = true)
+	public List<String> brands() {
+		return products.findActiveBrands();
+	}
+
+	@Transactional
+	public ProductDto createProduct(ProductRequest request) {
+		if (request.name() == null || request.name().isBlank()
+				|| request.categoryId() == null || request.categoryId().isBlank()
+				|| request.brand() == null || request.brand().isBlank()
+				|| request.price() == null) {
+			throw new IllegalArgumentException("name, categoryId, brand va price la bat buoc");
+		}
+		String slug = slug(request.slug(), request.name());
+		if (products.existsBySlug(slug)) {
+			throw new IllegalArgumentException("Slug san pham da ton tai");
+		}
+		CategoryEntity category = categoryEntity(request.categoryId());
+		if (!category.isActive()) {
+			throw new IllegalArgumentException("Danh muc khong active");
+		}
+		ProductEntity product = new ProductEntity();
+		applyProduct(product, request, slug, category);
+		category.setProductCount(category.getProductCount() + 1);
+		categories.save(category);
+		return productDto(products.save(product));
+	}
+
+	@Transactional
+	public ProductDto updateProduct(String id, ProductRequest request) {
+		ProductEntity product = productEntity(id);
+		String slug = slug(request.slug(), request.name() == null ? product.getName() : request.name());
+		if (products.existsBySlugAndIdNot(slug, product.getId())) {
+			throw new IllegalArgumentException("Slug san pham da ton tai");
+		}
+		CategoryEntity category = request.categoryId() == null ? product.getCategory() : categoryEntity(request.categoryId());
+		applyProduct(product, request, slug, category);
+		return productDto(products.save(product));
+	}
+
+	@Transactional
+	public void deleteProduct(String id) {
+		ProductEntity product = productEntity(id);
+		product.setStatus(ProductStatus.DISCONTINUED);
+		products.save(product);
+	}
+
+	@Transactional(readOnly = true)
+	public List<ProductVariantDto> productVariants(String productId) {
+		productEntity(productId);
+		return variants.findByProductIdOrderByCreatedAtAsc(UUID.fromString(productId)).stream().map(this::variantDto).toList();
+	}
+
+	@Transactional
+	public ProductVariantDto createVariant(String productId, ProductVariantRequest request) {
+		ProductEntity product = productEntity(productId);
+		if (variants.existsBySku(request.sku())) {
+			throw new IllegalArgumentException("SKU da ton tai");
+		}
+		ProductVariantEntity variant = new ProductVariantEntity();
+		variant.setProduct(product);
+		applyVariant(variant, request);
+		return variantDto(variants.save(variant));
+	}
+
+	@Transactional
+	public ProductVariantDto updateVariant(String productId, String id, ProductVariantRequest request) {
+		ProductVariantEntity variant = variants.findByIdAndProductId(UUID.fromString(id), UUID.fromString(productId))
+				.orElseThrow(() -> new AppException(ErrorCode.PRODUCT_VARIANT_NOT_FOUND));
+		if (variants.existsBySkuAndIdNot(request.sku(), variant.getId())) {
+			throw new IllegalArgumentException("SKU da ton tai");
+		}
+		applyVariant(variant, request);
+		return variantDto(variants.save(variant));
+	}
+
+	@Transactional
+	public void deleteVariant(String productId, String id) {
+		ProductVariantEntity variant = variants.findByIdAndProductId(UUID.fromString(id), UUID.fromString(productId))
+				.orElseThrow(() -> new AppException(ErrorCode.PRODUCT_VARIANT_NOT_FOUND));
+		variants.delete(variant);
+	}
+
+	@Transactional(readOnly = true)
+	public List<ProductImageDto> productImages(String productId) {
+		productEntity(productId);
+		return images.findByProductIdOrderBySortOrderAsc(UUID.fromString(productId)).stream().map(this::imageDto).toList();
+	}
+
+	@Transactional
+	public ProductImageDto createImage(String productId, ProductImageRequest request) {
+		ProductEntity product = productEntity(productId);
+		ProductImageEntity image = new ProductImageEntity();
+		image.setProduct(product);
+		applyImage(image, request);
+		return imageDto(images.save(image));
+	}
+
+	@Transactional
+	public ProductImageDto updateImage(String productId, String id, ProductImageRequest request) {
+		ProductImageEntity image = images.findByIdAndProductId(UUID.fromString(id), UUID.fromString(productId))
+				.orElseThrow(() -> new NoSuchElementException("Khong tim thay anh san pham"));
+		applyImage(image, request);
+		return imageDto(images.save(image));
+	}
+
+	@Transactional
+	public void deleteImage(String productId, String id) {
+		ProductImageEntity image = images.findByIdAndProductId(UUID.fromString(id), UUID.fromString(productId))
+				.orElseThrow(() -> new NoSuchElementException("Khong tim thay anh san pham"));
+		images.delete(image);
+	}
+
+	private void applyCategory(CategoryEntity category, CategoryRequest request, String slug, CategoryEntity parent) {
+		category.setName(value(request.name(), category.getName()));
+		category.setSlug(slug);
+		category.setDescription(value(request.description(), category.getDescription()));
+		category.setIcon(value(request.icon(), category.getIcon()));
+		category.setImageUrl(value(request.imageUrl(), category.getImageUrl()));
+		category.setParent(parent);
+		category.setLevel(parent == null ? 0 : parent.getLevel() + 1);
+		category.setPath((parent == null ? "" : parent.getPath()) + "/" + slug);
+		category.setActive(request.isActive() == null || request.isActive());
+		category.setSortOrder(request.sortOrder() == null ? category.getSortOrder() : request.sortOrder());
+		category.setMetaTitle(value(request.metaTitle(), category.getMetaTitle()));
+		category.setMetaDescription(value(request.metaDescription(), category.getMetaDescription()));
+	}
+
+	private void applyProduct(ProductEntity product, ProductRequest request, String slug, CategoryEntity category) {
+		BigDecimal originalPrice = request.originalPrice();
+		BigDecimal price = request.price();
+		BigDecimal effectivePrice = price == null ? BigDecimal.valueOf(product.getPrice()) : price;
+		if (originalPrice != null && originalPrice.compareTo(effectivePrice) < 0) {
+			throw new IllegalArgumentException("Gia goc phai lon hon hoac bang gia ban");
+		}
+		product.setName(value(request.name(), product.getName()));
+		product.setSlug(slug);
+		product.setDescription(value(request.description(), product.getDescription()));
+		product.setShortDescription(value(request.shortDescription(), product.getShortDescription()));
+		product.setCategory(category);
+		product.setCategoryName(category.getName());
+		product.setBrand(value(request.brand(), product.getBrand()));
+		if (price != null) {
+			product.setPrice(price.longValueExact());
+		}
+		product.setOriginalPrice(originalPrice == null ? product.getOriginalPrice() : originalPrice.longValueExact());
+		product.setDiscountPercent(discount(product.getPrice(), product.getOriginalPrice()));
+		product.setStatus(parseEnum(ProductStatus.class, request.status(), value(product.getStatus(), ProductStatus.ACTIVE)));
+		product.setCondition(parseEnum(ProductCondition.class, request.condition(), value(product.getCondition(), ProductCondition.NEW)));
+		product.setWarranty(request.warranty() == null ? product.getWarranty() : request.warranty());
+		product.setTags(request.tags() == null ? product.getTags() : request.tags().toArray(String[]::new));
+		product.setSpecifications(request.specifications() == null ? product.getSpecifications() : request.specifications());
+		product.setColor(value(request.color(), product.getColor()));
+		product.setNew(request.isNew() == null ? product.isNew() : request.isNew());
+		product.setFeatured(request.isFeatured() == null ? product.isFeatured() : request.isFeatured());
+		product.setHot(request.isHot() == null ? product.isHot() : request.isHot());
+	}
+
+	private void applyVariant(ProductVariantEntity variant, ProductVariantRequest request) {
+		if (request.originalPrice() != null && request.originalPrice().compareTo(request.price()) < 0) {
+			throw new IllegalArgumentException("Gia goc phai lon hon hoac bang gia ban");
+		}
+		variant.setName(request.name());
+		variant.setSku(request.sku());
+		variant.setPrice(request.price().longValueExact());
+		variant.setOriginalPrice(request.originalPrice() == null ? null : request.originalPrice().longValueExact());
+		variant.setStock(request.stock() == null ? 0 : request.stock());
+		variant.setColor(request.color());
+		variant.setStorage(request.storage());
+		variant.setRam(request.ram());
+		variant.setActive(request.isActive() == null || request.isActive());
+	}
+
+	private void applyImage(ProductImageEntity image, ProductImageRequest request) {
+		if (Boolean.TRUE.equals(request.isPrimary())) {
+			images.findByProductIdAndIsPrimaryTrue(image.getProduct().getId()).ifPresent(existing -> {
+				if (!existing.getId().equals(image.getId())) {
+					existing.setPrimary(false);
+					images.save(existing);
+				}
+			});
+		}
+		image.setUrl(request.url());
+		image.setAltText(request.altText());
+		image.setSortOrder(request.sortOrder() == null ? image.getSortOrder() : request.sortOrder());
+		image.setPrimary(Boolean.TRUE.equals(request.isPrimary()));
+	}
+
+	private Specification<ProductEntity> specification(ProductFilter filter) {
+		return (root, query, cb) -> {
+			List<jakarta.persistence.criteria.Predicate> predicates = new java.util.ArrayList<>();
+			predicates.add(cb.equal(root.get("status"), filter.status() == null ? ProductStatus.ACTIVE : filter.status()));
+			if (filter.search() != null && !filter.search().isBlank()) {
+				String value = "%" + filter.search().toLowerCase(Locale.ROOT) + "%";
+				predicates.add(cb.or(cb.like(cb.lower(root.get("name")), value), cb.like(cb.lower(root.get("brand")), value)));
+			}
+			if (filter.categoryId() != null) {
+				predicates.add(cb.equal(root.get("category").get("id"), filter.categoryId()));
+			}
+			if (filter.categorySlug() != null) {
+				predicates.add(cb.equal(root.get("category").get("slug"), filter.categorySlug()));
+			}
+			if (filter.brand() != null && !filter.brand().isBlank()) {
+				predicates.add(root.get("brand").in(Arrays.stream(filter.brand().split(",")).map(String::trim).toList()));
+			}
+			if (filter.condition() != null) {
+				predicates.add(cb.equal(root.get("condition"), filter.condition()));
+			}
+			if (filter.minPrice() != null) {
+				predicates.add(cb.greaterThanOrEqualTo(root.get("price"), filter.minPrice().longValue()));
+			}
+			if (filter.maxPrice() != null) {
+				predicates.add(cb.lessThanOrEqualTo(root.get("price"), filter.maxPrice().longValue()));
+			}
+			if (filter.color() != null) {
+				predicates.add(cb.equal(root.get("color"), filter.color()));
+			}
+			if (filter.isFeatured() != null) {
+				predicates.add(cb.equal(root.get("isFeatured"), filter.isFeatured()));
+			}
+			if (filter.isNew() != null) {
+				predicates.add(cb.equal(root.get("isNew"), filter.isNew()));
+			}
+			if (filter.isHot() != null) {
+				predicates.add(cb.equal(root.get("isHot"), filter.isHot()));
+			}
+			return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
+		};
+	}
+
+	private Sort sort(PageRequestParams params) {
+		String field = switch (value(params.sortField(), "createdAt")) {
+			case "price" -> "price";
+			case "rating" -> "rating";
+			case "soldCount" -> "soldCount";
+			default -> "createdAt";
+		};
+		return Sort.by(params.ascending() ? Sort.Direction.ASC : Sort.Direction.DESC, field);
+	}
+
+	private Pageable limit(int limit) {
+		return PageRequest.of(0, Math.max(1, Math.min(limit, 100)));
+	}
+
+	private CategoryEntity categoryEntity(String id) {
+		return categories.findById(UUID.fromString(id))
 				.orElseThrow(() -> new NoSuchElementException("Khong tim thay danh muc"));
 	}
 
-	public CategoryDto createCategory(CategoryRequest request) {
-		String id = "cat-" + UUID.randomUUID();
-		int level = request.parentId() == null ? 0 : category(request.parentId()).level() + 1;
-		CategoryDto category = new CategoryDto(id, request.name(), slugify(request.name()), request.parentId(),
-				request.description(), request.icon(), request.isActive() == null || request.isActive(), null,
-				request.sortOrder() == null ? categories.size() + 1 : request.sortOrder(), level, null, 0, List.of());
-		categories.add(category);
-		return category;
+	private ProductEntity productEntity(String id) {
+		return products.findById(UUID.fromString(id))
+				.orElseThrow(() -> new AppException(ErrorCode.PRODUCT_NOT_FOUND));
 	}
 
-	public CategoryDto updateCategory(String id, CategoryRequest request) {
-		CategoryDto current = category(id);
-		CategoryDto updated = new CategoryDto(id, request.name(), slugify(request.name()), request.parentId(),
-				request.description(), request.icon(), request.isActive() == null || request.isActive(), current.imageUrl(),
-				request.sortOrder() == null ? current.sortOrder() : request.sortOrder(), current.level(), current.path(),
-				current.productCount(), List.of());
-		replace(categories, current, updated);
-		return updated;
+	private List<CategoryDto> children(CategoryEntity parent, List<CategoryEntity> all) {
+		return all.stream()
+				.filter(category -> category.getParent() != null && category.getParent().getId().equals(parent.getId()))
+				.map(category -> categoryDto(category, children(category, all)))
+				.toList();
 	}
 
-	public void deleteCategory(String id) {
-		if (products.stream().anyMatch(product -> product.categoryId().equals(id))) {
-			throw new IllegalArgumentException("Danh muc dang co san pham");
+	private CategoryDto categoryDto(CategoryEntity category, List<CategoryDto> children) {
+		return new CategoryDto(category.getId().toString(), category.getName(), category.getSlug(),
+				category.getDescription(), category.getIcon(), category.getImageUrl(),
+				category.getParent() == null ? null : category.getParent().getId().toString(), category.getLevel(),
+				category.getPath(), category.isActive(), category.getSortOrder(), category.getProductCount(),
+				category.getMetaTitle(), category.getMetaDescription(), children, iso(category.getCreatedAt()),
+				iso(category.getUpdatedAt()));
+	}
+
+	private ProductDto productDto(ProductEntity product) {
+		CategoryEntity category = product.getCategory();
+		return new ProductDto(product.getId().toString(), product.getName(), product.getSlug(), product.getDescription(),
+				product.getShortDescription(), category.getId().toString(),
+				new ProductDto.CategorySummary(category.getId().toString(), category.getName(), category.getSlug()),
+				product.getBrand(), BigDecimal.valueOf(product.getPrice()),
+				product.getOriginalPrice() == null ? null : BigDecimal.valueOf(product.getOriginalPrice()),
+				product.getDiscountPercent(), product.getStatus().name(), product.getCondition().name(), product.getWarranty(),
+				Arrays.asList(product.getTags()), product.getSpecifications(), product.getColor(), product.getViewCount(),
+				product.getSoldCount(), product.getRating(), product.getReviewCount(), product.isNew(), product.isFeatured(),
+				product.isHot(), product.getVariants().stream().map(this::variantDto).toList(),
+				product.getImages().stream().sorted(java.util.Comparator.comparingInt(ProductImageEntity::getSortOrder))
+						.map(this::imageDto).toList(),
+				phoneSpecsDto(product.getPhoneSpecs()), iso(product.getCreatedAt()), iso(product.getUpdatedAt()));
+	}
+
+	private ProductVariantDto variantDto(ProductVariantEntity variant) {
+		return new ProductVariantDto(variant.getId().toString(), variant.getProduct().getId().toString(), variant.getName(),
+				variant.getSku(), BigDecimal.valueOf(variant.getPrice()),
+				variant.getOriginalPrice() == null ? null : BigDecimal.valueOf(variant.getOriginalPrice()), variant.getStock(),
+				variant.getColor(), variant.getStorage(), variant.getRam(), variant.isActive(), iso(variant.getCreatedAt()),
+				iso(variant.getUpdatedAt()));
+	}
+
+	private ProductImageDto imageDto(ProductImageEntity image) {
+		return new ProductImageDto(image.getId().toString(), image.getProduct().getId().toString(), image.getUrl(),
+				image.getAltText(), image.getSortOrder(), image.isPrimary(), iso(image.getCreatedAt()));
+	}
+
+	private PhoneSpecsDto phoneSpecsDto(PhoneSpecsEntity specs) {
+		if (specs == null) {
+			return null;
 		}
-		categories.remove(category(id));
+		return new PhoneSpecsDto(specs.getId().toString(), specs.getProduct().getId().toString(), specs.getChip(),
+				specs.getRam(), specs.getStorage(), specs.getBattery(), specs.getCamera(), specs.getFrontCamera(),
+				specs.getScreen(), specs.getOs(), specs.getConnectivity(), specs.getWeight(), specs.getDimensions(),
+				specs.getWaterResistance(), specs.getSimType(), specs.getChargingSpeed(), specs.getGpu());
 	}
 
-	public List<SupplierDto> suppliers(PageRequestParams params, String city, Boolean verified) {
-		return page(sortSuppliers(filterSuppliers(params.search(), city, verified), params), params);
-	}
-
-	public int supplierCount(String search, String city, Boolean verified) {
-		return filterSuppliers(search, city, verified).size();
-	}
-
-	public SupplierDto supplier(String id) {
-		return suppliers.stream()
-				.filter(supplier -> supplier.id().equals(id))
-				.findFirst()
-				.orElseThrow(() -> new NoSuchElementException("Khong tim thay nha cung cap"));
-	}
-
-	public SupplierDto createSupplier(SupplierRequest request) {
-		String now = Instant.now().toString();
-		SupplierDto supplier = new SupplierDto("sup-" + UUID.randomUUID(), request.companyName(), request.contactPerson(),
-				request.email(), request.phone(), request.address(), valueOrDefault(request.city(), "Ho Chi Minh"),
-				valueOrDefault(request.country(), "Viet Nam"), request.logoUrl(), request.coverUrl(), request.description(),
-				BigDecimal.ZERO, 0, 0, valueOrDefault(request.minOrderValue(), BigDecimal.ZERO),
-				request.avgDeliveryDays() == null ? 3 : request.avgDeliveryDays(), BigDecimal.ZERO, false, now,
-				request.employees(), valueOrDefault(request.categoryIds(), List.of()), now);
-		suppliers.add(supplier);
-		return supplier;
-	}
-
-	public SupplierDto verifySupplier(String id, boolean verified) {
-		SupplierDto current = supplier(id);
-		SupplierDto updated = new SupplierDto(current.id(), current.companyName(), current.contactPerson(), current.email(),
-				current.phone(), current.address(), current.city(), current.country(), current.logoUrl(), current.coverUrl(),
-				current.description(), current.rating(), current.reviewCount(), current.productCount(), current.minOrderValue(),
-				current.avgDeliveryDays(), current.onTimeRate(), verified, current.joinedDate(), current.employees(),
-				current.categoryIds(), current.createdAt());
-		replace(suppliers, current, updated);
-		return updated;
-	}
-
-	public List<ProductDto> products(PageRequestParams params, String categoryId, String supplierId, String status,
-			BigDecimal minPrice, BigDecimal maxPrice, Boolean featured) {
-		return page(sortProducts(filterProducts(params.search(), categoryId, supplierId, status, minPrice, maxPrice, featured),
-				params), params);
-	}
-
-	public int productCount(String search, String categoryId, String supplierId, String status, BigDecimal minPrice,
-			BigDecimal maxPrice, Boolean featured) {
-		return filterProducts(search, categoryId, supplierId, status, minPrice, maxPrice, featured).size();
-	}
-
-	public ProductDto product(String id) {
-		return products.stream()
-				.filter(product -> product.id().equals(id))
-				.findFirst()
-				.orElseThrow(() -> new NoSuchElementException("Khong tim thay san pham"));
-	}
-
-	public ProductDto createProduct(ProductRequest request) {
-		CategoryDto category = category(request.categoryId());
-		SupplierDto supplier = supplier(request.supplierId() == null ? "sup-001" : request.supplierId());
-		String now = Instant.now().toString();
-		ProductDto product = new ProductDto("prod-" + UUID.randomUUID(), request.name(), slugify(request.name()),
-				request.description(), category.id(), category.name(), supplier.id(), supplier.companyName(), request.price(),
-				request.originalPrice(), request.stock() == null ? 0 : request.stock(), valueOrDefault(request.unit(), "Cai"),
-				request.minOrderQty() == null ? 1 : request.minOrderQty(), valueOrDefault(request.images(), List.of()),
-				valueOrDefault(request.specifications(), Map.of()), valueOrDefault(request.tags(), List.of()),
-				valueOrDefault(request.status(), "pending"), true, request.brandName(), request.origin(), request.weight(),
-				request.dimensions(), request.warrantyMonths(), 0, 0, Boolean.TRUE.equals(request.featured()), BigDecimal.ZERO,
-				0, now, now);
-		products.add(product);
-		return product;
-	}
-
-	public ProductDto updateProduct(String id, ProductRequest request) {
-		ProductDto current = product(id);
-		ProductDto updated = createProductLike(id, request, current.createdAt());
-		replace(products, current, updated);
-		return updated;
-	}
-
-	public ProductDto updateProductStatus(String id, String status) {
-		ProductDto current = product(id);
-		ProductDto updated = new ProductDto(current.id(), current.name(), current.slug(), current.description(),
-				current.categoryId(), current.categoryName(), current.supplierId(), current.supplierName(), current.price(),
-				current.originalPrice(), current.stock(), current.unit(), current.minOrderQty(), current.images(),
-				current.specifications(), current.tags(), status, current.isActive(), current.brandName(), current.origin(),
-				current.weight(), current.dimensions(), current.warrantyMonths(), current.viewCount(), current.soldCount(),
-				current.featured(), current.rating(), current.reviewCount(), current.createdAt(), Instant.now().toString());
-		replace(products, current, updated);
-		return updated;
-	}
-
-	public void deleteProduct(String id) {
-		products.remove(product(id));
-	}
-
-	private ProductDto createProductLike(String id, ProductRequest request, String createdAt) {
-		CategoryDto category = category(request.categoryId());
-		SupplierDto supplier = supplier(request.supplierId() == null ? "sup-001" : request.supplierId());
-		return new ProductDto(id, request.name(), slugify(request.name()), request.description(), category.id(),
-				category.name(), supplier.id(), supplier.companyName(), request.price(), request.originalPrice(),
-				request.stock() == null ? 0 : request.stock(), valueOrDefault(request.unit(), "Cai"),
-				request.minOrderQty() == null ? 1 : request.minOrderQty(), valueOrDefault(request.images(), List.of()),
-				valueOrDefault(request.specifications(), Map.of()), valueOrDefault(request.tags(), List.of()),
-				valueOrDefault(request.status(), "pending"), true, request.brandName(), request.origin(), request.weight(),
-				request.dimensions(), request.warrantyMonths(), 0, 0, Boolean.TRUE.equals(request.featured()), BigDecimal.ZERO,
-				0, createdAt, Instant.now().toString());
-	}
-
-	private CategoryDto attachChildren(CategoryDto parent) {
-		List<CategoryDto> children = categories.stream()
-				.filter(category -> parent.id().equals(category.parentId()))
-				.sorted(Comparator.comparingInt(CategoryDto::sortOrder))
-				.map(this::attachChildren)
-				.toList();
-		return parent.withChildren(children);
-	}
-
-	private List<SupplierDto> filterSuppliers(String search, String city, Boolean verified) {
-		return suppliers.stream()
-				.filter(matches(search, supplier -> supplier.companyName() + " " + supplier.contactPerson()))
-				.filter(supplier -> city == null || city.equalsIgnoreCase(supplier.city()))
-				.filter(supplier -> verified == null || verified == supplier.isVerified())
-				.toList();
-	}
-
-	private List<ProductDto> filterProducts(String search, String categoryId, String supplierId, String status,
-			BigDecimal minPrice, BigDecimal maxPrice, Boolean featured) {
-		return products.stream()
-				.filter(matches(search, product -> product.name() + " " + product.brandName()))
-				.filter(product -> categoryId == null || categoryId.equals(product.categoryId()))
-				.filter(product -> supplierId == null || supplierId.equals(product.supplierId()))
-				.filter(product -> status == null || status.equalsIgnoreCase(product.status()))
-				.filter(product -> minPrice == null || product.price().compareTo(minPrice) >= 0)
-				.filter(product -> maxPrice == null || product.price().compareTo(maxPrice) <= 0)
-				.filter(product -> featured == null || featured == product.featured())
-				.toList();
-	}
-
-	private List<SupplierDto> sortSuppliers(List<SupplierDto> items, PageRequestParams params) {
-		Comparator<SupplierDto> comparator = switch (valueOrDefault(params.sortField(), "createdAt")) {
-			case "companyName" -> Comparator.comparing(SupplierDto::companyName, String.CASE_INSENSITIVE_ORDER);
-			case "rating" -> Comparator.comparing(SupplierDto::rating);
-			case "productCount" -> Comparator.comparingInt(SupplierDto::productCount);
-			default -> Comparator.comparing(SupplierDto::createdAt);
-		};
-		return sort(items, comparator, params);
-	}
-
-	private List<ProductDto> sortProducts(List<ProductDto> items, PageRequestParams params) {
-		Comparator<ProductDto> comparator = switch (valueOrDefault(params.sortField(), "createdAt")) {
-			case "name" -> Comparator.comparing(ProductDto::name, String.CASE_INSENSITIVE_ORDER);
-			case "price" -> Comparator.comparing(ProductDto::price);
-			case "rating" -> Comparator.comparing(ProductDto::rating);
-			case "soldCount" -> Comparator.comparingInt(ProductDto::soldCount);
-			default -> Comparator.comparing(ProductDto::createdAt);
-		};
-		return sort(items, comparator, params);
-	}
-
-	private <T> List<T> sort(List<T> items, Comparator<T> comparator, PageRequestParams params) {
-		Comparator<T> effectiveComparator = params.ascending() ? comparator : comparator.reversed();
-		return items.stream().sorted(effectiveComparator).toList();
-	}
-
-	private <T> List<T> page(List<T> items, PageRequestParams params) {
-		int page = params.normalizedPage();
-		int pageSize = params.normalizedPageSize();
-		int from = Math.min((page - 1) * pageSize, items.size());
-		int to = Math.min(from + pageSize, items.size());
-		return new ArrayList<>(items.subList(from, to));
-	}
-
-	private <T> Predicate<T> matches(String search, java.util.function.Function<T, String> text) {
-		if (search == null || search.isBlank()) {
-			return ignored -> true;
+	private int discount(long price, Long originalPrice) {
+		if (originalPrice == null || originalPrice <= 0 || originalPrice < price) {
+			return 0;
 		}
-		String needle = normalize(search);
-		return item -> normalize(text.apply(item)).contains(needle);
+		return (int) Math.round((originalPrice - price) * 100.0 / originalPrice);
+	}
+
+	private String slug(String requested, String source) {
+		return requested == null || requested.isBlank() ? slugify(source) : requested.trim();
 	}
 
 	private String slugify(String value) {
-		return normalize(value).replaceAll("[^a-z0-9]+", "-").replaceAll("(^-|-$)", "");
-	}
-
-	private String normalize(String value) {
 		return Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFD)
 				.replaceAll("\\p{M}", "")
-				.toLowerCase(Locale.ROOT);
+				.toLowerCase(Locale.ROOT)
+				.replaceAll("[^a-z0-9]+", "-")
+				.replaceAll("(^-|-$)", "");
 	}
 
-	private <T> T valueOrDefault(T value, T defaultValue) {
+	private <T extends Enum<T>> T parseEnum(Class<T> type, String value, T defaultValue) {
+		return value == null || value.isBlank() ? defaultValue : Enum.valueOf(type, value.trim().toUpperCase(Locale.ROOT));
+	}
+
+	private <T> T value(T value, T defaultValue) {
 		return value == null ? defaultValue : value;
 	}
 
-	private <T> void replace(List<T> list, T current, T updated) {
-		int index = list.indexOf(current);
-		list.set(index, updated);
+	private String iso(java.time.OffsetDateTime value) {
+		return value == null ? null : DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(value);
 	}
 
-	private void seed() {
-		categories.add(new CategoryDto("cat-001", "Dien tu", "dien-tu", null, "Thiet bi dien tu", "Monitor", true,
-				null, 1, 0, "dien-tu", 2, List.of()));
-		categories.add(new CategoryDto("cat-002", "Dien thoai", "dien-thoai", "cat-001", "Smartphone", "Smartphone",
-				true, null, 1, 1, "dien-tu/dien-thoai", 1, List.of()));
-		categories.add(new CategoryDto("cat-003", "Laptop", "laptop", "cat-001", "May tinh xach tay", "Laptop", true,
-				null, 2, 1, "dien-tu/laptop", 1, List.of()));
-
-		suppliers.add(new SupplierDto("sup-001", "Cong ty TNHH Dell VN", "Tran Thi B", "seller@example.com",
-				"0900000001", "123 Nguyen Hue", "Ho Chi Minh", "Viet Nam", null, null, "Nha cung cap thiet bi CNTT",
-				BigDecimal.valueOf(4.7), 32, 2, BigDecimal.valueOf(5_000_000), 3, BigDecimal.valueOf(96.5), true,
-				"2026-01-01T00:00:00Z", 120, List.of("cat-001", "cat-003"), "2026-01-01T00:00:00Z"));
-
-		products.add(new ProductDto("prod-001", "Laptop Dell XPS 15", "laptop-dell-xps-15", "Laptop hieu nang cao",
-				"cat-003", "Laptop", "sup-001", "Cong ty TNHH Dell VN", BigDecimal.valueOf(35_000_000),
-				BigDecimal.valueOf(38_000_000), 50, "Cai", 1, List.of(), Map.of("CPU", "Intel Core i7", "RAM", "16GB"),
-				List.of("laptop", "dell"), "active", true, "Dell", "USA", 1800, "34x23x2 cm", 12, 1250, 87, true,
-				BigDecimal.valueOf(4.5), 32, "2026-01-10T00:00:00Z", "2026-01-10T00:00:00Z"));
-		products.add(new ProductDto("prod-002", "Dien thoai Samsung Galaxy S25", "dien-thoai-samsung-galaxy-s25",
-				"Smartphone Android", "cat-002", "Dien thoai", "sup-001", "Cong ty TNHH Dell VN",
-				BigDecimal.valueOf(22_000_000), null, 120, "Cai", 5, List.of(), Map.of("Storage", "256GB"),
-				List.of("phone", "samsung"), "active", true, "Samsung", "Vietnam", 190, null, 12, 730, 112, false,
-				BigDecimal.valueOf(4.3), 21, "2026-02-01T00:00:00Z", "2026-02-01T00:00:00Z"));
+	public record ProductFilter(
+			String search,
+			UUID categoryId,
+			String categorySlug,
+			String brand,
+			ProductStatus status,
+			ProductCondition condition,
+			BigDecimal minPrice,
+			BigDecimal maxPrice,
+			String color,
+			Boolean isFeatured,
+			Boolean isNew,
+			Boolean isHot
+	) {
 	}
 }

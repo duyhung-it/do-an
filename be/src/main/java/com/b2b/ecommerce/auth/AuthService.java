@@ -13,12 +13,12 @@ public class AuthService {
 	private final Map<String, AuthUserDto> usersByEmail = new ConcurrentHashMap<>();
 
 	public AuthService() {
-		save(new AuthUserDto("user-buyer-001", "buyer@example.com", "Nguyen Van A", "Buyer",
-				"Cong ty TNHH ABC", null, null, "mock-token-buyer"));
-		save(new AuthUserDto("user-seller-001", "seller@example.com", "Tran Thi B", "Seller",
-				"Cung ung Viet", "sup-001", null, "mock-token-seller"));
-		save(new AuthUserDto("user-admin-001", "admin@example.com", "Admin", "Admin",
-				"B2B Platform", null, null, "mock-token-admin"));
+		save(new AuthUserDto("user-001", "admin@cellphones.vn", "Nguyen Van An", "Quản trị viên",
+				"CELLPHONES", null, null, "mock-token-admin"));
+		save(new AuthUserDto("user-002", "khachhang@gmail.com", "Tran Thi Minh", "Khách hàng",
+				null, null, null, "mock-token-customer"));
+		save(new AuthUserDto("user-003", "lehoanhduc@gmail.com", "Le Hoang Duc", "Khách hàng",
+				null, null, null, "mock-token-customer-2"));
 	}
 
 	public AuthUserDto login(LoginRequest request) {
@@ -38,7 +38,7 @@ public class AuthService {
 				"user-" + UUID.randomUUID(),
 				email,
 				request.fullName(),
-				request.role(),
+				request.role() == null || request.role().isBlank() ? "Khách hàng" : request.role(),
 				request.companyName(),
 				null,
 				null,
@@ -48,7 +48,7 @@ public class AuthService {
 	}
 
 	public AuthUserDto me() {
-		return usersByEmail.get("buyer@example.com");
+		return usersByEmail.get("khachhang@gmail.com");
 	}
 
 	public Collection<AuthUserDto> users() {

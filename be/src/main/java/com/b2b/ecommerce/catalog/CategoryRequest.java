@@ -1,13 +1,15 @@
 package com.b2b.ecommerce.catalog;
 
-import jakarta.validation.constraints.NotBlank;
-
 public record CategoryRequest(
-		@NotBlank String name,
+		String name,
+		String slug,
 		String parentId,
 		String description,
 		String icon,
+		String imageUrl,
 		Boolean isActive,
-		Integer sortOrder
+		Integer sortOrder,
+		String metaTitle,
+		String metaDescription
 ) {
 }
