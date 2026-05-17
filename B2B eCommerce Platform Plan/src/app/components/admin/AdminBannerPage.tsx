@@ -1,207 +1,254 @@
-// ============================================================
-// AdminBannerPage — Quản lý Banner quảng cáo
-// Route: /admin/banners
-// Hỗ trợ: trang đích, target role, lịch chạy, preview
-// ============================================================
-
-import { useState } from 'react';
-import { ImageIcon, Plus, Edit2, Trash2, Eye, EyeOff, Calendar, Target, Monitor } from 'lucide-react';
-import { Card, CardContent } from '../ui/card';
-import { Button } from '../ui/button';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Edit2, Eye, ImageIcon, Monitor, Plus, RefreshCw, Trash2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { AppBreadcrumb } from '../shared/AppBreadcrumb';
 import { Badge } from '../ui/badge';
-import { Switch } from '../ui/switch';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
+import { Button } from '../ui/button';
+import { Card, CardContent } from '../ui/card';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { AppBreadcrumb } from '../shared/AppBreadcrumb';
-import { StatsCard } from '../shared/StatsCard';
-import { toast } from 'sonner';
+import { Switch } from '../ui/switch';
+import { adminBannerApi } from '../../services/adminBackendApi';
 
-interface Banner {
+type BannerRow = {
   id: string;
   title: string;
   imageUrl: string;
-  linkUrl: string;
-  targetPage: 'home' | 'products' | 'promotions' | 'all';
-  targetRole: 'all' | 'buyer' | 'seller';
-  startDate: string;
-  endDate: string;
+  linkUrl?: string;
+  position: string;
   isActive: boolean;
-  position: 'hero' | 'sidebar' | 'popup' | 'notification';
-  clickCount: number;
-  impressions: number;
-  priority: number;
-}
-
-const mockBanners: Banner[] = [
-  {
-    id: '1', title: 'iPhone 16 Pro Max - Sale 15%',
-    imageUrl: 'https://images.unsplash.com/photo-1632661674596-df8be070a5c5?w=800&h=300&fit=crop',
-    linkUrl: '/products?brand=Apple&categoryId=cat-01',
-    targetPage: 'home', targetRole: 'all', position: 'hero',
-    startDate: '2026-04-01', endDate: '2026-04-30', isActive: true,
-    clickCount: 3420, impressions: 45230, priority: 1,
-  },
-  {
-    id: '2', title: 'Samsung Galaxy S25 Ultra Ra Mắt',
-    imageUrl: 'https://images.unsplash.com/photo-1610945415295-d9bbf067e59c?w=800&h=300&fit=crop',
-    linkUrl: '/products?brand=Samsung',
-    targetPage: 'home', targetRole: 'buyer', position: 'hero',
-    startDate: '2026-04-10', endDate: '2026-05-10', isActive: true,
-    clickCount: 2180, impressions: 31050, priority: 2,
-  },
-  {
-    id: '3', title: 'Flash Sale Cuối Tuần - Giảm Đến 40%',
-    imageUrl: 'https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=800&h=300&fit=crop',
-    linkUrl: '/promotions',
-    targetPage: 'promotions', targetRole: 'buyer', position: 'popup',
-    startDate: '2026-04-14', endDate: '2026-04-20', isActive: true,
-    clickCount: 1560, impressions: 18900, priority: 1,
-  },
-  {
-    id: '4', title: 'Phí sàn ưu đãi cho NCC mới',
-    imageUrl: 'https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?w=800&h=300&fit=crop',
-    linkUrl: '/seller',
-    targetPage: 'home', targetRole: 'seller', position: 'notification',
-    startDate: '2026-04-01', endDate: '2026-06-30', isActive: true,
-    clickCount: 340, impressions: 5600, priority: 1,
-  },
-  {
-    id: '5', title: 'Tết Sale 2026 (Đã hết hạn)',
-    imageUrl: 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=800&h=300&fit=crop',
-    linkUrl: '/promotions/tet',
-    targetPage: 'all', targetRole: 'all', position: 'hero',
-    startDate: '2026-01-01', endDate: '2026-02-15', isActive: false,
-    clickCount: 12400, impressions: 89100, priority: 1,
-  },
-];
-
-const positionLabel: Record<Banner['position'], string> = {
-  hero: 'Hero Banner', sidebar: 'Sidebar', popup: 'Popup', notification: 'Thông báo',
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
 };
-const pageLabel: Record<Banner['targetPage'], string> = {
-  home: 'Trang chủ', products: 'Sản phẩm', promotions: 'Khuyến mãi', all: 'Tất cả',
+
+const emptyForm = {
+  title: '',
+  imageUrl: '',
+  linkUrl: '',
+  position: 'HOME',
+  sortOrder: '0',
+  isActive: true,
 };
+
+const positions = ['HOME', 'CATEGORY', 'PRODUCT', 'PROMOTION', 'POPUP'];
 
 export function AdminBannerPage() {
-  const [banners, setBanners] = useState<Banner[]>(mockBanners);
-  const [previewItem, setPreviewItem] = useState<Banner | null>(null);
-  const [editItem, setEditItem] = useState<Banner | null>(null);
+  const [banners, setBanners] = useState<BannerRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [previewItem, setPreviewItem] = useState<BannerRow | null>(null);
+  const [editing, setEditing] = useState<BannerRow | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+  const [saving, setSaving] = useState(false);
 
-  const activeCount = banners.filter(b => b.isActive).length;
-  const totalClicks = banners.reduce((s, b) => s + b.clickCount, 0);
-  const totalImpressions = banners.reduce((s, b) => s + b.impressions, 0);
-  const avgCTR = totalImpressions > 0 ? ((totalClicks / totalImpressions) * 100).toFixed(1) : '0';
+  const loadBanners = useCallback(async () => {
+    setLoading(true);
+    try {
+      setBanners(await adminBannerApi.getAll() as BannerRow[]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Khong tai duoc banner');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
-  const handleToggle = (id: string) => {
-    setBanners(prev => prev.map(b => b.id === id ? { ...b, isActive: !b.isActive } : b));
-    toast.success('Đã cập nhật trạng thái banner');
+  useEffect(() => { loadBanners(); }, [loadBanners]);
+
+  const stats = useMemo(() => ({
+    total: banners.length,
+    active: banners.filter(item => item.isActive).length,
+    inactive: banners.filter(item => !item.isActive).length,
+    positions: new Set(banners.map(item => item.position)).size,
+  }), [banners]);
+
+  const openCreate = () => {
+    setEditing(null);
+    setForm(emptyForm);
+    setFormOpen(true);
   };
 
-  const handleDelete = (id: string) => {
-    setBanners(prev => prev.filter(b => b.id !== id));
-    toast.success('Đã xoá banner');
+  const openEdit = (banner: BannerRow) => {
+    setEditing(banner);
+    setForm({
+      title: banner.title,
+      imageUrl: banner.imageUrl,
+      linkUrl: banner.linkUrl ?? '',
+      position: banner.position || 'HOME',
+      sortOrder: String(banner.sortOrder ?? 0),
+      isActive: banner.isActive,
+    });
+    setFormOpen(true);
   };
 
-  const isExpired = (b: Banner) => new Date(b.endDate) < new Date();
+  const payload = () => ({
+    title: form.title.trim(),
+    imageUrl: form.imageUrl.trim(),
+    linkUrl: form.linkUrl.trim() || undefined,
+    position: form.position,
+    sortOrder: Number(form.sortOrder || 0),
+    isActive: form.isActive,
+  });
+
+  const saveBanner = async () => {
+    if (!form.title.trim() || !form.imageUrl.trim()) {
+      toast.error('Title va imageUrl la bat buoc');
+      return;
+    }
+    setSaving(true);
+    try {
+      if (editing) {
+        await adminBannerApi.update(editing.id, payload());
+        toast.success('Da cap nhat banner');
+      } else {
+        await adminBannerApi.create(payload());
+        toast.success('Da tao banner');
+      }
+      setFormOpen(false);
+      await loadBanners();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Luu banner that bai');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleBanner = async (banner: BannerRow) => {
+    try {
+      await adminBannerApi.update(banner.id, {
+        title: banner.title,
+        imageUrl: banner.imageUrl,
+        linkUrl: banner.linkUrl,
+        position: banner.position,
+        sortOrder: banner.sortOrder,
+        isActive: !banner.isActive,
+      });
+      await loadBanners();
+      toast.success('Da cap nhat trang thai banner');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Cap nhat banner that bai');
+    }
+  };
+
+  const deleteBanner = async (banner: BannerRow) => {
+    if (!window.confirm(`Xoa banner "${banner.title}"?`)) return;
+    try {
+      await adminBannerApi.delete(banner.id);
+      await loadBanners();
+      toast.success('Da xoa banner');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Xoa banner that bai');
+    }
+  };
 
   return (
-    <div className="container mx-auto px-4 py-6 space-y-6">
-      <AppBreadcrumb items={[{ label: 'Admin', href: '/admin' }, { label: 'Quản lý Banner' }]} />
+    <div className="space-y-5">
+      <AppBreadcrumb items={[{ label: 'Admin', href: '/admin' }, { label: 'Banner' }]} />
 
-      <div className="flex items-center justify-between flex-wrap gap-3">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold" style={{ fontFamily: 'var(--font-heading)' }}>Quản lý Banner</h1>
-          <p className="text-sm text-muted-foreground mt-1">Cấu hình banner quảng cáo theo trang, đối tượng và thời gian</p>
+          <h1 className="flex items-center gap-2"><ImageIcon className="h-6 w-6 text-primary" /> Quan ly banner</h1>
+          <p className="text-muted-foreground">CRUD banner theo contract BE: title, imageUrl, linkUrl, position, sortOrder, isActive.</p>
         </div>
-        <Button><Plus className="h-4 w-4 mr-2" />Thêm Banner</Button>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadBanners} disabled={loading}>
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Lam moi
+          </Button>
+          <Button onClick={openCreate}><Plus className="mr-2 h-4 w-4" /> Them banner</Button>
+        </div>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatsCard title="Đang hoạt động" value={activeCount} icon={Monitor} variant="success" />
-        <StatsCard title="Tổng lượt click" value={totalClicks} format={n => n.toLocaleString()} icon={Target} variant="primary" />
-        <StatsCard title="Lượt hiển thị" value={totalImpressions} format={n => n.toLocaleString()} icon={Eye} variant="info" />
-        <StatsCard title="CTR trung bình" value={Number(avgCTR)} format={n => `${n}%`} icon={Calendar} variant="warning" />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <Card><CardContent className="p-4"><Monitor className="mb-2 h-5 w-5 text-blue-600" /><p className="text-muted-foreground">Tong banner</p><p className="text-xl font-semibold">{stats.total}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><Eye className="mb-2 h-5 w-5 text-emerald-600" /><p className="text-muted-foreground">Dang bat</p><p className="text-xl font-semibold">{stats.active}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><Eye className="mb-2 h-5 w-5 text-slate-600" /><p className="text-muted-foreground">Dang tat</p><p className="text-xl font-semibold">{stats.inactive}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><ImageIcon className="mb-2 h-5 w-5 text-violet-600" /><p className="text-muted-foreground">Vi tri</p><p className="text-xl font-semibold">{stats.positions}</p></CardContent></Card>
       </div>
 
-      {/* Banner Cards */}
-      <div className="grid md:grid-cols-2 gap-4">
-        {banners.map(banner => (
-          <Card key={banner.id} className={`overflow-hidden transition-all duration-200 hover:shadow-lg ${!banner.isActive ? 'opacity-70' : ''}`}>
-            {/* Image */}
-            <div className="relative h-40 bg-muted img-zoom">
-              <img src={banner.imageUrl} alt={banner.title} className="w-full h-full object-cover" />
-              {isExpired(banner) && (
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                  <span className="text-white text-sm font-bold bg-red-600 px-3 py-1 rounded-full">Đã hết hạn</span>
+      {loading ? (
+        <Card><CardContent className="p-8 text-center text-muted-foreground">Dang tai banner...</CardContent></Card>
+      ) : banners.length === 0 ? (
+        <Card><CardContent className="p-8 text-center text-muted-foreground">Chua co banner</CardContent></Card>
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2">
+          {banners.map(banner => (
+            <Card key={banner.id} className={!banner.isActive ? 'opacity-70' : ''}>
+              <div className="relative aspect-[16/6] bg-muted">
+                <img src={banner.imageUrl} alt={banner.title} className="h-full w-full object-cover" />
+                <div className="absolute left-2 top-2 flex gap-2">
+                  <Badge className="bg-black/70 text-white">{banner.position}</Badge>
+                  <Badge variant={banner.isActive ? 'default' : 'secondary'}>{banner.isActive ? 'ACTIVE' : 'INACTIVE'}</Badge>
                 </div>
-              )}
-              <div className="absolute top-2 left-2">
-                <span className="text-xs font-semibold bg-black/60 text-white px-2 py-0.5 rounded-full backdrop-blur-sm">
-                  {positionLabel[banner.position]}
-                </span>
+                <div className="absolute right-2 top-2 flex gap-1">
+                  <Button size="icon" variant="secondary" className="h-8 w-8" onClick={() => setPreviewItem(banner)}><Eye className="h-4 w-4" /></Button>
+                  <Button size="icon" variant="secondary" className="h-8 w-8" onClick={() => openEdit(banner)}><Edit2 className="h-4 w-4" /></Button>
+                </div>
               </div>
-              <div className="absolute top-2 right-2 flex gap-1">
-                <button onClick={() => setPreviewItem(banner)} className="h-7 w-7 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-colors shadow">
-                  <Eye className="h-3.5 w-3.5 text-gray-700" />
-                </button>
-                <button onClick={() => setEditItem({ ...banner })} className="h-7 w-7 bg-white/90 backdrop-blur-sm rounded-full flex items-center justify-center hover:bg-white transition-colors shadow">
-                  <Edit2 className="h-3.5 w-3.5 text-gray-700" />
-                </button>
+              <CardContent className="space-y-3 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold">{banner.title}</p>
+                    <p className="truncate text-sm text-muted-foreground">{banner.linkUrl || '-'}</p>
+                  </div>
+                  <Switch checked={banner.isActive} onCheckedChange={() => toggleBanner(banner)} />
+                </div>
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                  <span>Sort order: {banner.sortOrder}</span>
+                  <span>{banner.updatedAt ? new Date(banner.updatedAt).toLocaleDateString('vi-VN') : '-'}</span>
+                </div>
+                <div className="flex justify-end">
+                  <Button size="sm" variant="ghost" className="text-destructive" onClick={() => deleteBanner(banner)}>
+                    <Trash2 className="mr-1 h-4 w-4" /> Xoa
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="max-w-xl">
+          <DialogHeader><DialogTitle>{editing ? 'Sua banner' : 'Them banner'}</DialogTitle></DialogHeader>
+          <div className="grid gap-3">
+            <div className="grid gap-2"><Label>Title *</Label><Input value={form.title} onChange={event => setForm(current => ({ ...current, title: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>Image URL *</Label><Input value={form.imageUrl} onChange={event => setForm(current => ({ ...current, imageUrl: event.target.value }))} /></div>
+            <div className="grid gap-2"><Label>Link URL</Label><Input value={form.linkUrl} onChange={event => setForm(current => ({ ...current, linkUrl: event.target.value }))} /></div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-2">
+                <Label>Position</Label>
+                <Select value={form.position} onValueChange={value => setForm(current => ({ ...current, position: value }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>{positions.map(position => <SelectItem key={position} value={position}>{position}</SelectItem>)}</SelectContent>
+                </Select>
               </div>
+              <div className="grid gap-2"><Label>Sort order</Label><Input type="number" value={form.sortOrder} onChange={event => setForm(current => ({ ...current, sortOrder: event.target.value }))} /></div>
             </div>
+            <label className="flex items-center gap-2">
+              <Switch checked={form.isActive} onCheckedChange={value => setForm(current => ({ ...current, isActive: value }))} />
+              Dang hoat dong
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setFormOpen(false)}>Huy</Button>
+            <Button onClick={saveBanner} disabled={saving}>{saving ? 'Dang luu...' : 'Luu'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
-            <CardContent className="p-4 space-y-3">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex-1">
-                  <p className="font-semibold text-sm leading-tight">{banner.title}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{banner.linkUrl}</p>
-                </div>
-                <Switch checked={banner.isActive} onCheckedChange={() => handleToggle(banner.id)} />
-              </div>
-
-              <div className="flex flex-wrap gap-1.5">
-                <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full border border-blue-100">{pageLabel[banner.targetPage]}</span>
-                <span className="text-xs bg-purple-50 text-purple-700 px-2 py-0.5 rounded-full border border-purple-100">
-                  {banner.targetRole === 'all' ? 'Tất cả' : banner.targetRole === 'buyer' ? 'Người mua' : 'NCC'}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2 text-xs bg-muted/40 rounded-lg p-2">
-                <div><span className="text-muted-foreground">Từ:</span> <b>{banner.startDate}</b></div>
-                <div><span className="text-muted-foreground">Đến:</span> <b>{banner.endDate}</b></div>
-                <div><span className="text-muted-foreground">Clicks:</span> <b>{banner.clickCount.toLocaleString()}</b></div>
-                <div><span className="text-muted-foreground">CTR:</span> <b>{banner.impressions > 0 ? ((banner.clickCount / banner.impressions) * 100).toFixed(1) : 0}%</b></div>
-              </div>
-
-              <div className="flex justify-end pt-1">
-                <Button size="sm" variant="ghost" className="text-red-500 hover:text-red-600 hover:bg-red-50 h-7 px-2" onClick={() => handleDelete(banner.id)}>
-                  <Trash2 className="h-3.5 w-3.5 mr-1" />Xoá
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* Preview Dialog */}
       <Dialog open={!!previewItem} onOpenChange={() => setPreviewItem(null)}>
         <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Xem trước Banner</DialogTitle>
-          </DialogHeader>
+          <DialogHeader><DialogTitle>{previewItem?.title}</DialogTitle></DialogHeader>
           {previewItem && (
             <div className="space-y-4">
-              <img src={previewItem.imageUrl} alt={previewItem.title} className="w-full rounded-lg object-cover max-h-64" />
+              <img src={previewItem.imageUrl} alt={previewItem.title} className="max-h-80 w-full rounded-md object-cover" />
               <div className="grid grid-cols-2 gap-3 text-sm">
-                <div><span className="text-muted-foreground">Tiêu đề:</span> {previewItem.title}</div>
-                <div><span className="text-muted-foreground">Link:</span> {previewItem.linkUrl}</div>
-                <div><span className="text-muted-foreground">Trang:</span> {pageLabel[previewItem.targetPage]}</div>
-                <div><span className="text-muted-foreground">Vị trí:</span> {positionLabel[previewItem.position]}</div>
-                <div><span className="text-muted-foreground">Từ:</span> {previewItem.startDate}</div>
-                <div><span className="text-muted-foreground">Đến:</span> {previewItem.endDate}</div>
+                <div><p className="text-muted-foreground">Position</p><p>{previewItem.position}</p></div>
+                <div><p className="text-muted-foreground">Status</p><p>{previewItem.isActive ? 'ACTIVE' : 'INACTIVE'}</p></div>
+                <div><p className="text-muted-foreground">Link</p><p>{previewItem.linkUrl || '-'}</p></div>
+                <div><p className="text-muted-foreground">Sort order</p><p>{previewItem.sortOrder}</p></div>
               </div>
             </div>
           )}

@@ -12,7 +12,7 @@ import { Badge } from '../ui/badge';
 import { DataTable } from '../shared/DataTable';
 import { FormDialog } from '../shared/FormDialog';
 import { AppBreadcrumb } from '../shared/AppBreadcrumb';
-import { categoryApi } from '../../services/api';
+import { adminCategoryApi } from '../../services/adminBackendApi';
 import { toast } from 'sonner';
 import type { Category, PaginationParams, SortParams, ColumnConfig } from '../../types';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -54,6 +54,13 @@ const defaultForm: FormData = {
   sortOrder: 0, metaTitle: '', metaDescription: '',
 };
 
+function flattenCategoryTree(categories: Category[]): Category[] {
+  return categories.flatMap(category => [
+    category,
+    ...flattenCategoryTree(category.children ?? []),
+  ]);
+}
+
 export function CategoryManagement() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [allCategories, setAllCategories] = useState<Category[]>([]);
@@ -74,14 +81,15 @@ export function CategoryManagement() {
     setLoading(true);
     try {
       const [allRes, pageRes] = await Promise.all([
-        categoryApi.getAll(),
-        categoryApi.getPaginated(pagination, sort.field ? sort : undefined),
+        adminCategoryApi.getAll(),
+        adminCategoryApi.getPaginated(pagination, sort.field ? sort : undefined),
       ]);
-      setAllCategories(allRes);
+      const flatCategories = flattenCategoryTree(allRes);
+      setAllCategories(flatCategories);
       setCategories(pageRes.data);
       setTotal(pageRes.total);
       // Auto-expand all root by default
-      setExpandedIds(new Set(allRes.filter(c => !c.parentId).map(c => c.id)));
+      setExpandedIds(new Set(flatCategories.filter(c => !c.parentId).map(c => c.id)));
     } finally {
       setLoading(false);
     }
@@ -126,10 +134,10 @@ export function CategoryManagement() {
   const handleSubmit = async () => {
     if (!validateForm()) return;
     if (editingCat) {
-      await categoryApi.update(editingCat.id, form);
+      await adminCategoryApi.update(editingCat.id, form);
       toast.success('Đã cập nhật danh mục');
     } else {
-      await categoryApi.create(form);
+      await adminCategoryApi.create(form);
       toast.success('Đã tạo danh mục mới');
     }
     setShowForm(false);
@@ -145,7 +153,7 @@ export function CategoryManagement() {
       setDeleteId(null);
       return;
     }
-    await categoryApi.delete(deleteId);
+    await adminCategoryApi.delete(deleteId);
     setDeleteId(null);
     setSelectedIds(prev => prev.filter(id => id !== deleteId));
     fetchData();
@@ -154,7 +162,7 @@ export function CategoryManagement() {
 
   const handleInlineEdit = async (id: string, field: string, value: unknown) => {
     const realValue = field === 'isActive' ? value === 'true' : value;
-    await categoryApi.update(id, { [field]: realValue } as Partial<Category>);
+    await adminCategoryApi.update(id, { [field]: realValue } as Partial<Category>);
     setCategories(prev => prev.map(c => c.id === id ? { ...c, [field]: realValue } : c));
     setAllCategories(prev => prev.map(c => c.id === id ? { ...c, [field]: realValue } : c));
     toast.success('Đã cập nhật');
@@ -163,7 +171,7 @@ export function CategoryManagement() {
   // Batch toggle active/inactive
   const handleBatchToggle = async (active: boolean) => {
     for (const id of selectedIds) {
-      await categoryApi.update(id, { isActive: active });
+      await adminCategoryApi.update(id, { isActive: active });
     }
     setAllCategories(prev =>
       prev.map(c => selectedIds.includes(c.id) ? { ...c, isActive: active } : c),
@@ -282,12 +290,19 @@ export function CategoryManagement() {
                     >
                       <Checkbox
                         checked={selectedIds.includes(cat.id)}
+                        onClick={e => e.stopPropagation()}
                         onCheckedChange={() => toggleSelect(cat.id)}
                       />
                       {children.length > 0 ? (
                         <button
+                          type="button"
                           className="h-5 w-5 flex items-center justify-center shrink-0"
-                          onClick={() => toggleExpand(cat.id)}
+                          aria-label={isExpanded ? 'Thu gon danh muc' : 'Mo rong danh muc'}
+                          onClick={e => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            toggleExpand(cat.id);
+                          }}
                         >
                           {isExpanded ? (
                             <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -299,8 +314,12 @@ export function CategoryManagement() {
                         <div className="w-5" />
                       )}
                       <button
+                        type="button"
                         className="flex-1 flex items-center gap-2 text-left"
-                        onClick={() => openEdit(cat)}
+                        onClick={e => {
+                          e.stopPropagation();
+                          openEdit(cat);
+                        }}
                       >
                         <FolderTree className="h-4 w-4 text-primary shrink-0" />
                         <span className="font-medium">{cat.name}</span>
@@ -325,11 +344,16 @@ export function CategoryManagement() {
                       >
                         <Checkbox
                           checked={selectedIds.includes(child.id)}
+                          onClick={e => e.stopPropagation()}
                           onCheckedChange={() => toggleSelect(child.id)}
                         />
                         <button
+                          type="button"
                           className="flex-1 flex items-center gap-2 text-left"
-                          onClick={() => openEdit(child)}
+                          onClick={e => {
+                            e.stopPropagation();
+                            openEdit(child);
+                          }}
                         >
                           <span className="text-muted-foreground">└</span>
                           <span>{child.name}</span>
@@ -413,8 +437,10 @@ export function CategoryManagement() {
           <CategoryCombobox
             value={form.parentId ?? ''}
             onChange={(id) => setForm(p => ({ ...p, parentId: id || null }))}
-            parentId={null}
+            placeholder="Chon danh muc cha..."
             allowCreate={false}
+            allowRoot
+            excludeId={editingCat?.id}
           />
         </div>
         <div className="grid gap-2">

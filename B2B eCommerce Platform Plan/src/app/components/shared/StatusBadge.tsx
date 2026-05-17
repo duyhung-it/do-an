@@ -6,6 +6,20 @@
 import { Badge } from '../ui/badge';
 
 const statusColorMap: Record<string, { badge: string; dot: string }> = {
+  PENDING: { badge: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
+  CONFIRMED: { badge: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500' },
+  SHIPPING: { badge: 'bg-violet-50 text-violet-700 border-violet-200', dot: 'bg-violet-500' },
+  DELIVERED: { badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
+  CANCELLED: { badge: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500' },
+  RETURNED: { badge: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500' },
+  UNPAID: { badge: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
+  PAID: { badge: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-500' },
+  FAILED: { badge: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500' },
+  REFUNDED: { badge: 'bg-orange-50 text-orange-700 border-orange-200', dot: 'bg-orange-500' },
+  PARTIALLY_REFUNDED: { badge: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500' },
+  OVERDUE: { badge: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500' },
+  IN_TRANSIT: { badge: 'bg-indigo-50 text-indigo-700 border-indigo-200', dot: 'bg-indigo-500' },
+  AWAITING_PICKUP: { badge: 'bg-slate-50 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
   // Đơn hàng
   'Chờ xác nhận': { badge: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
   'Đã xác nhận': { badge: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500' },

@@ -1,316 +1,302 @@
-// ============================================================
-// AdminTradeInPage — Quản lý Thu cũ đổi mới
-// ============================================================
-import { useState, useEffect, useCallback } from 'react';
-import {
-  RotateCcw, Search, CheckCircle, XCircle, Clock,
-  DollarSign, RefreshCw, Eye, ChevronDown,
-  Package, TrendingUp, Users, Star,
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Badge } from '../ui/badge';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { AppBreadcrumb } from '../shared/AppBreadcrumb';
-import { tradeInApi } from '../../services/api';
-import type { TradeInRequest } from '../../types';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { CheckCircle, Clock, DollarSign, Eye, RefreshCw, RotateCcw, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { AppBreadcrumb } from '../shared/AppBreadcrumb';
+import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
+import { Card, CardContent } from '../ui/card';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Textarea } from '../ui/textarea';
+import { adminTradeInApi } from '../../services/adminBackendApi';
 
-const formatPrice = (p: number) =>
-  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(p);
-
-const STATUS_COLORS: Record<string, string> = {
-  'Chờ định giá': 'bg-amber-100 text-amber-700',
-  'Đã định giá': 'bg-blue-100 text-blue-700',
-  'Chấp nhận': 'bg-green-100 text-green-700',
-  'Từ chối': 'bg-red-100 text-red-700',
-  'Đã hoàn thành': 'bg-gray-100 text-gray-700',
+type TradeInRow = {
+  id: string;
+  requestNumber: string;
+  customerId?: string;
+  customerName: string;
+  customerPhone: string;
+  deviceName: string;
+  brand: string;
+  model: string;
+  condition: string;
+  estimatedValue: number;
+  finalValuation?: number;
+  targetProductId?: string;
+  status: string;
+  images: string[];
+  adminNote?: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
+const STATUSES = ['AWAITING_VALUATION', 'VALUED', 'ACCEPTED', 'REJECTED', 'COMPLETED'];
+
+const statusTone: Record<string, string> = {
+  AWAITING_VALUATION: 'border-amber-200 bg-amber-50 text-amber-700',
+  VALUED: 'border-blue-200 bg-blue-50 text-blue-700',
+  ACCEPTED: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  REJECTED: 'border-red-200 bg-red-50 text-red-700',
+  COMPLETED: 'border-slate-200 bg-slate-50 text-slate-700',
+};
+
+const formatMoney = (value?: number) =>
+  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(value ?? 0));
+
+const formatDate = (value?: string) => value ? new Date(value).toLocaleString('vi-VN') : '-';
+
+const nextStatuses = (status: string) => {
+  if (status === 'AWAITING_VALUATION') return ['REJECTED'];
+  if (status === 'VALUED') return ['ACCEPTED', 'REJECTED'];
+  return [];
+};
+
+function StatusPill({ status }: { status: string }) {
+  return <Badge variant="outline" className={statusTone[status] ?? ''}>{status}</Badge>;
+}
+
 export function AdminTradeInPage() {
-  const [requests, setRequests] = useState<TradeInRequest[]>([]);
+  const [rows, setRows] = useState<TradeInRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [selected, setSelected] = useState<TradeInRequest | null>(null);
-  const [finalValue, setFinalValue] = useState('');
-  const [processing, setProcessing] = useState(false);
+  const [selected, setSelected] = useState<TradeInRow | null>(null);
+  const [finalValuation, setFinalValuation] = useState('');
+  const [adminNote, setAdminNote] = useState('');
+  const [nextStatus, setNextStatus] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await tradeInApi.getPaginated({ page: 1, pageSize: 100 });
-      setRequests(res.data);
+      const filters = statusFilter === 'all' ? [] : [{ key: 'status', label: 'Status', value: statusFilter }];
+      const page = await adminTradeInApi.getPaginated({ page: 1, pageSize: 100 }, undefined, filters, search || undefined);
+      setRows(page.data as TradeInRow[]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Khong tai duoc trade-in');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [search, statusFilter]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const filtered = requests.filter(r => {
-    const matchSearch = !search || r.customerName.toLowerCase().includes(search.toLowerCase()) || r.model.toLowerCase().includes(search.toLowerCase()) || r.brand.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === 'all' || r.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
+  const stats = useMemo(() => ({
+    total: rows.length,
+    awaiting: rows.filter(row => row.status === 'AWAITING_VALUATION').length,
+    valued: rows.filter(row => row.status === 'VALUED').length,
+    accepted: rows.filter(row => row.status === 'ACCEPTED').length,
+    completed: rows.filter(row => row.status === 'COMPLETED').length,
+    value: rows.reduce((sum, row) => sum + Number(row.finalValuation ?? row.estimatedValue ?? 0), 0),
+  }), [rows]);
 
-  const stats = {
-    total: requests.length,
-    pending: requests.filter(r => r.status === 'Chờ định giá').length,
-    accepted: requests.filter(r => r.status === 'Chấp nhận' || r.status === 'Đã hoàn thành').length,
-    totalValue: requests.filter(r => r.finalValue).reduce((sum, r) => sum + (r.finalValue || 0), 0),
+  const syncSelected = (updated: TradeInRow) => {
+    setSelected(updated);
+    setRows(current => current.map(row => row.id === updated.id ? updated : row));
   };
 
-  const handleUpdateStatus = async (id: string, status: TradeInRequest['status'], value?: number) => {
-    setProcessing(true);
+  const openDetail = async (row: TradeInRow) => {
+    setSelected(row);
+    setFinalValuation(String(row.finalValuation ?? row.estimatedValue ?? 0));
+    setAdminNote(row.adminNote ?? '');
+    setNextStatus('');
     try {
-      await tradeInApi.updateStatus(id, status, value);
-      setRequests(prev => prev.map(r => r.id === id ? { ...r, status, finalValue: value ?? r.finalValue } : r));
-      setSelected(null);
-      toast.success(`Đã cập nhật trạng thái: ${status}`);
+      const detail = await adminTradeInApi.getById(row.id);
+      const item = detail as TradeInRow;
+      setSelected(item);
+      setFinalValuation(String(item.finalValuation ?? item.estimatedValue ?? 0));
+      setAdminNote(item.adminNote ?? '');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Khong tai duoc chi tiet trade-in');
+    }
+  };
+
+  const valuate = async () => {
+    if (!selected) return;
+    const amount = Number(finalValuation);
+    if (!Number.isFinite(amount) || amount < 0) {
+      toast.error('Gia dinh gia phai >= 0');
+      return;
+    }
+    setSaving(true);
+    try {
+      const updated = await adminTradeInApi.valuate(selected.id, amount, adminNote.trim() || undefined);
+      syncSelected(updated as TradeInRow);
+      await fetchData();
+      toast.success('Da dinh gia trade-in');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Dinh gia that bai');
     } finally {
-      setProcessing(false);
+      setSaving(false);
+    }
+  };
+
+  const updateStatus = async () => {
+    if (!selected || !nextStatus) return;
+    setSaving(true);
+    try {
+      const updated = await adminTradeInApi.updateStatus(selected.id, nextStatus, adminNote.trim() || undefined);
+      syncSelected(updated as TradeInRow);
+      setNextStatus('');
+      await fetchData();
+      toast.success('Da cap nhat trang thai trade-in');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Cap nhat trang thai that bai');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const complete = async () => {
+    if (!selected) return;
+    setSaving(true);
+    try {
+      const updated = await adminTradeInApi.complete(selected.id);
+      syncSelected(updated as TradeInRow);
+      await fetchData();
+      toast.success('Da hoan thanh trade-in');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Hoan thanh trade-in that bai');
+    } finally {
+      setSaving(false);
     }
   };
 
   return (
-    <div>
-      <AppBreadcrumb items={[{ label: 'Admin', href: '/admin' }, { label: 'Thu cũ đổi mới' }]} />
+    <div className="space-y-5">
+      <AppBreadcrumb items={[{ label: 'Admin', href: '/admin' }, { label: 'Thu cu doi moi' }]} />
 
-      <div className="flex items-center justify-between mb-6 mt-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Yêu cầu Thu cũ đổi mới</h1>
-          <p className="text-muted-foreground mt-0.5">Quản lý, định giá và xử lý yêu cầu thu máy cũ</p>
+          <h1>Yeu cau thu cu doi moi</h1>
+          <p className="text-muted-foreground">Dinh gia va xu ly trade-in theo contract BE.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchData}>
-          <RefreshCw className="h-4 w-4 mr-1" /> Làm mới
+        <Button variant="outline" onClick={fetchData} disabled={loading}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Lam moi
         </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-        {[
-          { label: 'Tổng yêu cầu', value: stats.total, icon: RotateCcw, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'Chờ định giá', value: stats.pending, icon: Clock, color: 'text-amber-600', bg: 'bg-amber-50' },
-          { label: 'Đã chấp nhận', value: stats.accepted, icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' },
-          { label: 'Tổng giá trị thu', value: formatPrice(stats.totalValue), icon: DollarSign, color: 'text-purple-600', bg: 'bg-purple-50' },
-        ].map(stat => {
-          const Icon = stat.icon;
-          return (
-            <Card key={stat.label} className="border-0 shadow-sm">
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className={`h-10 w-10 rounded-xl ${stat.bg} flex items-center justify-center shrink-0`}>
-                  <Icon className={`h-5 w-5 ${stat.color}`} />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{stat.label}</p>
-                  <p className="font-bold text-sm">{stat.value}</p>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+        <Card><CardContent className="p-4"><RotateCcw className="mb-2 h-4 w-4 text-blue-600" /><p className="text-muted-foreground">Tong</p><p className="text-xl">{stats.total}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><Clock className="mb-2 h-4 w-4 text-amber-600" /><p className="text-muted-foreground">Cho dinh gia</p><p className="text-xl">{stats.awaiting}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><DollarSign className="mb-2 h-4 w-4 text-blue-600" /><p className="text-muted-foreground">Da dinh gia</p><p className="text-xl">{stats.valued}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><CheckCircle className="mb-2 h-4 w-4 text-emerald-600" /><p className="text-muted-foreground">Accepted</p><p className="text-xl">{stats.accepted}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><CheckCircle className="mb-2 h-4 w-4 text-slate-600" /><p className="text-muted-foreground">Completed</p><p className="text-xl">{stats.completed}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><DollarSign className="mb-2 h-4 w-4 text-purple-600" /><p className="text-muted-foreground">Gia tri</p><p className="text-lg">{formatMoney(stats.value)}</p></CardContent></Card>
       </div>
 
-      <div className="grid lg:grid-cols-3 gap-6">
-        {/* List */}
-        <div className="lg:col-span-2">
-          <Card className="border-0 shadow-sm">
-            <CardHeader className="border-b py-3 px-4">
-              <div className="flex gap-3">
-                <div className="relative flex-1">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input className="pl-10 h-9" placeholder="Tìm khách hàng, model..." value={search} onChange={e => setSearch(e.target.value)} />
-                </div>
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-40 h-9">
-                    <SelectValue placeholder="Trạng thái" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Tất cả</SelectItem>
-                    {Object.keys(STATUS_COLORS).map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </CardHeader>
-            <div className="divide-y">
+      <Card>
+        <CardContent className="flex flex-col gap-3 p-4 lg:flex-row">
+          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Tim ma, khach hang, dien thoai, may..." />
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-full lg:w-56"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tat ca trang thai</SelectItem>
+              {STATUSES.map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3 text-left">Yeu cau</th>
+                <th className="px-4 py-3 text-left">Khach hang</th>
+                <th className="px-4 py-3 text-left">Thiet bi</th>
+                <th className="px-4 py-3 text-right">Gia uoc tinh</th>
+                <th className="px-4 py-3 text-right">Gia cuoi</th>
+                <th className="px-4 py-3 text-center">Trang thai</th>
+                <th className="px-4 py-3 text-center">Thao tac</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
               {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <div key={i} className="p-4 animate-pulse flex gap-3">
-                    <div className="h-10 w-10 bg-gray-200 rounded-xl" />
-                    <div className="flex-1 space-y-2">
-                      <div className="h-4 bg-gray-200 rounded w-1/3" />
-                      <div className="h-3 bg-gray-100 rounded w-2/3" />
-                    </div>
+                <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={7}>Dang tai...</td></tr>
+              ) : rows.length === 0 ? (
+                <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={7}>Khong co trade-in</td></tr>
+              ) : rows.map(row => (
+                <tr key={row.id} className="hover:bg-muted/30">
+                  <td className="px-4 py-3"><p className="font-medium">{row.requestNumber}</p><p className="text-xs text-muted-foreground">{formatDate(row.createdAt)}</p></td>
+                  <td className="px-4 py-3"><p>{row.customerName}</p><p className="text-xs text-muted-foreground">{row.customerPhone}</p></td>
+                  <td className="px-4 py-3"><p className="font-medium">{row.deviceName}</p><p className="text-xs text-muted-foreground">{row.condition}</p></td>
+                  <td className="px-4 py-3 text-right">{formatMoney(row.estimatedValue)}</td>
+                  <td className="px-4 py-3 text-right">{row.finalValuation ? formatMoney(row.finalValuation) : '-'}</td>
+                  <td className="px-4 py-3 text-center"><StatusPill status={row.status} /></td>
+                  <td className="px-4 py-3 text-center"><Button variant="ghost" size="sm" onClick={() => openDetail(row)}><Eye className="h-4 w-4" /></Button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+
+      <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>{selected?.requestNumber}</DialogTitle></DialogHeader>
+          {selected && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><p className="text-muted-foreground">Khach hang</p><p>{selected.customerName}</p></div>
+                <div><p className="text-muted-foreground">Dien thoai</p><p>{selected.customerPhone}</p></div>
+                <div><p className="text-muted-foreground">Thiet bi</p><p>{selected.deviceName}</p></div>
+                <div><p className="text-muted-foreground">Tinh trang</p><p>{selected.condition}</p></div>
+                <div><p className="text-muted-foreground">Gia uoc tinh</p><p>{formatMoney(selected.estimatedValue)}</p></div>
+                <div><p className="text-muted-foreground">Gia cuoi</p><p>{selected.finalValuation ? formatMoney(selected.finalValuation) : '-'}</p></div>
+                <div><p className="text-muted-foreground">Trang thai</p><StatusPill status={selected.status} /></div>
+                <div><p className="text-muted-foreground">Cap nhat</p><p>{formatDate(selected.updatedAt)}</p></div>
+              </div>
+
+              <div className="grid gap-2">
+                <Label>Ghi chu admin</Label>
+                <Textarea value={adminNote} onChange={event => setAdminNote(event.target.value)} rows={3} placeholder="Ghi chu dinh gia / ly do tu choi..." />
+              </div>
+
+              {selected.status === 'AWAITING_VALUATION' && (
+                <div className="grid gap-3 rounded-md border p-3">
+                  <Label>Gia dinh gia cuoi</Label>
+                  <div className="flex gap-2">
+                    <Input type="number" min={0} value={finalValuation} onChange={event => setFinalValuation(event.target.value)} />
+                    <Button onClick={valuate} disabled={saving || !finalValuation}>
+                      <DollarSign className="mr-1 h-4 w-4" /> Dinh gia
+                    </Button>
                   </div>
-                ))
-              ) : filtered.length === 0 ? (
-                <div className="p-8 text-center text-muted-foreground">
-                  <RotateCcw className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                  <p>Không có yêu cầu nào</p>
                 </div>
-              ) : (
-                filtered.map(req => (
-                  <div
-                    key={req.id}
-                    className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${selected?.id === req.id ? 'bg-blue-50' : ''}`}
-                    onClick={() => { setSelected(req); setFinalValue(String(req.estimatedValue)); }}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="flex items-start gap-3">
-                        <div className="h-10 w-10 bg-red-50 rounded-xl flex items-center justify-center shrink-0">
-                          <RotateCcw className="h-5 w-5 text-[#e31837]" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-sm">{req.brand} {req.model}</p>
-                          <p className="text-xs text-muted-foreground">{req.storage} • {req.condition}</p>
-                          <p className="text-xs text-muted-foreground mt-0.5">{req.customerName} • {req.customerPhone}</p>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <Badge className={`border-0 text-[10px] ${STATUS_COLORS[req.status]}`}>
-                          {req.status}
-                        </Badge>
-                        <p className="text-xs font-semibold text-[#e31837] mt-1">{formatPrice(req.estimatedValue)}</p>
-                        <p className="text-[10px] text-muted-foreground">{new Date(req.createdAt).toLocaleDateString('vi-VN')}</p>
-                      </div>
-                    </div>
+              )}
+
+              {nextStatuses(selected.status).length > 0 && (
+                <div className="grid gap-3 rounded-md border p-3">
+                  <Label>Chuyen trang thai</Label>
+                  <div className="flex gap-2">
+                    <Select value={nextStatus} onValueChange={setNextStatus}>
+                      <SelectTrigger><SelectValue placeholder="Chon trang thai" /></SelectTrigger>
+                      <SelectContent>{nextStatuses(selected.status).map(status => <SelectItem key={status} value={status}>{status}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Button onClick={updateStatus} disabled={saving || !nextStatus}>Cap nhat</Button>
                   </div>
-                ))
+                </div>
+              )}
+
+              {selected.status === 'ACCEPTED' && (
+                <Button className="w-full" onClick={complete} disabled={saving}>
+                  <CheckCircle className="mr-1 h-4 w-4" /> Danh dau hoan thanh
+                </Button>
+              )}
+
+              {selected.status === 'REJECTED' && (
+                <div className="rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  <XCircle className="mr-1 inline h-4 w-4" /> Yeu cau da bi tu choi.
+                </div>
               )}
             </div>
-          </Card>
-        </div>
-
-        {/* Detail */}
-        <div>
-          {selected ? (
-            <Card className="border-0 shadow-sm sticky top-20">
-              <CardHeader className="border-b pb-3">
-                <CardTitle className="text-base">Chi tiết yêu cầu</CardTitle>
-              </CardHeader>
-              <CardContent className="p-5 space-y-4">
-                <div className="space-y-2">
-                  {[
-                    { label: 'Khách hàng', value: selected.customerName },
-                    { label: 'Điện thoại', value: selected.customerPhone },
-                    { label: 'Thương hiệu', value: selected.brand },
-                    { label: 'Model', value: selected.model },
-                    { label: 'Dung lượng', value: selected.storage },
-                    { label: 'Tình trạng', value: selected.condition },
-                  ].map(item => (
-                    <div key={item.label} className="flex justify-between py-1.5 border-b border-dashed border-gray-100 last:border-0 text-sm">
-                      <span className="text-muted-foreground">{item.label}</span>
-                      <span className="font-medium">{item.value}</span>
-                    </div>
-                  ))}
-                  <div className="flex justify-between py-1.5 border-b border-dashed border-gray-100 text-sm">
-                    <span className="text-muted-foreground">Giá ước tính</span>
-                    <span className="font-bold text-[#e31837]">{formatPrice(selected.estimatedValue)}</span>
-                  </div>
-                  {selected.finalValue && (
-                    <div className="flex justify-between py-1.5 text-sm">
-                      <span className="text-muted-foreground">Giá cuối</span>
-                      <span className="font-bold text-green-600">{formatPrice(selected.finalValue)}</span>
-                    </div>
-                  )}
-                </div>
-
-                {selected.note && (
-                  <div className="p-3 bg-gray-50 rounded-lg">
-                    <p className="text-xs text-muted-foreground mb-1">Ghi chú:</p>
-                    <p className="text-sm">{selected.note}</p>
-                  </div>
-                )}
-
-                {selected.status === 'Chờ định giá' && (
-                  <div className="space-y-3">
-                    <div>
-                      <label className="text-sm font-medium block mb-1">Giá định giá cuối cùng (VNĐ)</label>
-                      <Input
-                        type="number"
-                        value={finalValue}
-                        onChange={e => setFinalValue(e.target.value)}
-                        placeholder="Nhập giá định giá..."
-                        className="font-mono"
-                      />
-                      {finalValue && <p className="text-xs text-[#e31837] mt-1">{formatPrice(Number(finalValue))}</p>}
-                    </div>
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        className="flex-1 bg-green-600 hover:bg-green-700"
-                        disabled={processing}
-                        onClick={() => handleUpdateStatus(selected.id, 'Chấp nhận', Number(finalValue))}
-                      >
-                        <CheckCircle className="h-4 w-4 mr-1" /> Chấp nhận
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="flex-1 border-red-300 text-red-600 hover:bg-red-50"
-                        disabled={processing}
-                        onClick={() => handleUpdateStatus(selected.id, 'Từ chối')}
-                      >
-                        <XCircle className="h-4 w-4 mr-1" /> Từ chối
-                      </Button>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="w-full"
-                      disabled={processing || !finalValue}
-                      onClick={() => handleUpdateStatus(selected.id, 'Đã định giá', Number(finalValue))}
-                    >
-                      Lưu định giá (chưa xác nhận)
-                    </Button>
-                  </div>
-                )}
-
-                {selected.status === 'Đã định giá' && (
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      className="flex-1 bg-green-600 hover:bg-green-700"
-                      disabled={processing}
-                      onClick={() => handleUpdateStatus(selected.id, 'Chấp nhận', selected.finalValue)}
-                    >
-                      <CheckCircle className="h-4 w-4 mr-1" /> Xác nhận
-                    </Button>
-                    <Button
-                      size="sm"
-                      className="flex-1 bg-gray-700 hover:bg-gray-800"
-                      disabled={processing}
-                      onClick={() => handleUpdateStatus(selected.id, 'Đã hoàn thành', selected.finalValue)}
-                    >
-                      Hoàn thành
-                    </Button>
-                  </div>
-                )}
-
-                {selected.status === 'Chấp nhận' && (
-                  <Button
-                    size="sm"
-                    className="w-full bg-gray-700 hover:bg-gray-800"
-                    disabled={processing}
-                    onClick={() => handleUpdateStatus(selected.id, 'Đã hoàn thành', selected.finalValue)}
-                  >
-                    Đánh dấu hoàn thành
-                  </Button>
-                )}
-              </CardContent>
-            </Card>
-          ) : (
-            <Card className="border-0 shadow-sm sticky top-20">
-              <CardContent className="p-8 text-center text-muted-foreground">
-                <Eye className="h-12 w-12 mx-auto mb-3 opacity-30" />
-                <p className="text-sm">Chọn một yêu cầu để xem chi tiết và xử lý</p>
-              </CardContent>
-            </Card>
           )}
-        </div>
-      </div>
+          <DialogFooter><Button variant="outline" onClick={() => setSelected(null)}>Dong</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

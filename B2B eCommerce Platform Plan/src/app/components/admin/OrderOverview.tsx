@@ -7,7 +7,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   DollarSign, ClipboardList, TrendingUp, Download, Truck, Wallet,
-  FileText, XCircle, AlertTriangle, RefreshCw, CheckCircle2,
+  FileText, XCircle, CheckCircle2,
 } from 'lucide-react';
 import { DataTable } from '../shared/DataTable';
 import { FilterBar } from '../shared/FilterBar';
@@ -21,8 +21,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
 import { Badge } from '../ui/badge';
-import { orderApi, shipmentApi, paymentApi } from '../../services/api';
-import { invoiceApi } from '../../services/adminApi';
+import { adminOrderApi, adminPaymentApi, customerShipmentApi, orderInvoiceApi } from '../../services/adminBackendApi';
 import { toast } from 'sonner';
 import type {
   Order, Shipment, Payment, Invoice,
@@ -38,35 +37,38 @@ const formatPrice = (price: number) =>
 const formatCompact = (price: number) =>
   new Intl.NumberFormat('vi-VN', { notation: 'compact' }).format(price);
 
+const ORDER_STATUS_OPTIONS = ['PENDING', 'CONFIRMED', 'SHIPPING', 'DELIVERED', 'CANCELLED', 'RETURNED'];
+const ORDER_STEPS = ['PENDING', 'CONFIRMED', 'SHIPPING', 'DELIVERED'];
+
 const columns: ColumnConfig[] = [
   { key: 'orderNumber', label: 'Mã đơn hàng', visible: true, sortable: true },
   { key: 'buyerName', label: 'Người mua', visible: true, sortable: true },
   { key: 'supplierName', label: 'Nhà cung cấp', visible: true, sortable: true },
   { key: 'totalAmount', label: 'Tổng tiền', visible: true, sortable: true },
   { key: 'status', label: 'Trạng thái', visible: true, sortable: true, editable: true, type: 'select',
-    options: ['Chờ xác nhận', 'Đã xác nhận', 'Đang xử lý', 'Đang giao hàng', 'Đã giao', 'Đã huỷ'] },
+    options: ORDER_STATUS_OPTIONS },
+  { key: 'paymentStatus', label: 'TT thanh toan', visible: true, sortable: true },
   { key: 'paymentMethod', label: 'Thanh toán', visible: true, sortable: false },
   { key: 'createdAt', label: 'Ngày tạo', visible: true, sortable: true },
 ];
 
 const filterConfigs: FilterConfig[] = [
-  { key: 'status', label: 'Trạng thái', type: 'select', options: [
-    { label: 'Chờ xác nhận', value: 'Chờ xác nhận' },
-    { label: 'Đã xác nhận', value: 'Đã xác nhận' },
-    { label: 'Đang xử lý', value: 'Đang xử lý' },
-    { label: 'Đang giao hàng', value: 'Đang giao hàng' },
-    { label: 'Đã giao', value: 'Đã giao' },
-    { label: 'Đã huỷ', value: 'Đã huỷ' },
+  { key: 'status', label: 'Trang thai', type: 'select', options: [
+    { label: 'PENDING', value: 'PENDING' },
+    { label: 'CONFIRMED', value: 'CONFIRMED' },
+    { label: 'SHIPPING', value: 'SHIPPING' },
+    { label: 'DELIVERED', value: 'DELIVERED' },
+    { label: 'CANCELLED', value: 'CANCELLED' },
+    { label: 'RETURNED', value: 'RETURNED' },
   ]},
-  { key: 'paymentMethod', label: 'Thanh toán', type: 'select', options: [
-    { label: 'Chuyển khoản', value: 'Chuyển khoản' },
-    { label: 'COD', value: 'COD' },
-    { label: 'L/C', value: 'L/C' },
+  { key: 'paymentStatus', label: 'TT thanh toan', type: 'select', options: [
+    { label: 'UNPAID', value: 'UNPAID' },
+    { label: 'PAID', value: 'PAID' },
+    { label: 'FAILED', value: 'FAILED' },
+    { label: 'REFUNDED', value: 'REFUNDED' },
+    { label: 'PARTIALLY_REFUNDED', value: 'PARTIALLY_REFUNDED' },
   ]},
 ];
-
-// Timeline steps
-const ORDER_STEPS = ['Chờ xác nhận', 'Đã xác nhận', 'Đang xử lý', 'Đang giao hàng', 'Đã giao'];
 
 export function OrderOverview() {
   const [orders, setOrders] = useState<Order[]>([]);
@@ -88,15 +90,12 @@ export function OrderOverview() {
   // Action dialogs
   const [cancelDialog, setCancelDialog] = useState<Order | null>(null);
   const [cancelReason, setCancelReason] = useState('');
-  const [disputeDialog, setDisputeDialog] = useState<Order | null>(null);
-  const [disputeResult, setDisputeResult] = useState('');
-
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [allRes, pageRes] = await Promise.all([
-        orderApi.getPaginated({ page: 1, pageSize: 1000 }),
-        orderApi.getPaginated(pagination, sort.field ? sort : undefined, filters),
+        adminOrderApi.getPaginated({ page: 1, pageSize: 1000 }, undefined, undefined, search || undefined),
+        adminOrderApi.getPaginated(pagination, sort.field ? sort : undefined, filters, search || undefined),
       ]);
       setAllOrders(allRes.data);
       let data = pageRes.data;
@@ -129,9 +128,9 @@ export function OrderOverview() {
     setSelectedOrder(order);
     setDetailTab('overview');
     const [ship, pay, inv] = await Promise.all([
-      shipmentApi.getByOrder(order.id).catch(() => null),
-      paymentApi.getByOrder(order.id).catch(() => null),
-      invoiceApi.getByOrder(order.id).catch(() => undefined),
+      customerShipmentApi.getByOrder(order.id).catch(() => null),
+      adminPaymentApi.getByOrder(order.id, order.orderNumber).catch(() => null),
+      orderInvoiceApi.getByOrder(order.id).catch(() => undefined),
     ]);
     setOrderShipment(ship ?? null);
     setOrderPayment(pay ?? null);
@@ -141,9 +140,9 @@ export function OrderOverview() {
   // Stats
   const stats = useMemo(() => {
     const totalRevenue = allOrders.reduce((s, o) => s + o.totalAmount, 0);
-    const pendingCount = allOrders.filter(o => o.status === 'Chờ xác nhận').length;
-    const completedCount = allOrders.filter(o => o.status === 'Đã giao').length;
-    const cancelledCount = allOrders.filter(o => o.status === 'Đã huỷ').length;
+    const pendingCount = allOrders.filter(o => o.status === 'PENDING').length;
+    const completedCount = allOrders.filter(o => o.status === 'DELIVERED').length;
+    const cancelledCount = allOrders.filter(o => o.status === 'CANCELLED').length;
     return { totalRevenue, pendingCount, completedCount, cancelledCount, totalOrders: allOrders.length };
   }, [allOrders]);
 
@@ -151,7 +150,7 @@ export function OrderOverview() {
   const revenueByDate = useMemo(() => {
     const map: Record<string, number> = {};
     for (const o of allOrders) {
-      if (o.status !== 'Đã huỷ') {
+      if (o.status !== 'CANCELLED') {
         const d = o.createdAt.slice(0, 10);
         map[d] = (map[d] || 0) + o.totalAmount;
       }
@@ -164,14 +163,14 @@ export function OrderOverview() {
 
   // Timeline
   const getTimelineStep = (status: string) => {
-    if (status === 'Đã huỷ') return -1;
+    if (status === 'CANCELLED') return -1;
     return ORDER_STEPS.indexOf(status);
   };
 
   // Inline edit
   const handleInlineEdit = async (id: string, field: string, value: unknown) => {
     if (field === 'status') {
-      await orderApi.updateStatus(id, value as Order['status']);
+      await adminOrderApi.updateStatus(id, value as Order['status']);
       setOrders(prev => prev.map(o => o.id === id ? { ...o, status: value as Order['status'] } : o));
       toast.success('Đã cập nhật trạng thái');
     }
@@ -180,25 +179,12 @@ export function OrderOverview() {
   // Cancel order
   const handleCancel = async () => {
     if (!cancelDialog || !cancelReason.trim()) { toast.error('Vui lòng nhập lý do'); return; }
-    await orderApi.updateStatus(cancelDialog.id, 'Đã huỷ');
-    setOrders(prev => prev.map(o => o.id === cancelDialog.id ? { ...o, status: 'Đã huỷ' } : o));
-    if (selectedOrder?.id === cancelDialog.id) setSelectedOrder(prev => prev ? { ...prev, status: 'Đã huỷ' } : null);
+    await adminOrderApi.updateStatus(cancelDialog.id, 'CANCELLED', cancelReason);
+    setOrders(prev => prev.map(o => o.id === cancelDialog.id ? { ...o, status: 'CANCELLED' as Order['status'] } : o));
+    if (selectedOrder?.id === cancelDialog.id) setSelectedOrder(prev => prev ? { ...prev, status: 'CANCELLED' as Order['status'] } : null);
     setCancelDialog(null);
     setCancelReason('');
     toast.success('Đã huỷ đơn hàng');
-  };
-
-  // Dispute resolution
-  const handleDispute = async () => {
-    if (!disputeDialog || !disputeResult.trim()) { toast.error('Vui lòng nhập kết quả'); return; }
-    toast.success('Đã ghi nhận kết quả tranh chấp');
-    setDisputeDialog(null);
-    setDisputeResult('');
-  };
-
-  // Refund
-  const handleRefund = async (order: Order) => {
-    toast.success(`Đã hoàn tiền cho đơn ${order.orderNumber} (giả lập)`);
   };
 
   // CSV Export
@@ -331,7 +317,7 @@ export function OrderOverview() {
           {selectedOrder && (
             <div className="space-y-4">
               {/* Timeline */}
-              {selectedOrder.status !== 'Đã huỷ' && (
+              {selectedOrder.status !== 'CANCELLED' && (
                 <div className="flex items-center gap-1 overflow-x-auto pb-2">
                   {ORDER_STEPS.map((step, i) => {
                     const current = getTimelineStep(selectedOrder.status);
@@ -349,7 +335,7 @@ export function OrderOverview() {
                   })}
                 </div>
               )}
-              {selectedOrder.status === 'Đã huỷ' && (
+              {selectedOrder.status === 'CANCELLED' && (
                 <Badge variant="destructive">Đơn hàng đã bị huỷ</Badge>
               )}
 
@@ -357,17 +343,9 @@ export function OrderOverview() {
               <div className="flex flex-wrap gap-2">
                 <StatusBadge status={selectedOrder.status} />
                 <div className="ml-auto flex gap-2">
-                  {selectedOrder.status !== 'Đã huỷ' && selectedOrder.status !== 'Đã giao' && (
+                  {selectedOrder.status !== 'CANCELLED' && selectedOrder.status !== 'DELIVERED' && (
                     <Button size="sm" variant="outline" className="text-red-600" onClick={() => { setCancelDialog(selectedOrder); }}>
                       <XCircle className="mr-1 h-3.5 w-3.5" /> Huỷ đơn
-                    </Button>
-                  )}
-                  <Button size="sm" variant="outline" className="text-orange-600" onClick={() => { setDisputeDialog(selectedOrder); }}>
-                    <AlertTriangle className="mr-1 h-3.5 w-3.5" /> Tranh chấp
-                  </Button>
-                  {selectedOrder.status === 'Đã huỷ' && (
-                    <Button size="sm" variant="outline" className="text-green-600" onClick={() => handleRefund(selectedOrder)}>
-                      <RefreshCw className="mr-1 h-3.5 w-3.5" /> Hoàn tiền
                     </Button>
                   )}
                 </div>
@@ -505,23 +483,6 @@ export function OrderOverview() {
         </DialogContent>
       </Dialog>
 
-      {/* Dispute dialog */}
-      <Dialog open={!!disputeDialog} onOpenChange={() => { setDisputeDialog(null); setDisputeResult(''); }}>
-        <DialogContent className="max-w-sm">
-          <DialogHeader><DialogTitle className="text-orange-600">Xử lý tranh chấp</DialogTitle></DialogHeader>
-          <div className="space-y-3">
-            <p className="text-muted-foreground">Ghi nhận kết quả tranh chấp cho đơn <strong>{disputeDialog?.orderNumber}</strong></p>
-            <div className="grid gap-2">
-              <Label>Kết quả xử lý *</Label>
-              <Textarea value={disputeResult} onChange={e => setDisputeResult(e.target.value)} placeholder="Mô tả kết quả tranh chấp..." rows={3} />
-            </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => { setDisputeDialog(null); setDisputeResult(''); }}>Quay lại</Button>
-              <Button onClick={handleDispute} disabled={!disputeResult.trim()}>Ghi nhận</Button>
-            </div>
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

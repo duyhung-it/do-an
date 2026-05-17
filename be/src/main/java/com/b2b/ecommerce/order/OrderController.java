@@ -49,6 +49,20 @@ public class OrderController {
 		return ApiResponse.ok(orders.order(userId(userId), id));
 	}
 
+	@GetMapping("/{id}/invoice")
+	public ApiResponse<InvoiceDto> invoice(
+			@RequestHeader(name = "X-User-Id", required = false) String userId,
+			@PathVariable String id) {
+		return ApiResponse.ok(orders.invoice(userId(userId), id));
+	}
+
+	@GetMapping("/{id}/shipment")
+	public ApiResponse<ShipmentDto> shipment(
+			@RequestHeader(name = "X-User-Id", required = false) String userId,
+			@PathVariable String id) {
+		return ApiResponse.ok(orders.shipment(userId(userId), id));
+	}
+
 	@PostMapping
 	public ResponseEntity<ApiResponse<OrderCreateResponse>> create(
 			@RequestHeader(name = "X-User-Id", required = false) String userId,

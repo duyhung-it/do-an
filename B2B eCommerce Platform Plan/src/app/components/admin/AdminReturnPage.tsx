@@ -1,311 +1,244 @@
-// ============================================================
-// AdminReturnPage — Quản lý trả hàng toàn hệ thống (D15)
-// Stats, DataTable, Timeline, Can thiệp, Cưỡng chế hoàn tiền
-// ============================================================
-
-import { useState, useEffect, useCallback } from 'react';
-import { RotateCcw, Clock, CheckCircle, XCircle, DollarSign, RefreshCw, Eye, AlertTriangle, Shield } from 'lucide-react';
-import { Button } from '../ui/button';
-import { Badge } from '../ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '../ui/dialog';
-import { Textarea } from '../ui/textarea';
-import { Label } from '../ui/label';
-import { AppBreadcrumb } from '../shared/AppBreadcrumb';
-import { DataTable } from '../shared/DataTable';
-import { StatusBadge } from '../shared/StatusBadge';
-import { StatsCard } from '../shared/StatsCard';
-import { FilterBar } from '../shared/FilterBar';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle, Eye, RefreshCw, RotateCcw, XCircle } from 'lucide-react';
 import { toast } from 'sonner';
+import { AppBreadcrumb } from '../shared/AppBreadcrumb';
+import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
+import { Card, CardContent } from '../ui/card';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Textarea } from '../ui/textarea';
+import { adminReturnApi } from '../../services/adminBackendApi';
 
-const formatCurrency = (n: number) =>
-  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(n);
-const formatDate = (s: string) => new Date(s).toLocaleDateString('vi-VN');
-
-interface ReturnRequest {
+type ReturnRow = {
   id: string;
-  buyerName: string;
-  sellerName: string;
-  orderNumber: string;
+  returnNumber: string;
+  orderId?: string;
+  customerName: string;
+  customerPhone: string;
   reason: string;
-  amount: number;
   status: string;
+  refundAmount: number;
+  disputeResolution?: string;
   createdAt: string;
-  resolvedAt?: string;
-  adminNote?: string;
-  timeline: { date: string; event: string; actor: string }[];
+  updatedAt: string;
+};
+
+const STATUSES = ['PENDING', 'APPROVED', 'PROCESSING', 'REFUNDED', 'CLOSED', 'REJECTED'];
+
+const nextStatuses = (status: string) => {
+  if (status === 'PENDING') return ['APPROVED', 'REJECTED'];
+  if (status === 'APPROVED') return ['PROCESSING'];
+  if (status === 'PROCESSING') return ['REFUNDED'];
+  if (status === 'REFUNDED') return ['CLOSED'];
+  return [];
+};
+
+const formatMoney = (value: number) =>
+  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value || 0);
+
+const formatDate = (value?: string) => value ? new Date(value).toLocaleString('vi-VN') : '-';
+
+function StatusPill({ status }: { status: string }) {
+  const className = status === 'REJECTED'
+    ? 'border-red-200 bg-red-50 text-red-700'
+    : status === 'REFUNDED' || status === 'CLOSED'
+      ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+      : status === 'PROCESSING'
+        ? 'border-blue-200 bg-blue-50 text-blue-700'
+        : 'border-amber-200 bg-amber-50 text-amber-700';
+  return <Badge variant="outline" className={className}>{status}</Badge>;
 }
 
-const mockReturns: ReturnRequest[] = [
-  {
-    id: 'RET-001', buyerName: 'Công ty ABC', sellerName: 'Tech Solutions VN',
-    orderNumber: 'ORD-2026-0085', reason: 'Sản phẩm không đúng mô tả, màu sắc khác catalog',
-    amount: 12500000, status: 'Chờ xử lý', createdAt: '2026-04-05T10:00:00',
-    timeline: [
-      { date: '2026-04-05T10:00:00', event: 'Buyer tạo yêu cầu trả hàng', actor: 'Công ty ABC' },
-      { date: '2026-04-05T14:00:00', event: 'Hệ thống gửi notification cho NCC', actor: 'Hệ thống' },
-    ],
-  },
-  {
-    id: 'RET-002', buyerName: 'Tập đoàn XYZ', sellerName: 'Digital World',
-    orderNumber: 'ORD-2026-0072', reason: 'Hàng bị vỡ khi vận chuyển, cần đổi hàng mới',
-    amount: 34000000, status: 'Đang tranh chấp', createdAt: '2026-04-01T09:00:00',
-    adminNote: 'NCC từ chối nhưng có ảnh minh chứng hàng vỡ',
-    timeline: [
-      { date: '2026-04-01T09:00:00', event: 'Buyer tạo yêu cầu', actor: 'Tập đoàn XYZ' },
-      { date: '2026-04-02T11:00:00', event: 'NCC từ chối: "Hàng nguyên vẹn khi xuất kho"', actor: 'Digital World' },
-      { date: '2026-04-03T15:00:00', event: 'Buyer leo thang tranh chấp', actor: 'Tập đoàn XYZ' },
-    ],
-  },
-  {
-    id: 'RET-003', buyerName: 'Ngân hàng DEF', sellerName: 'Network Pro',
-    orderNumber: 'ORD-2026-0058', reason: 'Thiết bị bị lỗi ngay khi mở hộp (DOA)',
-    amount: 8900000, status: 'Đã hoàn tiền', createdAt: '2026-03-25T08:00:00', resolvedAt: '2026-03-29T16:00:00',
-    timeline: [
-      { date: '2026-03-25T08:00:00', event: 'Buyer báo lỗi DOA', actor: 'Ngân hàng DEF' },
-      { date: '2026-03-26T10:00:00', event: 'NCC xác nhận thiết bị lỗi', actor: 'Network Pro' },
-      { date: '2026-03-29T16:00:00', event: 'Đã hoàn tiền 100%', actor: 'Hệ thống' },
-    ],
-  },
-  {
-    id: 'RET-004', buyerName: 'Công ty GHI', sellerName: 'Office World',
-    orderNumber: 'ORD-2026-0041', reason: 'Đặt nhầm model, muốn đổi sang model khác',
-    amount: 3200000, status: 'Từ chối', createdAt: '2026-03-18T14:00:00', resolvedAt: '2026-03-20T09:00:00',
-    timeline: [
-      { date: '2026-03-18T14:00:00', event: 'Buyer yêu cầu đổi model', actor: 'Công ty GHI' },
-      { date: '2026-03-20T09:00:00', event: 'NCC từ chối: Lỗi từ phía buyer (đặt sai)', actor: 'Office World' },
-    ],
-  },
-  {
-    id: 'RET-005', buyerName: 'Công ty JKL', sellerName: 'Smart Devices Co',
-    orderNumber: 'ORD-2026-0095', reason: 'Nhận thiếu hàng, còn thiếu 5 bộ trong danh sách',
-    amount: 15600000, status: 'Đang xử lý', createdAt: '2026-04-06T11:00:00',
-    timeline: [
-      { date: '2026-04-06T11:00:00', event: 'Buyer thông báo thiếu hàng', actor: 'Công ty JKL' },
-      { date: '2026-04-06T15:00:00', event: 'NCC đang kiểm tra kho', actor: 'Smart Devices Co' },
-    ],
-  },
-];
-
-const statusOptions = ['Tất cả', 'Chờ xử lý', 'Đang xử lý', 'Đang tranh chấp', 'Đã hoàn tiền', 'Từ chối'];
-
 export function AdminReturnPage() {
-  const [returns, setReturns] = useState<ReturnRequest[]>([]);
+  const [rows, setRows] = useState<ReturnRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('Tất cả');
-  const [selected, setSelected] = useState<ReturnRequest | null>(null);
-  const [interveneNote, setInterveneNote] = useState('');
-  const [showIntervene, setShowIntervene] = useState<'intervene' | 'force-refund' | null>(null);
+  const [status, setStatus] = useState('all');
+  const [selected, setSelected] = useState<ReturnRow | null>(null);
+  const [nextStatus, setNextStatus] = useState('');
+  const [note, setNote] = useState('');
+  const [resolution, setResolution] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
-    await new Promise(r => setTimeout(r, 500));
-    setReturns(mockReturns);
-    setLoading(false);
-  }, []);
+    try {
+      const filters = status === 'all' ? [] : [{ key: 'status', label: 'Status', value: status }];
+      const page = await adminReturnApi.getPaginated({ page: 1, pageSize: 100 }, undefined, filters, search || undefined);
+      setRows(page.data as ReturnRow[]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Khong tai duoc yeu cau tra hang');
+    } finally {
+      setLoading(false);
+    }
+  }, [search, status]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const filtered = returns.filter(r => {
-    const matchSearch = !search || r.buyerName.toLowerCase().includes(search.toLowerCase()) ||
-      r.sellerName.toLowerCase().includes(search.toLowerCase()) || r.orderNumber.includes(search);
-    const matchStatus = statusFilter === 'Tất cả' || r.status === statusFilter;
-    return matchSearch && matchStatus;
-  });
+  const stats = useMemo(() => ({
+    total: rows.length,
+    pending: rows.filter(row => row.status === 'PENDING').length,
+    processing: rows.filter(row => ['APPROVED', 'PROCESSING'].includes(row.status)).length,
+    done: rows.filter(row => ['REFUNDED', 'CLOSED'].includes(row.status)).length,
+    rejected: rows.filter(row => row.status === 'REJECTED').length,
+  }), [rows]);
 
-  const stats = {
-    total: returns.length,
-    pending: returns.filter(r => ['Chờ xử lý', 'Đang xử lý'].includes(r.status)).length,
-    refunded: returns.filter(r => r.status === 'Đã hoàn tiền').length,
-    disputed: returns.filter(r => r.status === 'Đang tranh chấp').length,
-    avgDays: 4,
+  const openDetail = async (row: ReturnRow) => {
+    setSelected(row);
+    setNextStatus('');
+    setNote('');
+    setResolution(row.disputeResolution ?? '');
+    try {
+      const detail = await adminReturnApi.getById(row.id);
+      setSelected(detail as ReturnRow);
+      setResolution((detail as ReturnRow).disputeResolution ?? '');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Khong tai duoc chi tiet tra hang');
+    }
   };
 
-  const columns = [
-    { key: 'id', label: 'Mã trả', render: (item: ReturnRequest) => <span className="font-mono text-xs text-muted-foreground">{item.id}</span> },
-    {
-      key: 'buyerName', label: 'Buyer → NCC',
-      render: (item: ReturnRequest) => (
-        <div>
-          <p className="font-medium text-sm">{item.buyerName}</p>
-          <p className="text-xs text-muted-foreground">→ {item.sellerName}</p>
-          <p className="text-xs text-blue-600">{item.orderNumber}</p>
-        </div>
-      ),
-    },
-    {
-      key: 'reason', label: 'Lý do',
-      render: (item: ReturnRequest) => <p className="text-sm line-clamp-2 max-w-48">{item.reason}</p>,
-    },
-    {
-      key: 'amount', label: 'Số tiền',
-      render: (item: ReturnRequest) => <span className="text-primary font-semibold">{formatCurrency(item.amount)}</span>,
-    },
-    { key: 'createdAt', label: 'Ngày tạo', render: (item: ReturnRequest) => <span className="text-xs">{formatDate(item.createdAt)}</span> },
-    { key: 'status', label: 'Trạng thái', render: (item: ReturnRequest) => <StatusBadge status={item.status} /> },
-    {
-      key: 'actions', label: '',
-      render: (item: ReturnRequest) => (
-        <div className="flex gap-1">
-          <Button size="sm" variant="ghost" onClick={() => setSelected(item)}><Eye className="h-4 w-4" /></Button>
-          {item.status === 'Đang tranh chấp' && (
-            <Button size="sm" variant="ghost" className="text-orange-600" title="Can thiệp"
-              onClick={() => { setSelected(item); setShowIntervene('intervene'); }}>
-              <Shield className="h-4 w-4" />
-            </Button>
-          )}
-        </div>
-      ),
-    },
-  ];
+  const updateStatus = async () => {
+    if (!selected || !nextStatus) return;
+    setSaving(true);
+    try {
+      const updated = await adminReturnApi.updateStatus(selected.id, nextStatus, note);
+      setSelected(updated as ReturnRow);
+      setNextStatus('');
+      setNote('');
+      await fetchData();
+      toast.success('Da cap nhat trang thai tra hang');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Cap nhat trang thai that bai');
+    } finally {
+      setSaving(false);
+    }
+  };
 
-  const handleAction = (action: 'intervene' | 'force-refund') => {
-    if (!selected || !interveneNote.trim()) return;
-    setReturns(prev => prev.map(r => r.id === selected.id
-      ? {
-        ...r,
-        status: action === 'force-refund' ? 'Đã hoàn tiền' : 'Đang xử lý',
-        adminNote: interveneNote,
-        resolvedAt: action === 'force-refund' ? new Date().toISOString() : undefined,
-        timeline: [...r.timeline, { date: new Date().toISOString(), event: action === 'force-refund' ? `Admin cưỡng chế hoàn tiền: ${interveneNote}` : `Admin can thiệp: ${interveneNote}`, actor: 'Admin' }],
-      }
-      : r
-    ));
-    toast.success(action === 'force-refund' ? 'Đã cưỡng chế hoàn tiền' : 'Đã can thiệp vào tranh chấp');
-    setShowIntervene(null);
-    setInterveneNote('');
-    setSelected(null);
+  const saveResolution = async () => {
+    if (!selected || !resolution.trim()) return;
+    setSaving(true);
+    try {
+      const updated = await adminReturnApi.resolveDispute(selected.id, resolution.trim());
+      setSelected(updated as ReturnRow);
+      await fetchData();
+      toast.success('Da luu xu ly tranh chap');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Luu xu ly tranh chap that bai');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div className="space-y-6">
-      <AppBreadcrumb items={[{ label: 'Admin', href: '/admin' }, { label: 'Quản lý trả hàng' }]} />
+    <div className="space-y-5">
+      <AppBreadcrumb items={[{ label: 'Admin', href: '/admin' }, { label: 'Tra hang' }]} />
 
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="flex items-center gap-2"><RotateCcw className="h-6 w-6 text-primary" /> Quản lý trả hàng</h1>
-          <p className="text-muted-foreground">Giám sát và can thiệp yêu cầu trả hàng trên toàn sàn</p>
+          <h1>Quan ly tra hang</h1>
+          <p className="text-muted-foreground">Xu ly return request theo state machine BE.</p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchData}><RefreshCw className="h-4 w-4 mr-1" /> Làm mới</Button>
+        <Button variant="outline" onClick={fetchData} disabled={loading}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Lam moi
+        </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
-        <StatsCard title="Tổng yêu cầu" value={stats.total} icon={RotateCcw} />
-        <StatsCard title="Chờ xử lý" value={stats.pending} icon={Clock} variant="warning" />
-        <StatsCard title="Tranh chấp" value={stats.disputed} icon={AlertTriangle} variant="danger" />
-        <StatsCard title="Đã hoàn tiền" value={stats.refunded} icon={CheckCircle} variant="success" />
-        <StatsCard title="TB thời gian xử lý" value={stats.avgDays} format={(n) => `${n} ngày`} icon={Clock} variant="info" />
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+        <Card><CardContent className="p-4"><RotateCcw className="mb-2 h-4 w-4 text-blue-600" /><p className="text-muted-foreground">Tong</p><p className="text-xl">{stats.total}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><AlertTriangle className="mb-2 h-4 w-4 text-amber-600" /><p className="text-muted-foreground">Pending</p><p className="text-xl">{stats.pending}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><RefreshCw className="mb-2 h-4 w-4 text-blue-600" /><p className="text-muted-foreground">Dang xu ly</p><p className="text-xl">{stats.processing}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><CheckCircle className="mb-2 h-4 w-4 text-emerald-600" /><p className="text-muted-foreground">Hoan tat</p><p className="text-xl">{stats.done}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><XCircle className="mb-2 h-4 w-4 text-red-600" /><p className="text-muted-foreground">Tu choi</p><p className="text-xl">{stats.rejected}</p></CardContent></Card>
       </div>
 
-      {/* Alert tranh chấp */}
-      {stats.disputed > 0 && (
-        <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-          <AlertTriangle className="h-4 w-4" />
-          <span><strong>{stats.disputed} tranh chấp</strong> đang chờ Admin can thiệp</span>
+      <Card>
+        <CardContent className="flex flex-col gap-3 p-4 lg:flex-row">
+          <Input value={search} onChange={event => setSearch(event.target.value)} placeholder="Tim ma return, khach hang, dien thoai..." />
+          <Select value={status} onValueChange={setStatus}>
+            <SelectTrigger className="w-full lg:w-56"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tat ca trang thai</SelectItem>
+              {STATUSES.map(item => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="bg-muted/50 text-muted-foreground">
+              <tr>
+                <th className="px-4 py-3 text-left">Return</th>
+                <th className="px-4 py-3 text-left">Khach hang</th>
+                <th className="px-4 py-3 text-left">Ly do</th>
+                <th className="px-4 py-3 text-right">Refund</th>
+                <th className="px-4 py-3 text-center">Trang thai</th>
+                <th className="px-4 py-3 text-center">Thao tac</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y">
+              {loading ? (
+                <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={6}>Dang tai...</td></tr>
+              ) : rows.length === 0 ? (
+                <tr><td className="px-4 py-8 text-center text-muted-foreground" colSpan={6}>Khong co yeu cau tra hang</td></tr>
+              ) : rows.map(row => (
+                <tr key={row.id} className="hover:bg-muted/30">
+                  <td className="px-4 py-3"><p className="font-medium">{row.returnNumber}</p><p className="text-xs text-muted-foreground">{formatDate(row.createdAt)}</p></td>
+                  <td className="px-4 py-3"><p>{row.customerName}</p><p className="text-xs text-muted-foreground">{row.customerPhone}</p></td>
+                  <td className="px-4 py-3 max-w-xs"><p className="line-clamp-2">{row.reason}</p></td>
+                  <td className="px-4 py-3 text-right">{formatMoney(row.refundAmount)}</td>
+                  <td className="px-4 py-3 text-center"><StatusPill status={row.status} /></td>
+                  <td className="px-4 py-3 text-center">
+                    <Button variant="ghost" size="sm" onClick={() => openDetail(row)}><Eye className="h-4 w-4" /></Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-      )}
+      </Card>
 
-      <FilterBar
-        search={search} onSearchChange={setSearch}
-        searchPlaceholder="Tìm buyer, NCC, số đơn..."
-        filters={[{ key: 'status', label: 'Trạng thái', value: statusFilter, onChange: setStatusFilter, options: statusOptions }]}
-      />
-
-      <DataTable columns={columns} data={filtered} loading={loading} emptyMessage="Không có yêu cầu trả hàng nào" pagination getId={item => item.id} />
-
-      {/* Detail Dialog */}
-      <Dialog open={!!selected && !showIntervene} onOpenChange={() => setSelected(null)}>
-        <DialogContent className="max-w-xl max-h-[80vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2"><RotateCcw className="h-5 w-5" /> {selected?.id}</DialogTitle>
-          </DialogHeader>
+      <Dialog open={!!selected} onOpenChange={() => setSelected(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader><DialogTitle>{selected?.returnNumber}</DialogTitle></DialogHeader>
           {selected && (
-            <div className="space-y-4 text-sm">
-              <div className="grid grid-cols-2 gap-3">
-                <div><span className="text-muted-foreground">Buyer:</span> <strong>{selected.buyerName}</strong></div>
-                <div><span className="text-muted-foreground">NCC:</span> <strong>{selected.sellerName}</strong></div>
-                <div><span className="text-muted-foreground">Đơn hàng:</span> {selected.orderNumber}</div>
-                <div><span className="text-muted-foreground">Số tiền:</span> <strong className="text-primary">{formatCurrency(selected.amount)}</strong></div>
-                <div><span className="text-muted-foreground">Trạng thái:</span> <StatusBadge status={selected.status} /></div>
-                {selected.resolvedAt && <div><span className="text-muted-foreground">Giải quyết:</span> {formatDate(selected.resolvedAt)}</div>}
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                <div><p className="text-muted-foreground">Khach hang</p><p>{selected.customerName}</p></div>
+                <div><p className="text-muted-foreground">Dien thoai</p><p>{selected.customerPhone}</p></div>
+                <div><p className="text-muted-foreground">Order ID</p><p>{selected.orderId ?? '-'}</p></div>
+                <div><p className="text-muted-foreground">Refund</p><p>{formatMoney(selected.refundAmount)}</p></div>
+                <div><p className="text-muted-foreground">Trang thai</p><StatusPill status={selected.status} /></div>
+                <div><p className="text-muted-foreground">Cap nhat</p><p>{formatDate(selected.updatedAt)}</p></div>
               </div>
-              <div className="p-3 bg-muted rounded-lg">
-                <p className="font-medium mb-1">Lý do trả hàng:</p>
-                <p className="text-muted-foreground">{selected.reason}</p>
-              </div>
-              {selected.adminNote && (
-                <div className="p-3 bg-orange-50 border border-orange-200 rounded-lg">
-                  <p className="font-medium text-orange-700 mb-1">Ghi chú Admin:</p>
-                  <p className="text-orange-600">{selected.adminNote}</p>
+              <div><p className="text-muted-foreground">Ly do</p><p className="rounded-md bg-muted p-3">{selected.reason}</p></div>
+
+              {nextStatuses(selected.status).length > 0 && (
+                <div className="grid gap-3 rounded-md border p-3">
+                  <Label>Chuyen trang thai</Label>
+                  <div className="flex gap-2">
+                    <Select value={nextStatus} onValueChange={setNextStatus}>
+                      <SelectTrigger><SelectValue placeholder="Chon trang thai tiep theo" /></SelectTrigger>
+                      <SelectContent>{nextStatuses(selected.status).map(item => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
+                    </Select>
+                    <Button onClick={updateStatus} disabled={!nextStatus || saving}>{saving ? 'Dang luu...' : 'Cap nhat'}</Button>
+                  </div>
+                  <Textarea value={note} onChange={event => setNote(event.target.value)} placeholder="Ghi chu noi bo neu can" rows={2} />
                 </div>
               )}
-              {/* Timeline */}
-              <div>
-                <h4 className="font-semibold mb-2">Lịch sử xử lý</h4>
-                <div className="space-y-2">
-                  {selected.timeline.map((t, i) => (
-                    <div key={i} className="flex gap-3">
-                      <div className="flex flex-col items-center">
-                        <div className="w-2 h-2 rounded-full bg-primary mt-1.5" />
-                        {i < selected.timeline.length - 1 && <div className="w-px flex-1 bg-border mt-1" />}
-                      </div>
-                      <div className="pb-2">
-                        <p className="text-xs text-muted-foreground">{formatDate(t.date)} · {t.actor}</p>
-                        <p className="text-sm">{t.event}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+
+              <div className="grid gap-2">
+                <Label>Xu ly tranh chap</Label>
+                <Textarea value={resolution} onChange={event => setResolution(event.target.value)} rows={3} placeholder="Nhap noi dung xu ly tranh chap..." />
+                <Button variant="outline" onClick={saveResolution} disabled={!resolution.trim() || saving}>Luu xu ly tranh chap</Button>
               </div>
             </div>
           )}
-          <DialogFooter>
-            {selected?.status === 'Đang tranh chấp' && (
-              <>
-                <Button variant="outline" className="text-orange-600" onClick={() => setShowIntervene('intervene')}>
-                  <Shield className="h-4 w-4 mr-1" /> Can thiệp
-                </Button>
-                <Button variant="destructive" onClick={() => setShowIntervene('force-refund')}>
-                  <DollarSign className="h-4 w-4 mr-1" /> Cưỡng chế HT
-                </Button>
-              </>
-            )}
-            <Button variant="outline" onClick={() => setSelected(null)}>Đóng</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Intervene / Force Refund Dialog */}
-      <Dialog open={!!showIntervene} onOpenChange={() => setShowIntervene(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle className={showIntervene === 'force-refund' ? 'text-destructive' : 'text-orange-600'}>
-              {showIntervene === 'force-refund' ? '⚠️ Cưỡng chế hoàn tiền' : '🛡️ Can thiệp Admin'}
-            </DialogTitle>
-          </DialogHeader>
-          <div className="space-y-3">
-            <p className="text-sm text-muted-foreground">
-              {showIntervene === 'force-refund'
-                ? `Cưỡng chế hoàn tiền ${formatCurrency(selected?.amount || 0)} cho "${selected?.buyerName}". NCC sẽ bị trừ tiền.`
-                : `Ghi nhận can thiệp vào tranh chấp ${selected?.id}.`
-              }
-            </p>
-            <div>
-              <Label>Ghi chú / Lý do</Label>
-              <Textarea placeholder="Nhập ghi chú..." value={interveneNote} onChange={e => setInterveneNote(e.target.value)} rows={4} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowIntervene(null)}>Hủy</Button>
-            <Button
-              variant={showIntervene === 'force-refund' ? 'destructive' : 'default'}
-              onClick={() => handleAction(showIntervene!)}
-              disabled={!interveneNote.trim()}
-            >
-              Xác nhận
-            </Button>
-          </DialogFooter>
+          <DialogFooter><Button variant="outline" onClick={() => setSelected(null)}>Dong</Button></DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

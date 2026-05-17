@@ -195,6 +195,12 @@ public class CatalogController {
 		return ResponseEntity.noContent().build();
 	}
 
+	@PatchMapping("/admin/products/{productId}/images/reorder")
+	public ApiResponse<List<ProductImageDto>> reorderImages(@PathVariable String productId,
+			@Valid @RequestBody ImageReorderRequest request) {
+		return ApiResponse.ok(catalog.reorderImages(productId, request.imageIds()));
+	}
+
 	private UUID uuid(String value) {
 		return value == null || value.isBlank() ? null : UUID.fromString(value);
 	}

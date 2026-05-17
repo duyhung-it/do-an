@@ -2,7 +2,7 @@
 
 Base URL local: `http://localhost:8080/api/v1`
 
-Module status: implemented for first checkout transaction.
+Module status: implemented for first checkout transaction, customer list/detail, and customer cancel flow.
 
 BA source:
 
@@ -184,6 +184,8 @@ Current temporary rule:
 - `ORDER_EMPTY_ITEMS`
 - `ORDER_ADDRESS_REQUIRED`
 - `ORDER_INSUFFICIENT_STOCK`
+- `ORDER_NOT_FOUND`
+- `ORDER_CANNOT_CANCEL`
 - `PRODUCT_NOT_FOUND`
 - `PRODUCT_VARIANT_NOT_FOUND`
 - `PRODUCT_INACTIVE`
@@ -206,6 +208,9 @@ Current temporary rule:
 | Increment promotion usage | `05-api-orders.md`, order create rules step 10 and `10-business-rules.md`, section `2.3.4` |
 | Transaction rollback | `05-api-orders.md`, order create rules step 11 |
 | Order number format | `10-business-rules.md`, order number rule |
+| `GET /api/v1/orders` | `05-api-orders.md`, section `3.2 GET /orders` |
+| `GET /api/v1/orders/{id}` | `05-api-orders.md`, section `3.3 GET /orders/:id` |
+| `DELETE /api/v1/orders/{id}/cancel` | `05-api-orders.md`, section `3.4 DELETE /orders/:id/cancel` |
 
 ## FE Checklist
 
@@ -284,6 +289,58 @@ Error when order does not belong to current user:
   "error": {
     "code": "ORDER_NOT_FOUND",
     "message": "Khong tim thay don hang",
+    "details": {}
+  }
+}
+```
+
+## Cancel Order
+
+`DELETE /orders/{id}/cancel`
+
+Request:
+
+```json
+{
+  "reason": "Khach hang doi y"
+}
+```
+
+## Get Order Invoice
+
+`GET /orders/{id}/invoice`
+
+Returns invoice JSON after admin moves the order to `SHIPPING`. For full response shape and side effects, see `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`.
+
+Current behavior:
+
+- Only current customer can access invoice for their own order.
+- Before order reaches `SHIPPING`, backend returns `INVOICE_NOT_AVAILABLE`.
+- This endpoint returns JSON invoice metadata, not a PDF file yet.
+
+Response: full `OrderDto` like `data.order` in create response, with:
+
+- `status = CANCELLED`
+- `cancelReason` set from request.
+- `cancelledAt` set by backend.
+- new status history row from previous status to `CANCELLED`.
+
+Rules:
+
+- Only current customer can cancel their own order.
+- Only `PENDING` and `CONFIRMED` orders can be cancelled.
+- Promotion `usedCount` is decremented when the cancelled order used a promotion.
+- If the order was already `CONFIRMED`, backend releases reserved stock by increasing `product_variants.stock` and marking `order_stock_reservations.releasedAt`.
+- If the order is still `PENDING`, no stock release is needed because stock is reserved only when admin confirms the order.
+
+Error example:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "ORDER_CANNOT_CANCEL",
+    "message": "Don hang khong the huy o trang thai hien tai",
     "details": {}
   }
 }

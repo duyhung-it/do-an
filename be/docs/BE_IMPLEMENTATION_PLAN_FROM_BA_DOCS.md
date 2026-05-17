@@ -19,6 +19,20 @@ Nguon phan tich:
 
 ## 1. Ket luan chinh
 
+Cap nhat 2026-05-17:
+
+- Core B2C flow, cac gap FE admin trong `be/docs/FE_ADMIN_BACKEND_GAPS.md`, customer after-sales flow trong `07-api-after-sales.md`, loyalty flow trong `08-api-loyalty-notifications.md`, va admin BA completion da duoc implement den Flyway target version `18`.
+- Admin BA completion trong `09-api-admin.md` da duoc bo sung den Flyway target version `18`: admin users, notifications send/broadcast, suppliers, installment plans, warranty master, invoice manual ops, combos, blog, review reply/status, settings path aliases, shipment tracking alias.
+- FE nen ghep admin theo:
+  - `be/docs/FE_ADMIN_BACKEND_GAPS.md`
+  - `be/docs/FE_ADMIN_GAPS_COMPLETION_CONTRACT.md`
+  - `be/docs/BA_TO_BE_FE_MAPPING.md`
+- FE nen ghep after-sales customer theo:
+  - `be/docs/FE_AFTER_SALES_CUSTOMER_CONTRACT.md`
+- FE nen ghep loyalty theo:
+  - `be/docs/FE_LOYALTY_CONTRACT.md`
+- Con deferred that su: Security/RBAC, payment gateway callback that, customer notification inbox/preferences, automatic warranty item creation for every delivered transition, loyalty reverse points on refunded return.
+
 Backend can refactor theo huong **CELLPHONES B2C phone-store**, khong tiep tuc B2B marketplace/supplier portal. He thong co 3 vai tro chinh: `CUSTOMER`, `ADMIN`, `STAFF`.
 
 Quyet dinh chot:
@@ -649,9 +663,9 @@ Verify da chay:
 
 Next recommended step:
 
-1. Order cancel flow.
-2. Admin order list/detail + status update toi thieu.
-3. Stock reservation khi admin confirm order.
+1. Shipment placeholder khi order sang `SHIPPING`.
+2. Payment/customer list/detail endpoints `GET /payments`, `GET /payments/{id}`.
+3. Admin payment list/detail endpoints `GET /admin/payments`, `GET /admin/payments/{id}`.
 
 ### 2026-05-14 - Customer order list/detail
 
@@ -681,9 +695,468 @@ Verify da chay:
 
 Next recommended step:
 
-1. Order cancel flow.
-2. Admin order list/detail + status update toi thieu.
-3. Stock reservation khi admin confirm order.
+1. Shipment placeholder khi order sang `SHIPPING`.
+2. Payment/customer list/detail endpoints `GET /payments`, `GET /payments/{id}`.
+3. Admin payment list/detail endpoints `GET /admin/payments`, `GET /admin/payments/{id}`.
+
+### 2026-05-14 - Customer order cancel flow
+
+Scope da lam:
+
+- Them endpoint:
+  - `DELETE /api/v1/orders/{id}/cancel`
+- Implement cancel rules theo BA:
+  - Chi current customer duoc huy order cua chinh minh.
+  - Chi cho huy order o trang thai `PENDING` hoac `CONFIRMED`.
+  - Cap nhat order sang `CANCELLED`.
+  - Luu `cancelReason` va `cancelledAt`.
+  - Ghi them `order_status_history` tu status cu sang `CANCELLED`.
+  - Giam `promotions.used_count` neu order co dung promotion.
+- Cap nhat FE contract:
+  - `be/docs/FE_ORDER_CONTRACT.md`
+- Cap nhat BA mapping:
+  - `be/docs/BA_TO_BE_FE_MAPPING.md`
+
+Ghi chu:
+
+- Sau module stock reservation, cancel tu `CONFIRMED` da release reserved stock. Cancel tu `PENDING` khong doi stock vi chua reserve.
+
+Verify da chay:
+
+- `mvn test`
+- Test suite: 10 tests, 0 failures, 0 errors.
+
+Next recommended step:
+
+1. Shipment placeholder khi order sang `SHIPPING`.
+2. Payment/customer list/detail endpoints `GET /payments`, `GET /payments/{id}`.
+3. Admin payment list/detail endpoints `GET /admin/payments`, `GET /admin/payments/{id}`.
+
+### 2026-05-14 - Admin order operations toi thieu
+
+Scope da lam:
+
+- Them endpoints:
+  - `GET /api/v1/admin/orders`
+  - `GET /api/v1/admin/orders/{id}`
+  - `PATCH /api/v1/admin/orders/{id}/status`
+- Implement admin list theo BA:
+  - Pagination.
+  - Filter `status`.
+  - Filter `paymentStatus`.
+  - Search case-insensitive theo `orderNumber`, `customerName`, `customerPhone`.
+  - Filter `dateFrom/dateTo` theo `createdAt`.
+- Implement admin detail theo BA:
+  - Xem order bat ky.
+  - Include `internalNotes`.
+  - Include items va status history.
+- Implement status update state machine:
+  - `PENDING -> CONFIRMED/CANCELLED`
+  - `CONFIRMED -> SHIPPING/CANCELLED`
+  - `SHIPPING -> DELIVERED`
+  - `DELIVERED -> RETURNED`
+  - `CANCELLED/RETURNED` khong cho chuyen tiep.
+- Ghi `order_status_history` khi admin update status.
+- Neu admin chuyen sang `CANCELLED`, set `cancelReason`, `cancelledAt` va giam promotion usage neu co.
+- Tao FE contract:
+  - `be/docs/FE_ADMIN_ORDER_CONTRACT.md`
+- Cap nhat:
+  - `be/docs/B2C_API.md`
+  - `be/docs/BA_TO_BE_FE_MAPPING.md`
+  - `be/docs/PROGRESS.md`
+
+Ghi chu:
+
+- Security/RBAC admin dang open theo yeu cau tam bo qua security.
+- Chua payment refund/mark-paid, invoice/shipment, notification/loyalty trong status update.
+
+Verify da chay:
+
+- `mvn test`
+- Test suite: 11 tests, 0 failures, 0 errors.
+
+Next recommended step:
+
+1. Shipment placeholder khi order sang `SHIPPING`.
+2. Payment/customer list/detail endpoints `GET /payments`, `GET /payments/{id}`.
+3. Admin payment list/detail endpoints `GET /admin/payments`, `GET /admin/payments/{id}`.
+
+### 2026-05-14 - Stock reservation side effect
+
+Scope da lam:
+
+- Them migration:
+  - `V5__order_stock_reservations.sql`
+- Tao table:
+  - `order_stock_reservations`
+- Khi admin update `PENDING -> CONFIRMED`:
+  - Reserve stock theo BA bang cach tru `product_variants.stock` cho tung order item.
+  - Tru stock atomic voi dieu kien `stock >= quantity`.
+  - Ghi reservation row theo `order_item_id`.
+  - Neu khong du stock, tra `ORDER_INSUFFICIENT_STOCK` va rollback transaction.
+- Khi order bi cancel tu `CONFIRMED`:
+  - Release stock bang cach cong lai `product_variants.stock`.
+  - Set `released_at` tren reservation rows.
+  - Ap dung cho ca customer cancel va admin cancel.
+- Khi cancel tu `PENDING`:
+  - Khong doi stock vi chua reserve.
+- Cap nhat docs:
+  - `be/docs/FE_ADMIN_ORDER_CONTRACT.md`
+  - `be/docs/FE_ORDER_CONTRACT.md`
+  - `be/docs/BA_TO_BE_FE_MAPPING.md`
+  - `be/docs/PROGRESS.md`
+
+Verify da chay:
+
+- `mvn test`
+- Test suite: 11 tests, 0 failures, 0 errors.
+- Flyway apply den version 5.
+- Test da assert stock giam khi confirm va duoc restore khi cancel tu confirmed.
+
+Next recommended step:
+
+1. Shipment placeholder khi order sang `SHIPPING`.
+2. Payment/customer list/detail endpoints `GET /payments`, `GET /payments/{id}`.
+3. Admin payment list/detail endpoints `GET /admin/payments`, `GET /admin/payments/{id}`.
+
+### 2026-05-14 - Payment/invoice side effects toi thieu
+
+Scope da lam:
+
+- Them migration:
+  - `V6__invoices.sql`
+- Tao:
+  - enum `invoice_status`
+  - table `invoice_daily_sequences`
+  - table `invoices`
+- Them customer endpoint:
+  - `GET /api/v1/orders/{id}/invoice`
+- Side effects:
+  - Order create tiep tuc tao `payments` row `UNPAID`.
+  - Admin update `CONFIRMED -> SHIPPING` tao invoice neu chua co.
+  - Invoice number format: `INV-yyyyMMdd-xxx`.
+  - Admin update `SHIPPING -> DELIVERED` voi `paymentMethod = COD` mark order/payment/invoice la `PAID`.
+  - Cancel order set invoice da tao sang `CANCELLED`.
+- Tao FE contract:
+  - `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+- Cap nhat docs:
+  - `be/docs/FE_ADMIN_ORDER_CONTRACT.md`
+  - `be/docs/FE_ORDER_CONTRACT.md`
+  - `be/docs/BA_TO_BE_FE_MAPPING.md`
+  - `be/docs/PROGRESS.md`
+
+Ghi chu:
+
+- MOMO/VNPAY callback chua lam.
+- Invoice PDF download chua lam, endpoint hien tra JSON metadata.
+- Shipment chua lam.
+
+Verify da chay:
+
+- `mvn test`
+- Test suite: 12 tests, 0 failures, 0 errors.
+- Flyway apply den version 6.
+
+Next recommended step:
+
+1. Shipment placeholder khi order sang `SHIPPING`.
+2. Payment/customer list/detail endpoints `GET /payments`, `GET /payments/{id}`.
+3. Admin payment list/detail endpoints `GET /admin/payments`, `GET /admin/payments/{id}`.
+
+### 2026-05-14 - Admin manual mark-paid cho payment
+
+Scope da lam:
+
+- Them endpoint:
+  - `PATCH /api/v1/admin/payments/{id}/mark-paid`
+- Implement request:
+  - `paidAmount`
+  - `transactionRef`
+  - `method`
+- Implement rules:
+  - `paidAmount > 0`.
+  - Cong don vao `payments.paid_amount`.
+  - Tinh lai `payments.remaining_amount`.
+  - `transactionRef` unique bang migration `V7__payment_transaction_ref_unique.sql`.
+  - Khi da tra du, set `payments.status = PAID`, `paid_at = now`.
+  - Dong bo `orders.payment_status = PAID`.
+  - Neu invoice da tao va dang `PENDING`, set `invoices.status = PAID`, `paid_at = now`.
+  - Neu payment da `PAID`, tra `PAYMENT_ALREADY_PAID`.
+- Them:
+  - `AdminPaymentController`
+  - `MarkPaymentPaidRequest`
+  - `AdminPaymentDto`
+- Cap nhat:
+  - `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+  - `be/docs/BA_TO_BE_FE_MAPPING.md`
+  - `be/docs/PROGRESS.md`
+
+Verify da chay:
+
+- `mvn test`
+- Test suite: 13 tests, 0 failures, 0 errors.
+- Flyway apply den version 7.
+
+Next recommended step:
+
+1. Shipment placeholder khi order sang `SHIPPING`.
+2. Payment/customer list/detail endpoints `GET /payments`, `GET /payments/{id}`.
+3. Admin payment list/detail endpoints `GET /admin/payments`, `GET /admin/payments/{id}`.
+
+### 2026-05-14 - Shipment placeholder cho order shipping flow
+
+Scope da lam:
+
+- Them migration:
+  - `V8__shipments.sql`
+- Tao enum/table:
+  - `shipment_status`
+  - `shipments`
+- Them customer endpoint:
+  - `GET /api/v1/orders/{id}/shipment`
+- Implement shipment object theo BA:
+  - `id`
+  - `orderId`
+  - `orderNumber`
+  - `trackingNumber`
+  - `carrierName`
+  - `status`
+  - `estimatedDelivery`
+  - `actualDelivery`
+  - `createdAt`
+  - `updatedAt`
+- Implement side effects:
+  - `CONFIRMED -> SHIPPING`: tao shipment neu chua co, set `IN_TRANSIT`, tao tracking placeholder `GHTK-{orderNumber}`.
+  - `SHIPPING -> DELIVERED`: set shipment `DELIVERED`, set `actualDelivery`, set `orders.actual_delivery_date`.
+- Them error code:
+  - `SHIPMENT_NOT_FOUND`
+- Tao FE contract:
+  - `be/docs/FE_SHIPMENT_CONTRACT.md`
+- Cap nhat:
+  - `be/docs/B2C_API.md`
+  - `be/docs/FE_ADMIN_ORDER_CONTRACT.md`
+  - `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+  - `be/docs/BA_TO_BE_FE_MAPPING.md`
+  - `be/docs/PROGRESS.md`
+
+Verify da chay:
+
+- `mvn test`
+- Test suite: 13 tests, 0 failures, 0 errors.
+- Flyway apply den version 8.
+
+Next recommended step:
+
+1. Payment/customer list/detail endpoints `GET /payments`, `GET /payments/{id}`.
+2. Admin payment list/detail endpoints `GET /admin/payments`, `GET /admin/payments/{id}`.
+3. Shipment list/detail endpoints `GET /shipments`, `GET /shipments/{id}` hoac admin shipment endpoints neu FE can man hinh tracking van hanh.
+
+### 2026-05-14 - Customer payment list/detail
+
+Scope da lam:
+
+- Them:
+  - `PaymentController`
+  - `CustomerPaymentDto`
+- Them endpoints theo BA:
+  - `GET /api/v1/payments`
+  - `GET /api/v1/payments/{id}`
+- Implement list payment:
+  - scope theo current dev user `X-User-Id`.
+  - pagination.
+  - filter `status`.
+  - search theo `orderNumber`.
+  - sort `createdAt DESC`.
+- Implement detail payment:
+  - payment ton tai nhung khong thuoc user hien tai se tra `PAYMENT_ACCESS_DENIED`.
+- Them error code:
+  - `PAYMENT_ACCESS_DENIED`
+- Cap nhat:
+  - `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+  - `be/docs/BA_TO_BE_FE_MAPPING.md`
+  - `be/docs/PROGRESS.md`
+
+Verify da chay:
+
+- `mvn test`
+- Test suite: 13 tests, 0 failures, 0 errors.
+
+Next recommended step:
+
+1. Admin payment list/detail endpoints `GET /admin/payments`, `GET /admin/payments/{id}`.
+2. Shipment list/detail endpoints `GET /shipments`, `GET /shipments/{id}` hoac admin shipment endpoints neu FE can man hinh tracking van hanh.
+3. Invoice list/detail endpoints `GET /invoices`, `GET /invoices/{id}`.
+
+### 2026-05-14 - Hoan thien read endpoints cho purchase flow
+
+Scope da lam:
+
+- Them admin payment endpoints:
+  - `GET /api/v1/admin/payments`
+  - `GET /api/v1/admin/payments/{id}`
+- Them customer invoice endpoints:
+  - `GET /api/v1/invoices`
+  - `GET /api/v1/invoices/{id}`
+- Them customer shipment endpoints:
+  - `GET /api/v1/shipments`
+  - `GET /api/v1/shipments/{id}`
+- Implement filter/search:
+  - payments: `status`, `method`, `search`.
+  - invoices: `status`, `search`.
+  - shipments: `status`, `search`.
+- Implement dev ownership guard bang `X-User-Id` cho invoice/shipment detail.
+- Them error codes:
+  - `INVOICE_NOT_FOUND`
+  - `INVOICE_ACCESS_DENIED`
+  - `SHIPMENT_ACCESS_DENIED`
+- Cap nhat:
+  - `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+  - `be/docs/FE_SHIPMENT_CONTRACT.md`
+  - `be/docs/BA_TO_BE_FE_MAPPING.md`
+  - `be/docs/PROGRESS.md`
+
+Verify da chay:
+
+- `mvn test`
+- Test suite: 13 tests, 0 failures, 0 errors.
+
+Next recommended step:
+
+1. Endpoint admin note cho order: `PATCH /admin/orders/{id}/notes` neu FE admin can ghi chu van hanh.
+2. Payment overdue/refund va invoice PDF neu can dong sau thanh toan.
+3. Sau mua hang: returns/warranty/review basic.
+
+### 2026-05-14 - Admin notes va payment overdue/refund
+
+Scope da lam:
+
+- Them admin order notes endpoint:
+  - `PATCH /api/v1/admin/orders/{id}/notes`
+- Implement rule:
+  - `notes` required, max 1000 chars.
+  - overwrite `orders.internal_notes`.
+  - customer order detail khong expose `internalNotes`.
+- Them migration:
+  - `V9__payment_overdue_refund.sql`
+- Schema payment:
+  - add enum value `OVERDUE`.
+  - add `refund_amount`, `refund_reason`, `refund_method`, `refunded_at`.
+- Them admin payment endpoints:
+  - `PATCH /api/v1/admin/payments/{id}/mark-overdue`
+  - `POST /api/v1/admin/payments/{id}/refund`
+- Implement refund side effects:
+  - chi refund payment `PAID`.
+  - validate `refundAmount <= paidAmount`.
+  - set `payments.status = REFUNDED`.
+  - set refund metadata.
+  - set `orders.payment_status = REFUNDED`.
+- Cap nhat:
+  - `be/docs/FE_ADMIN_ORDER_CONTRACT.md`
+  - `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+  - `be/docs/BA_TO_BE_FE_MAPPING.md`
+  - `be/docs/PROGRESS.md`
+
+Verify da chay:
+
+- `mvn test`
+- Test suite: 13 tests, 0 failures, 0 errors.
+- Flyway apply den version 9.
+
+Next recommended step:
+
+1. Invoice PDF download placeholder neu FE can nut download.
+2. Sau mua hang: returns/warranty/review basic.
+3. Loyalty/notification side effects khi order delivered/refunded.
+
+### 2026-05-14 - Invoice PDF download placeholder
+
+Scope da lam:
+
+- Them endpoint:
+  - `GET /api/v1/invoices/{id}/download`
+- Implement response binary:
+  - `Content-Type: application/pdf`
+  - `Content-Disposition: attachment; filename="{invoiceNumber}.pdf"`
+- Implement ownership bang dev header `X-User-Id`.
+- Sinh PDF toi thieu truc tiep tu invoice metadata, chua them thu vien/template PDF.
+- Cap nhat:
+  - `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+  - `be/docs/BA_TO_BE_FE_MAPPING.md`
+  - `be/docs/PROGRESS.md`
+
+Verify da chay:
+
+- `mvn test`
+- Test suite: 13 tests, 0 failures, 0 errors.
+
+Next recommended step:
+
+1. Sau mua hang: returns basic.
+2. Warranty basic tu order delivered.
+3. Review basic sau khi order delivered.
+
+### 2026-05-15 - FE admin P0 invoices/shipments
+
+Scope da lam theo `be/docs/FE_ADMIN_BACKEND_GAPS.md`:
+
+- Them admin invoice endpoints:
+  - `GET /api/v1/admin/invoices`
+  - `GET /api/v1/admin/invoices/{id}`
+  - `GET /api/v1/admin/invoices/{id}/download`
+  - `PATCH /api/v1/admin/invoices/{id}/status`
+- Them admin shipment endpoints:
+  - `GET /api/v1/admin/shipments`
+  - `GET /api/v1/admin/shipments/{id}`
+  - `PATCH /api/v1/admin/shipments/{id}/status`
+- Implement filter/search cho admin invoice va shipment.
+- Implement shipment status state rule.
+- Neu admin update shipment `IN_TRANSIT -> DELIVERED` va order dang `SHIPPING`, backend dong bo order/payment/invoice side effects.
+- Cap nhat gaps doc de FE thay P0 da done:
+  - `be/docs/FE_ADMIN_BACKEND_GAPS.md`
+- Cap nhat contracts:
+  - `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+  - `be/docs/FE_SHIPMENT_CONTRACT.md`
+  - `be/docs/BA_TO_BE_FE_MAPPING.md`
+  - `be/docs/PROGRESS.md`
+
+Verify da chay:
+
+- `mvn test`
+- Test suite: 13 tests, 0 failures, 0 errors.
+
+Next recommended step:
+
+1. P1 admin dashboard endpoints.
+2. P1 admin inventory endpoints.
+3. P1 admin promotions CRUD.
+
+### 2026-05-15 - FE admin P1 dashboard minimum
+
+Scope da lam theo `be/docs/FE_ADMIN_BACKEND_GAPS.md`:
+
+- Them dashboard endpoints:
+  - `GET /api/v1/admin/dashboard/stats`
+  - `GET /api/v1/admin/dashboard/revenue-chart?period=day|week|month&from=&to=`
+  - `GET /api/v1/admin/dashboard/recent-orders?limit=`
+  - `GET /api/v1/admin/dashboard/recent-activity?limit=`
+- Stats gom revenue/orders/payment/low-stock metrics.
+- Revenue chart aggregate theo `day`, `week`, `month`.
+- Recent orders lay tu `orders`.
+- Recent activity tam thoi lay tu `order_status_history`.
+- Cap nhat:
+  - `be/docs/FE_ADMIN_BACKEND_GAPS.md`
+  - `be/docs/PROGRESS.md`
+
+Verify da chay:
+
+- `mvn test`
+- Test suite: 14 tests, 0 failures, 0 errors.
+
+Next recommended step:
+
+1. P1 admin inventory endpoints.
+2. P1 admin promotions CRUD.
+3. Sau mua hang: returns/warranty/review basic.
 
 ### 2026-05-14 - Order creation transaction
 
@@ -721,7 +1194,7 @@ Dev bridge do security/user-address dang deferred:
 
 - Dung `X-User-Id`, `X-User-Name`, `X-User-Email`, `X-User-Phone` thay cho JWT/users table.
 - Dung inline `shippingAddress` thay cho `shippingAddressId`.
-- Chua reserve stock o `PENDING`; stock reservation se lam khi admin status update sang `CONFIRMED`.
+- Khong reserve stock o `PENDING`; stock reservation da lam khi admin status update sang `CONFIRMED`.
 - Payment gateway chua co; hien tao payment placeholder.
 
 Verify da chay:
@@ -732,9 +1205,9 @@ Verify da chay:
 
 Next recommended step:
 
-1. Order list/detail cho customer.
-2. Admin order list/detail + status update toi thieu.
-3. Order cancel flow.
+1. Shipment placeholder khi order sang `SHIPPING`.
+2. Payment/customer list/detail endpoints `GET /payments`, `GET /payments/{id}`.
+3. Admin payment list/detail endpoints `GET /admin/payments`, `GET /admin/payments/{id}`.
 
 ### 2026-05-14 - Promotion validation
 

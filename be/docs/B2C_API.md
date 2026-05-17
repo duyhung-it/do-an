@@ -67,6 +67,9 @@ Error shape da implement theo BA docs:
 - Cart FE contract: `be/docs/FE_CART_CONTRACT.md`
 - Promotion FE contract: `be/docs/FE_PROMOTION_CONTRACT.md`
 - Order FE contract: `be/docs/FE_ORDER_CONTRACT.md`
+- Admin order FE contract: `be/docs/FE_ADMIN_ORDER_CONTRACT.md`
+- Payment/invoice FE contract: `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+- Shipment FE contract: `be/docs/FE_SHIPMENT_CONTRACT.md`
 - BA to BE/FE mapping: `be/docs/BA_TO_BE_FE_MAPPING.md`
 - OpenAPI JSON: `http://localhost:8080/v3/api-docs`
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
@@ -78,9 +81,9 @@ Thu tu backend se tap trung de FE co luong mua hang chinh:
 1. Catalog storefront: category, listing, search/filter, product detail.
 2. Cart + promotion validation.
 3. Checkout/order creation.
-4. Payment/invoice/shipment side effects.
-5. User order history + after-sales basic.
-6. Admin operations cho catalog/order/inventory.
+4. User order history/cancel and admin order status operation.
+5. Payment/invoice/shipment side effects.
+6. After-sales basic and admin inventory.
 
 ## Legacy Mock
 

@@ -32,6 +32,18 @@ public enum ErrorCode {
 	ORDER_ADDRESS_REQUIRED(HttpStatus.BAD_REQUEST, "Vui long chon dia chi giao hang"),
 	ORDER_ACCESS_DENIED(HttpStatus.FORBIDDEN, "Khong co quyen truy cap don hang nay"),
 	ADDRESS_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay dia chi giao hang"),
+	INVOICE_NOT_AVAILABLE(HttpStatus.UNPROCESSABLE_ENTITY, "Hoa don chua kha dung"),
+	INVOICE_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay hoa don"),
+	INVOICE_ACCESS_DENIED(HttpStatus.FORBIDDEN, "Khong co quyen truy cap hoa don nay"),
+	SHIPMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay thong tin giao hang"),
+	SHIPMENT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "Khong co quyen truy cap thong tin giao hang nay"),
+	SHIPMENT_INVALID_STATUS_TRANSITION(HttpStatus.UNPROCESSABLE_ENTITY, "Chuyen trang thai giao hang khong hop le"),
+	PAYMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay thong tin thanh toan"),
+	PAYMENT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "Khong co quyen truy cap thong tin thanh toan nay"),
+	PAYMENT_ALREADY_PAID(HttpStatus.BAD_REQUEST, "Thanh toan da duoc ghi nhan day du"),
+	PAYMENT_REFUNDED(HttpStatus.BAD_REQUEST, "Thanh toan da hoan tien"),
+	PAYMENT_NOT_PAID(HttpStatus.BAD_REQUEST, "Chi co the hoan tien cho thanh toan da thanh toan"),
+	REFUND_AMOUNT_EXCEEDS_PAID(HttpStatus.UNPROCESSABLE_ENTITY, "So tien hoan vuot qua so tien da thanh toan"),
 
 	PROMOTION_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay khuyen mai"),
 	PROMOTION_EXPIRED(HttpStatus.UNPROCESSABLE_ENTITY, "Khuyen mai da het han"),
@@ -59,6 +71,7 @@ public enum ErrorCode {
 
 	LOYALTY_PROGRAM_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay chuong trinh loyalty"),
 	LOYALTY_INSUFFICIENT_POINTS(HttpStatus.UNPROCESSABLE_ENTITY, "Khong du diem"),
+	LOYALTY_REWARD_UNAVAILABLE(HttpStatus.UNPROCESSABLE_ENTITY, "Phan thuong khong kha dung"),
 	LOYALTY_REWARD_OUT_OF_STOCK(HttpStatus.UNPROCESSABLE_ENTITY, "Phan thuong da het"),
 	LOYALTY_REWARD_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay phan thuong"),
 

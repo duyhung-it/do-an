@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   DollarSign, AlertTriangle, CheckCircle2, Clock, Download,
-  Receipt, CreditCard, TrendingDown, ReceiptText,
+  Receipt, CreditCard, TrendingDown, ReceiptText, RotateCcw,
 } from 'lucide-react';
 import { DataTable } from '../shared/DataTable';
 import { FilterBar } from '../shared/FilterBar';
@@ -20,7 +20,7 @@ import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Textarea } from '../ui/textarea';
-import { paymentApi } from '../../services/api';
+import { adminPaymentApi } from '../../services/adminBackendApi';
 import { toast } from 'sonner';
 import type {
   Payment, PaymentStatus, PaginationParams, SortParams,
@@ -32,6 +32,9 @@ const formatPrice = (price: number) =>
 
 const formatCompact = (price: number) =>
   new Intl.NumberFormat('vi-VN', { notation: 'compact' }).format(price);
+
+const PAYMENT_STATUS_OPTIONS = ['UNPAID', 'PAID', 'OVERDUE', 'FAILED', 'REFUNDED', 'PARTIALLY_REFUNDED'];
+const PAYMENT_METHOD_OPTIONS = ['CASH', 'BANK_TRANSFER', 'MOMO', 'VNPAY', 'COD'];
 
 // --- Cấu hình cột ---
 const columns: ColumnConfig[] = [
@@ -50,21 +53,8 @@ const columns: ColumnConfig[] = [
 
 // --- Cấu hình bộ lọc ---
 const filterConfigs: FilterConfig[] = [
-  { key: 'status', label: 'Trạng thái', type: 'select', options: [
-    { label: 'Chờ thanh toán', value: 'Chờ thanh toán' },
-    { label: 'Đã TT một phần', value: 'Đã thanh toán một phần' },
-    { label: 'Đã thanh toán', value: 'Đã thanh toán' },
-    { label: 'Quá hạn', value: 'Quá hạn' },
-    { label: 'Hoàn tiền', value: 'Hoàn tiền' },
-  ]},
-  { key: 'method', label: 'Phương thức', type: 'select', options: [
-    { label: 'Chuyển khoản', value: 'Chuyển khoản' },
-    { label: 'COD', value: 'COD' },
-    { label: 'L/C', value: 'L/C' },
-    { label: 'Trả chậm 30 ngày', value: 'Trả chậm 30 ngày' },
-    { label: 'Trả chậm 60 ngày', value: 'Trả chậm 60 ngày' },
-    { label: 'Trả chậm 90 ngày', value: 'Trả chậm 90 ngày' },
-  ]},
+  { key: 'status', label: 'Trang thai', type: 'select', options: PAYMENT_STATUS_OPTIONS.map(status => ({ label: status, value: status })) },
+  { key: 'method', label: 'Phuong thuc', type: 'select', options: PAYMENT_METHOD_OPTIONS.map(method => ({ label: method, value: method })) },
 ];
 
 // --- Form ghi nhận thanh toán ---
@@ -75,39 +65,83 @@ interface TxnForm {
   bankName: string;
   note: string;
 }
-const emptyTxnForm: TxnForm = { amount: '', method: 'Chuyển khoản', transactionRef: '', bankName: '', note: '' };
+const emptyTxnForm: TxnForm = { amount: '', method: 'BANK_TRANSFER', transactionRef: '', bankName: '', note: '' };
+
+interface RefundForm {
+  amount: string;
+  method: string;
+  reason: string;
+}
+const emptyRefundForm: RefundForm = { amount: '', method: 'BANK_TRANSFER', reason: '' };
+
+type AdminPayment = Payment & {
+  invoiceNumber?: string;
+  buyerName?: string;
+  supplierName?: string;
+  paidAmount?: number;
+  transactions?: Array<{
+    id: string;
+    amount: number;
+    method: string;
+    transactionRef: string;
+    paidAt?: string;
+    bankName?: string;
+    note?: string;
+  }>;
+  refundAmount?: number | null;
+  refundReason?: string | null;
+  refundMethod?: string | null;
+  refundedAt?: string | null;
+  createdAt?: string;
+};
+
+const canMarkOverdue = (payment: AdminPayment) =>
+  !['PAID', 'REFUNDED', 'PARTIALLY_REFUNDED'].includes(String(payment.status));
+
+const canRefund = (payment: AdminPayment) =>
+  String(payment.status) === 'PAID' && Number(payment.paidAmount ?? 0) > 0;
 
 export function AdminPaymentPage() {
-  const [payments, setPayments] = useState<Payment[]>([]);
-  const [allPayments, setAllPayments] = useState<Payment[]>([]);
+  const [payments, setPayments] = useState<AdminPayment[]>([]);
+  const [allPayments, setAllPayments] = useState<AdminPayment[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [pagination, setPagination] = useState<PaginationParams>({ page: 1, pageSize: 10 });
   const [sort, setSort] = useState<SortParams>({ field: 'createdAt', direction: 'desc' });
   const [filters, setFilters] = useState<ActiveFilter[]>([]);
   const [search, setSearch] = useState('');
-  const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null);
+  const [selectedPayment, setSelectedPayment] = useState<AdminPayment | null>(null);
   const [showTxnForm, setShowTxnForm] = useState(false);
   const [txnForm, setTxnForm] = useState<TxnForm>(emptyTxnForm);
+  const [refundDialog, setRefundDialog] = useState<AdminPayment | null>(null);
+  const [refundForm, setRefundForm] = useState<RefundForm>(emptyRefundForm);
+  const [savingAction, setSavingAction] = useState(false);
+
+  const syncPayment = (updated: AdminPayment) => {
+    setSelectedPayment(current => current?.id === updated.id ? updated : current);
+    setRefundDialog(current => current?.id === updated.id ? updated : current);
+    setPayments(prev => prev.map(payment => payment.id === updated.id ? updated : payment));
+    setAllPayments(prev => prev.map(payment => payment.id === updated.id ? updated : payment));
+  };
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
       const [allRes, pageRes] = await Promise.all([
-        paymentApi.getPaginated({ page: 1, pageSize: 1000 }),
-        paymentApi.getPaginated(pagination, sort.field ? sort : undefined, filters),
+        adminPaymentApi.getPaginated({ page: 1, pageSize: 1000 }, undefined, undefined, search || undefined),
+        adminPaymentApi.getPaginated(pagination, sort.field ? sort : undefined, filters, search || undefined),
       ]);
-      setAllPayments(allRes.data);
+      setAllPayments(allRes.data as AdminPayment[]);
 
-      let data = pageRes.data;
+      let data = pageRes.data as AdminPayment[];
       let t = pageRes.total;
       if (search) {
         const s = search.toLowerCase();
-        const filtered = allRes.data.filter(p =>
-          p.invoiceNumber.toLowerCase().includes(s) ||
+        const filtered = (allRes.data as AdminPayment[]).filter(p =>
+          String(p.invoiceNumber ?? '').toLowerCase().includes(s) ||
           p.orderNumber.toLowerCase().includes(s) ||
-          p.buyerName.toLowerCase().includes(s) ||
-          p.supplierName.toLowerCase().includes(s),
+          String(p.buyerName ?? '').toLowerCase().includes(s) ||
+          String(p.supplierName ?? '').toLowerCase().includes(s),
         );
         const activeFilterData = filters.length > 0
           ? filtered.filter(p => filters.every(f => {
@@ -133,12 +167,12 @@ export function AdminPaymentPage() {
     const totalAmount = allPayments.reduce((s, p) => s + p.amount, 0);
     const totalPaid = allPayments.reduce((s, p) => s + p.paidAmount, 0);
     const totalRemaining = allPayments.reduce((s, p) => s + p.remainingAmount, 0);
-    const overdueCount = allPayments.filter(p => p.status === 'Quá hạn').length;
+    const overdueCount = allPayments.filter(p => p.status === 'OVERDUE').length;
     const overdueAmount = allPayments
-      .filter(p => p.status === 'Quá hạn')
+      .filter(p => p.status === 'OVERDUE')
       .reduce((s, p) => s + p.remainingAmount, 0);
-    const pendingCount = allPayments.filter(p => p.status === 'Chờ thanh toán').length;
-    const paidCount = allPayments.filter(p => p.status === 'Đã thanh toán').length;
+    const pendingCount = allPayments.filter(p => p.status === 'UNPAID').length;
+    const paidCount = allPayments.filter(p => p.status === 'PAID').length;
     return { totalAmount, totalPaid, totalRemaining, overdueCount, overdueAmount, pendingCount, paidCount };
   }, [allPayments]);
 
@@ -159,23 +193,74 @@ export function AdminPaymentPage() {
     }
 
     try {
-      const updated = await paymentApi.recordTransaction(selectedPayment.id, {
-        paymentId: selectedPayment.id,
+      const updated = await adminPaymentApi.recordTransaction(selectedPayment.id, {
         amount,
         method: txnForm.method,
         transactionRef: txnForm.transactionRef,
-        bankName: txnForm.bankName || undefined,
-        note: txnForm.note,
-        paidAt: new Date().toISOString().slice(0, 10),
       });
-      setSelectedPayment(updated);
-      setPayments(prev => prev.map(p => p.id === updated.id ? updated : p));
-      setAllPayments(prev => prev.map(p => p.id === updated.id ? updated : p));
+      syncPayment(updated as AdminPayment);
       setShowTxnForm(false);
       setTxnForm(emptyTxnForm);
       toast.success('Đã ghi nhận thanh toán thành công');
     } catch {
       toast.error('Ghi nhận thất bại');
+    }
+  };
+
+  const handleMarkOverdue = async (payment: AdminPayment) => {
+    if (!canMarkOverdue(payment)) {
+      toast.error('BE chi cho mark overdue voi payment chua paid/refund');
+      return;
+    }
+    if (!confirm(`Danh dau qua han cho thanh toan ${payment.orderNumber}?`)) return;
+    setSavingAction(true);
+    try {
+      const updated = await adminPaymentApi.markOverdue(payment.id);
+      syncPayment(updated as AdminPayment);
+      await fetchData();
+      toast.success('Da danh dau qua han');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Khong the danh dau qua han');
+    } finally {
+      setSavingAction(false);
+    }
+  };
+
+  const handleRefund = async () => {
+    if (!refundDialog || !refundForm.amount || !refundForm.reason.trim()) {
+      toast.error('Vui long nhap so tien va ly do hoan tien');
+      return;
+    }
+    const amount = Number(refundForm.amount);
+    if (!canRefund(refundDialog)) {
+      toast.error('BE chi cho refund payment dang PAID');
+      return;
+    }
+    const paidAmount = Number(refundDialog.paidAmount ?? 0);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.error('So tien hoan khong hop le');
+      return;
+    }
+    if (paidAmount > 0 && amount > paidAmount) {
+      toast.error('So tien hoan vuot qua so tien da thu');
+      return;
+    }
+    setSavingAction(true);
+    try {
+      const updated = await adminPaymentApi.refund(refundDialog.id, {
+        refundAmount: amount,
+        reason: refundForm.reason,
+        method: refundForm.method,
+      });
+      syncPayment(updated as AdminPayment);
+      setRefundDialog(null);
+      setRefundForm(emptyRefundForm);
+      await fetchData();
+      toast.success('Da ghi nhan hoan tien');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Hoan tien that bai');
+    } finally {
+      setSavingAction(false);
     }
   };
 
@@ -199,19 +284,27 @@ export function AdminPaymentPage() {
   };
 
   // --- List view ---
-  const renderListItem = (payment: Payment) => (
+  const openRefundDialog = (payment: AdminPayment) => {
+    setRefundDialog(payment);
+    setRefundForm({
+      ...emptyRefundForm,
+      amount: String(payment.paidAmount ?? payment.amount),
+    });
+  };
+
+  const renderListItem = (payment: AdminPayment) => (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="p-4">
         <div className="flex items-center justify-between mb-2">
           <div className="flex items-center gap-2">
             <ReceiptText className="h-4 w-4 text-muted-foreground" />
-            <span className="font-medium">{payment.invoiceNumber}</span>
+            <span className="font-medium">{payment.invoiceNumber ?? '-'}</span>
           </div>
           <StatusBadge status={payment.status} />
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
           <span>Đơn: {payment.orderNumber}</span>
-          <span>{payment.buyerName}</span>
+          <span>{payment.buyerName ?? '-'}</span>
           <span>{payment.method}</span>
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1">
@@ -306,6 +399,23 @@ export function AdminPaymentPage() {
         renderListItem={renderListItem}
         loading={loading}
         viewModes={['table', 'list']}
+        renderActions={(payment: AdminPayment) => (
+          <div className="flex items-center gap-1">
+            <Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); setSelectedPayment(payment); }} title="View">
+              <Receipt className="h-3.5 w-3.5" />
+            </Button>
+            {canMarkOverdue(payment) && (
+              <Button variant="ghost" size="sm" disabled={savingAction} onClick={(event) => { event.stopPropagation(); handleMarkOverdue(payment); }} title="Mark overdue">
+                <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
+              </Button>
+            )}
+            {canRefund(payment) && (
+              <Button variant="ghost" size="sm" disabled={savingAction} onClick={(event) => { event.stopPropagation(); openRefundDialog(payment); }} title="Refund">
+                <RotateCcw className="h-3.5 w-3.5 text-orange-600" />
+              </Button>
+            )}
+          </div>
+        )}
       />
 
       {/* --- Chi tiết công nợ --- */}
@@ -323,6 +433,27 @@ export function AdminPaymentPage() {
               <div className="flex items-center justify-between">
                 <span className="text-muted-foreground">Trạng thái</span>
                 <StatusBadge status={selectedPayment.status} />
+              </div>
+
+              <div className="flex flex-wrap justify-end gap-2">
+                {canMarkOverdue(selectedPayment) && (
+                  <Button size="sm" variant="outline" disabled={savingAction} onClick={() => handleMarkOverdue(selectedPayment)}>
+                    <AlertTriangle className="mr-1 h-3.5 w-3.5" />
+                    Mark overdue
+                  </Button>
+                )}
+                {canRefund(selectedPayment) && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-orange-600"
+                    disabled={savingAction}
+                    onClick={() => openRefundDialog(selectedPayment)}
+                  >
+                    <RotateCcw className="mr-1 h-3.5 w-3.5" />
+                    Refund
+                  </Button>
+                )}
               </div>
 
               <div className="grid grid-cols-3 gap-3">
@@ -362,7 +493,7 @@ export function AdminPaymentPage() {
                 </div>
                 <div>
                   <p className="text-muted-foreground">Hạn thanh toán</p>
-                  <p className={selectedPayment.status === 'Quá hạn' ? 'text-red-600' : ''}>
+                  <p className={selectedPayment.status === 'OVERDUE' ? 'text-red-600' : ''}>
                     {selectedPayment.dueDate}
                   </p>
                 </div>
@@ -377,7 +508,7 @@ export function AdminPaymentPage() {
               {/* Lịch sử giao dịch */}
               <div>
                 <div className="flex items-center justify-between mb-3">
-                  <p className="font-medium">Lịch sử giao dịch ({selectedPayment.transactions.length})</p>
+                  <p className="font-medium">Lịch sử giao dịch ({selectedPayment.transactions?.length ?? 0})</p>
                   {selectedPayment.remainingAmount > 0 && (
                     <Button size="sm" variant="outline" onClick={() => setShowTxnForm(!showTxnForm)}>
                       <CreditCard className="mr-1 h-3.5 w-3.5" />
@@ -408,10 +539,11 @@ export function AdminPaymentPage() {
                           <Select value={txnForm.method} onValueChange={v => setTxnForm(f => ({ ...f, method: v }))}>
                             <SelectTrigger><SelectValue /></SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="Chuyển khoản">Chuyển khoản</SelectItem>
+                              <SelectItem value="BANK_TRANSFER">BANK_TRANSFER</SelectItem>
                               <SelectItem value="COD">COD</SelectItem>
-                              <SelectItem value="L/C">L/C</SelectItem>
-                              <SelectItem value="Tiền mặt">Tiền mặt</SelectItem>
+                              <SelectItem value="CASH">CASH</SelectItem>
+                              <SelectItem value="MOMO">MOMO</SelectItem>
+                              <SelectItem value="VNPAY">VNPAY</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -454,11 +586,11 @@ export function AdminPaymentPage() {
                 )}
 
                 {/* Danh sách giao dịch */}
-                {selectedPayment.transactions.length === 0 ? (
+                {(selectedPayment.transactions?.length ?? 0) === 0 ? (
                   <p className="text-muted-foreground text-center py-4">Chưa có giao dịch nào</p>
                 ) : (
                   <div className="space-y-2">
-                    {selectedPayment.transactions.map(txn => (
+                    {selectedPayment.transactions?.map(txn => (
                       <Card key={txn.id}>
                         <CardContent className="p-3">
                           <div className="flex items-center justify-between mb-1">
@@ -476,6 +608,75 @@ export function AdminPaymentPage() {
                     ))}
                   </div>
                 )}
+              </div>
+
+              {selectedPayment.refundAmount && (
+                <Card>
+                  <CardContent className="p-3">
+                    <p className="font-medium text-orange-700">Refund</p>
+                    <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
+                      <div><p className="text-muted-foreground">Amount</p><p>{formatPrice(selectedPayment.refundAmount)}</p></div>
+                      <div><p className="text-muted-foreground">Method</p><p>{selectedPayment.refundMethod ?? '-'}</p></div>
+                      <div><p className="text-muted-foreground">Refunded at</p><p>{selectedPayment.refundedAt ?? '-'}</p></div>
+                      <div><p className="text-muted-foreground">Reason</p><p>{selectedPayment.refundReason ?? '-'}</p></div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!refundDialog} onOpenChange={() => { setRefundDialog(null); setRefundForm(emptyRefundForm); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-orange-600">
+              <RotateCcw className="h-5 w-5" />
+              Refund payment
+            </DialogTitle>
+          </DialogHeader>
+          {refundDialog && (
+            <div className="space-y-3">
+              <div className="rounded-md bg-orange-50 p-3 text-orange-800">
+                {refundDialog.orderNumber} - paid {formatPrice(Number(refundDialog.paidAmount ?? 0))}
+              </div>
+              <div className="grid gap-2">
+                <Label>Refund amount *</Label>
+                <Input
+                  type="number"
+                  value={refundForm.amount}
+                  onChange={event => setRefundForm(current => ({ ...current, amount: event.target.value }))}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Method *</Label>
+                <Select value={refundForm.method} onValueChange={value => setRefundForm(current => ({ ...current, method: value }))}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="BANK_TRANSFER">BANK_TRANSFER</SelectItem>
+                    <SelectItem value="MOMO">MOMO</SelectItem>
+                    <SelectItem value="VNPAY">VNPAY</SelectItem>
+                    <SelectItem value="CASH">CASH</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid gap-2">
+                <Label>Reason *</Label>
+                <Textarea
+                  rows={3}
+                  value={refundForm.reason}
+                  onChange={event => setRefundForm(current => ({ ...current, reason: event.target.value }))}
+                  placeholder="Customer cancelled after payment..."
+                />
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={() => { setRefundDialog(null); setRefundForm(emptyRefundForm); }}>
+                  Cancel
+                </Button>
+                <Button className="bg-orange-600 hover:bg-orange-700" onClick={handleRefund} disabled={savingAction}>
+                  {savingAction ? 'Processing...' : 'Confirm refund'}
+                </Button>
               </div>
             </div>
           )}

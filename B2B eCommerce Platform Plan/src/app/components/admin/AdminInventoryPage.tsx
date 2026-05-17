@@ -1,350 +1,406 @@
-// ============================================================
-// AdminInventoryPage — Quản lý kho hàng IMEI
-// ============================================================
-import { useState, useEffect, useCallback } from 'react';
-import {
-  Package, Search, AlertTriangle, TrendingDown, CheckCircle,
-  Plus, Download, Upload, QrCode, RefreshCw, Filter,
-  BarChart3, ArrowUpDown, Edit2, Trash2,
-} from 'lucide-react';
-import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
-import { Button } from '../ui/button';
-import { Input } from '../ui/input';
-import { Badge } from '../ui/badge';
-import { AppBreadcrumb } from '../shared/AppBreadcrumb';
-import { productApi } from '../../services/api';
-import type { Product } from '../../types';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { AlertTriangle, CheckCircle, Edit, History, Package, RefreshCw, Search, TrendingDown } from 'lucide-react';
 import { toast } from 'sonner';
+import { AppBreadcrumb } from '../shared/AppBreadcrumb';
+import { Badge } from '../ui/badge';
+import { Button } from '../ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
+import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '../ui/dialog';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
+import { Textarea } from '../ui/textarea';
+import { adminInventoryApi } from '../../services/adminBackendApi';
 
-const formatPrice = (p: number) =>
-  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(p);
+type InventoryStatus = 'IN_STOCK' | 'LOW_STOCK' | 'OUT_OF_STOCK';
 
-interface InventoryItem {
+type InventoryItem = {
+  id: string;
   productId: string;
   productName: string;
+  variantName: string;
   brand: string;
-  sku: string;
   categoryName: string;
+  sku: string;
   currentStock: number;
   minStock: number;
   sellingPrice: number;
   totalValue: number;
-  status: 'Đủ hàng' | 'Sắp hết' | 'Hết hàng';
-  imeis: string[];
-  variantName?: string;
-}
+  status: InventoryStatus;
+  lowStock: boolean;
+  imeiSerials: string[];
+  updatedAt: string;
+};
 
-function getStockStatus(stock: number, min = 5): InventoryItem['status'] {
-  if (stock === 0) return 'Hết hàng';
-  if (stock <= min) return 'Sắp hết';
-  return 'Đủ hàng';
-}
+type StockMovement = {
+  id: string;
+  type: string;
+  quantityBefore: number;
+  quantityAfter: number;
+  delta: number;
+  reason?: string;
+  createdByName?: string;
+  createdAt: string;
+};
 
-function buildInventory(products: Product[]): InventoryItem[] {
-  const items: InventoryItem[] = [];
-  for (const p of products) {
-    for (const v of p.variants) {
-      const stock = v.stock;
-      items.push({
-        productId: p.id,
-        productName: p.name,
-        brand: p.brand,
-        sku: v.sku,
-        categoryName: p.categoryName,
-        currentStock: stock,
-        minStock: 5,
-        sellingPrice: v.price || p.price,
-        totalValue: (v.price || p.price) * stock,
-        status: getStockStatus(stock),
-        imeis: [],
-        variantName: v.name,
-      });
-    }
-  }
-  return items;
+type StockForm = {
+  id: string;
+  productName: string;
+  variantName: string;
+  sku: string;
+  stock: string;
+  minStock: string;
+  reason: string;
+};
+
+const statusLabels: Record<InventoryStatus, string> = {
+  IN_STOCK: 'Du hang',
+  LOW_STOCK: 'Sap het',
+  OUT_OF_STOCK: 'Het hang',
+};
+
+const formatPrice = (value: number) =>
+  new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(value || 0);
+
+const formatDateTime = (value?: string) => {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('vi-VN', { dateStyle: 'short', timeStyle: 'short' }).format(date);
+};
+
+function StockBadge({ status }: { status: InventoryStatus }) {
+  const color = {
+    IN_STOCK: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    LOW_STOCK: 'bg-amber-50 text-amber-700 border-amber-200',
+    OUT_OF_STOCK: 'bg-red-50 text-red-700 border-red-200',
+  }[status];
+
+  return <Badge variant="outline" className={color}>{statusLabels[status] ?? status}</Badge>;
 }
 
 export function AdminInventoryPage() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const [brands, setBrands] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [brandFilter, setBrandFilter] = useState<string>('all');
-  const [brands, setBrands] = useState<string[]>([]);
-  const [showImeiInput, setShowImeiInput] = useState<string | null>(null);
-  const [imeiInput, setImeiInput] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [brandFilter, setBrandFilter] = useState('all');
+  const [stockDialogOpen, setStockDialogOpen] = useState(false);
+  const [movementDialogOpen, setMovementDialogOpen] = useState(false);
+  const [stockForm, setStockForm] = useState<StockForm | null>(null);
+  const [movements, setMovements] = useState<StockMovement[]>([]);
+  const [movementItem, setMovementItem] = useState<InventoryItem | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [loadingMovements, setLoadingMovements] = useState(false);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const products = await productApi.getAll();
-      const inv = buildInventory(products);
-      setInventory(inv);
-      setBrands([...new Set(inv.map(i => i.brand))].sort());
+      const res = await adminInventoryApi.getPaginated(
+        { page: 1, pageSize: 200 },
+        undefined,
+        [
+          ...(statusFilter === 'all' ? [] : [{ key: 'status', label: 'Trang thai', value: statusFilter }]),
+          ...(brandFilter === 'all' ? [] : [{ key: 'brand', label: 'Hang', value: brandFilter }]),
+        ],
+        search,
+      );
+      const rows = res.data as InventoryItem[];
+      setInventory(rows);
+      if (statusFilter === 'all' && brandFilter === 'all' && !search.trim()) {
+        setBrands([...new Set(rows.map(item => item.brand).filter(Boolean))].sort());
+      }
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Khong tai duoc ton kho');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [brandFilter, search, statusFilter]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
-  const filtered = inventory.filter(item => {
-    const matchSearch = !search || item.productName.toLowerCase().includes(search.toLowerCase()) || item.sku.toLowerCase().includes(search.toLowerCase()) || item.brand.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === 'all' || item.status === statusFilter;
-    const matchBrand = brandFilter === 'all' || item.brand === brandFilter;
-    return matchSearch && matchStatus && matchBrand;
-  });
+  const stats = useMemo(() => ({
+    totalSku: inventory.length,
+    available: inventory.filter(item => item.status === 'IN_STOCK').length,
+    low: inventory.filter(item => item.status === 'LOW_STOCK').length,
+    out: inventory.filter(item => item.status === 'OUT_OF_STOCK').length,
+    totalValue: inventory.reduce((sum, item) => sum + item.totalValue, 0),
+  }), [inventory]);
 
-  const stats = {
-    total: inventory.length,
-    available: inventory.filter(i => i.status === 'Đủ hàng').length,
-    low: inventory.filter(i => i.status === 'Sắp hết').length,
-    outOfStock: inventory.filter(i => i.status === 'Hết hàng').length,
-    totalValue: inventory.reduce((sum, i) => sum + i.totalValue, 0),
+  const openAdjustStock = (item: InventoryItem) => {
+    setStockForm({
+      id: item.id,
+      productName: item.productName,
+      variantName: item.variantName,
+      sku: item.sku,
+      stock: String(item.currentStock),
+      minStock: String(item.minStock),
+      reason: '',
+    });
+    setStockDialogOpen(true);
   };
 
-  const handleAddImei = (sku: string) => {
-    if (!imeiInput.trim()) return;
-    const imeis = imeiInput.split('\n').map(i => i.trim()).filter(Boolean);
-    setInventory(prev => prev.map(item =>
-      item.sku === sku ? { ...item, imeis: [...item.imeis, ...imeis] } : item
-    ));
-    setImeiInput('');
-    setShowImeiInput(null);
-    toast.success(`Đã thêm ${imeis.length} IMEI`);
+  const openMovements = async (item: InventoryItem) => {
+    setMovementItem(item);
+    setMovementDialogOpen(true);
+    setLoadingMovements(true);
+    try {
+      const res = await adminInventoryApi.movements(item.productId, { page: 1, pageSize: 20 });
+      setMovements(res.data as StockMovement[]);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Khong tai duoc lich su ton kho');
+      setMovements([]);
+    } finally {
+      setLoadingMovements(false);
+    }
   };
 
-  const statusColors: Record<string, string> = {
-    'Đủ hàng': 'bg-green-100 text-green-700',
-    'Sắp hết': 'bg-amber-100 text-amber-700',
-    'Hết hàng': 'bg-red-100 text-red-700',
+  const saveStock = async () => {
+    if (!stockForm) return;
+    const nextStock = Number(stockForm.stock);
+    const nextMinStock = Number(stockForm.minStock);
+    if (!Number.isFinite(nextStock) || nextStock < 0 || !Number.isInteger(nextStock)) {
+      toast.error('Ton kho phai la so nguyen >= 0');
+      return;
+    }
+    if (!Number.isFinite(nextMinStock) || nextMinStock < 0 || !Number.isInteger(nextMinStock)) {
+      toast.error('Muc canh bao phai la so nguyen >= 0');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await adminInventoryApi.adjust(stockForm.id, {
+        stock: nextStock,
+        minStock: nextMinStock,
+        reason: stockForm.reason.trim() || 'Dieu chinh tu admin FE',
+      });
+      toast.success('Da cap nhat ton kho');
+      setStockDialogOpen(false);
+      await fetchData();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Cap nhat ton kho that bai');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
-    <div>
-      <AppBreadcrumb items={[{ label: 'Admin', href: '/admin' }, { label: 'Kho hàng' }]} />
+    <div className="space-y-5">
+      <AppBreadcrumb items={[{ label: 'Quan tri', href: '/admin' }, { label: 'Kho hang' }]} />
 
-      <div className="flex items-center justify-between mb-6 mt-4">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Quản lý kho hàng</h1>
-          <p className="text-muted-foreground mt-0.5">Theo dõi tồn kho và quản lý IMEI thiết bị</p>
+          <h1>Kho hang</h1>
+          <p className="text-muted-foreground">Theo doi ton kho, nguong canh bao, IMEI va lich su dieu chinh tu BE admin inventory.</p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => toast.info('Tính năng xuất Excel đang phát triển')}>
-            <Download className="h-4 w-4 mr-1" /> Xuất Excel
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => toast.info('Tính năng nhập Excel đang phát triển')}>
-            <Upload className="h-4 w-4 mr-1" /> Nhập Excel
-          </Button>
-          <Button size="sm" className="bg-[#e31837] hover:bg-[#c91432]" onClick={() => toast.info('Tính năng thêm sản phẩm sẽ redirect về trang sản phẩm')}>
-            <Plus className="h-4 w-4 mr-1" /> Nhập hàng
-          </Button>
-        </div>
+        <Button variant="outline" onClick={fetchData} disabled={loading}>
+          <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+          Lam moi
+        </Button>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-        {[
-          { label: 'Tổng SKU', value: stats.total, icon: Package, color: 'text-blue-600', bg: 'bg-blue-50' },
-          { label: 'Đủ hàng', value: stats.available, icon: CheckCircle, color: 'text-green-600', bg: 'bg-green-50' },
-          { label: 'Sắp hết', value: stats.low, icon: AlertTriangle, color: 'text-amber-600', bg: 'bg-amber-50' },
-          { label: 'Hết hàng', value: stats.outOfStock, icon: TrendingDown, color: 'text-red-600', bg: 'bg-red-50' },
-          { label: 'Giá trị tồn kho', value: formatPrice(stats.totalValue), icon: BarChart3, color: 'text-purple-600', bg: 'bg-purple-50', wide: true },
-        ].map(stat => {
-          const Icon = stat.icon;
-          return (
-            <Card key={stat.label} className={`border-0 shadow-sm ${(stat as any).wide ? 'col-span-2 md:col-span-1' : ''}`}>
-              <CardContent className="p-4 flex items-center gap-3">
-                <div className={`h-10 w-10 rounded-xl ${stat.bg} flex items-center justify-center shrink-0`}>
-                  <Icon className={`h-5 w-5 ${stat.color}`} />
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground">{stat.label}</p>
-                  <p className="font-bold text-sm">{stat.value}</p>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <Card><CardContent className="p-4 flex items-center gap-3"><Package className="h-5 w-5 text-blue-600" /><div><p className="text-muted-foreground">Tong SKU</p><p className="text-xl font-semibold">{stats.totalSku}</p></div></CardContent></Card>
+        <Card><CardContent className="p-4 flex items-center gap-3"><CheckCircle className="h-5 w-5 text-emerald-600" /><div><p className="text-muted-foreground">Du hang</p><p className="text-xl font-semibold">{stats.available}</p></div></CardContent></Card>
+        <Card><CardContent className="p-4 flex items-center gap-3"><AlertTriangle className="h-5 w-5 text-amber-600" /><div><p className="text-muted-foreground">Sap het</p><p className="text-xl font-semibold">{stats.low}</p></div></CardContent></Card>
+        <Card><CardContent className="p-4 flex items-center gap-3"><TrendingDown className="h-5 w-5 text-red-600" /><div><p className="text-muted-foreground">Het hang</p><p className="text-xl font-semibold">{stats.out}</p></div></CardContent></Card>
+        <Card className="col-span-2 lg:col-span-1"><CardContent className="p-4"><p className="text-muted-foreground">Gia tri ton</p><p className="text-lg font-semibold">{formatPrice(stats.totalValue)}</p></CardContent></Card>
       </div>
 
-      {/* Filters */}
-      <Card className="border-0 shadow-sm mb-5">
-        <CardContent className="p-4 flex flex-col sm:flex-row gap-3">
+      <Card>
+        <CardContent className="p-4 flex flex-col lg:flex-row gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               className="pl-10"
-              placeholder="Tìm theo tên, SKU, thương hiệu..."
+              placeholder="Tim san pham, bien the, SKU..."
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={event => setSearch(event.target.value)}
             />
           </div>
-          <div className="flex gap-2">
-            <select
-              className="h-10 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-            >
-              <option value="all">Tất cả trạng thái</option>
-              <option value="Đủ hàng">Đủ hàng</option>
-              <option value="Sắp hết">Sắp hết</option>
-              <option value="Hết hàng">Hết hàng</option>
-            </select>
-            <select
-              className="h-10 border rounded-lg px-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-              value={brandFilter}
-              onChange={e => setBrandFilter(e.target.value)}
-            >
-              <option value="all">Tất cả thương hiệu</option>
-              {brands.map(b => <option key={b} value={b}>{b}</option>)}
-            </select>
-            <Button variant="ghost" size="icon" onClick={fetchData} title="Làm mới">
-              <RefreshCw className="h-4 w-4" />
-            </Button>
-          </div>
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-full lg:w-[180px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tat ca trang thai</SelectItem>
+              <SelectItem value="IN_STOCK">Du hang</SelectItem>
+              <SelectItem value="LOW_STOCK">Sap het</SelectItem>
+              <SelectItem value="OUT_OF_STOCK">Het hang</SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={brandFilter} onValueChange={setBrandFilter}>
+            <SelectTrigger className="w-full lg:w-[180px]"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Tat ca hang</SelectItem>
+              {brands.map(brand => <SelectItem key={brand} value={brand}>{brand}</SelectItem>)}
+            </SelectContent>
+          </Select>
         </CardContent>
       </Card>
 
-      {/* Table */}
-      <Card className="border-0 shadow-sm overflow-hidden">
-        <CardHeader className="border-b bg-gray-50/50 py-3 px-4">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-semibold">
-              {filtered.length} SKU {statusFilter !== 'all' || brandFilter !== 'all' ? '(đã lọc)' : 'tổng cộng'}
-            </CardTitle>
-          </div>
+      <Card>
+        <CardHeader className="border-b py-3">
+          <CardTitle className="text-sm">{inventory.length} SKU</CardTitle>
         </CardHeader>
         <div className="overflow-x-auto">
           {loading ? (
-            <div className="p-8 text-center">
-              <RefreshCw className="h-8 w-8 text-muted-foreground mx-auto animate-spin" />
+            <div className="p-10 flex justify-center">
+              <RefreshCw className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
-          ) : filtered.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">
-              <Package className="h-12 w-12 mx-auto mb-3 opacity-30" />
-              <p>Không có dữ liệu tồn kho phù hợp</p>
-            </div>
+          ) : inventory.length === 0 ? (
+            <div className="p-10 text-center text-muted-foreground">Khong co du lieu ton kho phu hop</div>
           ) : (
             <table className="w-full text-sm">
-              <thead className="text-xs text-muted-foreground bg-gray-50/50">
+              <thead className="bg-muted/50 text-muted-foreground">
                 <tr>
-                  <th className="text-left font-medium px-4 py-3">Sản phẩm</th>
-                  <th className="text-left font-medium px-4 py-3">SKU</th>
-                  <th className="text-left font-medium px-4 py-3">Thương hiệu</th>
-                  <th className="text-left font-medium px-4 py-3">Phân loại</th>
-                  <th className="text-right font-medium px-4 py-3">Tồn kho</th>
-                  <th className="text-right font-medium px-4 py-3">Giá bán</th>
-                  <th className="text-right font-medium px-4 py-3">Giá trị</th>
-                  <th className="text-center font-medium px-4 py-3">Trạng thái</th>
-                  <th className="text-center font-medium px-4 py-3">IMEI</th>
-                  <th className="text-center font-medium px-4 py-3">Thao tác</th>
+                  <th className="px-4 py-3 text-left font-medium">San pham</th>
+                  <th className="px-4 py-3 text-left font-medium">SKU / IMEI</th>
+                  <th className="px-4 py-3 text-left font-medium">Hang</th>
+                  <th className="px-4 py-3 text-left font-medium">Danh muc</th>
+                  <th className="px-4 py-3 text-right font-medium">Ton</th>
+                  <th className="px-4 py-3 text-right font-medium">Canh bao</th>
+                  <th className="px-4 py-3 text-right font-medium">Gia tri</th>
+                  <th className="px-4 py-3 text-center font-medium">Trang thai</th>
+                  <th className="px-4 py-3 text-center font-medium">Thao tac</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {filtered.slice(0, 50).map((item, idx) => (
-                  <>
-                    <tr key={`${item.sku}-${idx}`} className="hover:bg-gray-50/50 transition-colors">
-                      <td className="px-4 py-3">
-                        <p className="font-medium line-clamp-1">{item.productName}</p>
-                        {item.variantName && <p className="text-xs text-muted-foreground">{item.variantName}</p>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <code className="text-xs bg-gray-100 px-1.5 py-0.5 rounded">{item.sku}</code>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className="text-sm">{item.brand}</span>
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant="secondary" className="text-[10px]">{item.categoryName}</Badge>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
-                          <span className={`font-semibold ${item.currentStock === 0 ? 'text-red-500' : item.currentStock <= 5 ? 'text-amber-500' : 'text-green-600'}`}>
-                            {item.currentStock}
-                          </span>
-                          {item.status === 'Sắp hết' && (
-                            <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
-                          )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm font-medium">
-                        {formatPrice(item.sellingPrice)}
-                      </td>
-                      <td className="px-4 py-3 text-right text-sm text-muted-foreground">
-                        {formatPrice(item.totalValue)}
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <Badge className={`border-0 text-[10px] ${statusColors[item.status]}`}>
-                          {item.status}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <button
-                          className="flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 mx-auto"
-                          onClick={() => setShowImeiInput(showImeiInput === item.sku ? null : item.sku)}
-                        >
-                          <QrCode className="h-3.5 w-3.5" />
-                          {item.imeis.length > 0 ? `${item.imeis.length} IMEI` : 'Thêm'}
-                        </button>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0" onClick={() => toast.info('Điều chỉnh tồn kho')}>
-                            <Edit2 className="h-3.5 w-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="sm" className="h-7 w-7 p-0 text-muted-foreground" onClick={() => toast.info('Lịch sử nhập xuất')}>
-                            <ArrowUpDown className="h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                    {/* IMEI input row */}
-                    {showImeiInput === item.sku && (
-                      <tr key={`imei-${item.sku}`}>
-                        <td colSpan={10} className="px-4 pb-3">
-                          <div className="bg-blue-50 rounded-xl p-4 border border-blue-200">
-                            <p className="text-sm font-semibold text-blue-800 mb-2">
-                              <QrCode className="inline h-4 w-4 mr-1" />
-                              Thêm IMEI cho: {item.productName} — {item.variantName}
-                            </p>
-                            {item.imeis.length > 0 && (
-                              <div className="mb-2 flex gap-1 flex-wrap">
-                                {item.imeis.map(imei => (
-                                  <code key={imei} className="text-xs bg-white border border-blue-200 px-2 py-0.5 rounded">{imei}</code>
-                                ))}
-                              </div>
-                            )}
-                            <textarea
-                              className="w-full h-20 border rounded-lg p-2 text-sm font-mono resize-none focus:outline-none focus:ring-2 focus:ring-blue-400"
-                              placeholder="Nhập IMEI (mỗi dòng 1 IMEI)&#10;351234567890123&#10;351234567890456"
-                              value={imeiInput}
-                              onChange={e => setImeiInput(e.target.value)}
-                            />
-                            <div className="flex gap-2 mt-2">
-                              <Button size="sm" className="bg-blue-600 hover:bg-blue-700" onClick={() => handleAddImei(item.sku)}>
-                                <Plus className="h-3.5 w-3.5 mr-1" /> Thêm IMEI
-                              </Button>
-                              <Button size="sm" variant="outline" onClick={() => setShowImeiInput(null)}>
-                                Đóng
-                              </Button>
-                            </div>
-                          </div>
-                        </td>
-                      </tr>
-                    )}
-                  </>
+                {inventory.map(item => (
+                  <tr key={item.id} className="hover:bg-muted/30">
+                    <td className="px-4 py-3 min-w-[240px]">
+                      <p className="font-medium">{item.productName}</p>
+                      <p className="text-muted-foreground">{item.variantName}</p>
+                      <p className="text-xs text-muted-foreground">Cap nhat {formatDateTime(item.updatedAt)}</p>
+                    </td>
+                    <td className="px-4 py-3">
+                      <code className="rounded bg-muted px-1.5 py-0.5">{item.sku}</code>
+                      <p className="mt-1 text-xs text-muted-foreground">{item.imeiSerials.length} IMEI/serial</p>
+                    </td>
+                    <td className="px-4 py-3">{item.brand}</td>
+                    <td className="px-4 py-3"><Badge variant="secondary">{item.categoryName}</Badge></td>
+                    <td className="px-4 py-3 text-right font-semibold">{item.currentStock}</td>
+                    <td className="px-4 py-3 text-right">{item.minStock}</td>
+                    <td className="px-4 py-3 text-right">
+                      <p>{formatPrice(item.totalValue)}</p>
+                      <p className="text-xs text-muted-foreground">{formatPrice(item.sellingPrice)}</p>
+                    </td>
+                    <td className="px-4 py-3 text-center"><StockBadge status={item.status} /></td>
+                    <td className="px-4 py-3">
+                      <div className="flex justify-center gap-1">
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openAdjustStock(item)}>
+                          <Edit className="h-4 w-4" />
+                        </Button>
+                        <Button variant="ghost" size="sm" className="h-8 w-8 p-0" onClick={() => openMovements(item)}>
+                          <History className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
                 ))}
               </tbody>
             </table>
           )}
         </div>
-        {filtered.length > 50 && (
-          <div className="p-4 text-center text-sm text-muted-foreground border-t">
-            Hiển thị 50 / {filtered.length} mục. Dùng bộ lọc để thu hẹp kết quả.
-          </div>
-        )}
       </Card>
+
+      <Dialog open={stockDialogOpen} onOpenChange={setStockDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Dieu chinh ton kho</DialogTitle>
+          </DialogHeader>
+          {stockForm && (
+            <div className="grid gap-4">
+              <div>
+                <p className="font-medium">{stockForm.productName}</p>
+                <p className="text-muted-foreground">{stockForm.variantName} - {stockForm.sku}</p>
+              </div>
+              <div className="grid gap-2">
+                <Label>Ton kho moi</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={stockForm.stock}
+                  onChange={event => setStockForm(prev => prev ? { ...prev, stock: event.target.value } : prev)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Muc canh bao</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  value={stockForm.minStock}
+                  onChange={event => setStockForm(prev => prev ? { ...prev, minStock: event.target.value } : prev)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label>Ly do dieu chinh</Label>
+                <Textarea
+                  rows={3}
+                  value={stockForm.reason}
+                  onChange={event => setStockForm(prev => prev ? { ...prev, reason: event.target.value } : prev)}
+                  placeholder="Vi du: Kiem kho cuoi ngay"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setStockDialogOpen(false)}>Huy</Button>
+            <Button onClick={saveStock} disabled={saving}>{saving ? 'Dang luu...' : 'Luu ton kho'}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={movementDialogOpen} onOpenChange={setMovementDialogOpen}>
+        <DialogContent className="max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Lich su dieu chinh</DialogTitle>
+          </DialogHeader>
+          {movementItem && (
+            <div className="text-sm">
+              <p className="font-medium">{movementItem.productName}</p>
+              <p className="text-muted-foreground">{movementItem.variantName} - {movementItem.sku}</p>
+            </div>
+          )}
+          {loadingMovements ? (
+            <div className="p-8 flex justify-center"><RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" /></div>
+          ) : movements.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">Chua co lich su dieu chinh</div>
+          ) : (
+            <div className="max-h-[420px] overflow-y-auto rounded-md border">
+              <table className="w-full text-sm">
+                <thead className="bg-muted/50 text-muted-foreground">
+                  <tr>
+                    <th className="px-3 py-2 text-left font-medium">Thoi gian</th>
+                    <th className="px-3 py-2 text-left font-medium">Loai</th>
+                    <th className="px-3 py-2 text-right font-medium">Truoc</th>
+                    <th className="px-3 py-2 text-right font-medium">Sau</th>
+                    <th className="px-3 py-2 text-right font-medium">Lech</th>
+                    <th className="px-3 py-2 text-left font-medium">Ly do</th>
+                    <th className="px-3 py-2 text-left font-medium">Nguoi tao</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y">
+                  {movements.map(item => (
+                    <tr key={item.id}>
+                      <td className="px-3 py-2">{formatDateTime(item.createdAt)}</td>
+                      <td className="px-3 py-2">{item.type}</td>
+                      <td className="px-3 py-2 text-right">{item.quantityBefore}</td>
+                      <td className="px-3 py-2 text-right">{item.quantityAfter}</td>
+                      <td className="px-3 py-2 text-right font-medium">{item.delta > 0 ? `+${item.delta}` : item.delta}</td>
+                      <td className="px-3 py-2">{item.reason || '-'}</td>
+                      <td className="px-3 py-2">{item.createdByName || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setMovementDialogOpen(false)}>Dong</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

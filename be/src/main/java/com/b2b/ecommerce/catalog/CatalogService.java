@@ -286,6 +286,19 @@ public class CatalogService {
 		images.delete(image);
 	}
 
+	@Transactional
+	public List<ProductImageDto> reorderImages(String productId, List<String> imageIds) {
+		productEntity(productId);
+		int sort = 0;
+		for (String imageId : imageIds) {
+			ProductImageEntity image = images.findByIdAndProductId(UUID.fromString(imageId), UUID.fromString(productId))
+					.orElseThrow(() -> new NoSuchElementException("Khong tim thay anh san pham"));
+			image.setSortOrder(sort++);
+			images.save(image);
+		}
+		return productImages(productId);
+	}
+
 	private void applyCategory(CategoryEntity category, CategoryRequest request, String slug, CategoryEntity parent) {
 		category.setName(value(request.name(), category.getName()));
 		category.setSlug(slug);
