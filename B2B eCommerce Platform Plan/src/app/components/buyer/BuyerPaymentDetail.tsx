@@ -32,6 +32,8 @@ import type { Payment } from '../../types';
 const formatPrice = (n: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(n);
 
+const getPaymentStoreName = (payment: Pick<Payment, 'supplierName'>) => payment.supplierName || 'CELLPHONES';
+
 const today = new Date().toISOString().slice(0, 10);
 
 function getDaysUntilDue(dueDate: string): number {
@@ -139,7 +141,7 @@ export function BuyerPaymentDetail() {
               {isOverdue && <Badge variant="destructive">Quá hạn {Math.abs(daysLeft)} ngày</Badge>}
               {isNearDue && <Badge variant="outline" className="border-amber-500 text-amber-600">{daysLeft} ngày</Badge>}
             </div>
-            <p className="text-muted-foreground mt-1">Đơn hàng: {payment.orderNumber} · NCC: {payment.supplierName}</p>
+            <p className="text-muted-foreground mt-1">Đơn hàng: {payment.orderNumber} · Cửa hàng: {getPaymentStoreName(payment)}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -216,7 +218,7 @@ export function BuyerPaymentDetail() {
           <CardContent className="space-y-3">
             <InfoRow icon={FileText} label="Mã hoá đơn" value={payment.invoiceNumber} />
             <InfoRow icon={FileText} label="Đơn hàng" value={payment.orderNumber} />
-            <InfoRow icon={Building2} label="Nhà cung cấp" value={payment.supplierName} />
+            <InfoRow icon={Building2} label="Cửa hàng" value={getPaymentStoreName(payment)} />
             <InfoRow icon={Shield} label="Phương thức" value={payment.method} />
             <Separator />
             <InfoRow icon={Calendar} label="Ngày tạo" value={payment.createdAt} />
@@ -254,7 +256,7 @@ export function BuyerPaymentDetail() {
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Chủ tài khoản</p>
-                      <p>{payment.supplierName}</p>
+                      <p>{getPaymentStoreName(payment)}</p>
                     </div>
                     <div>
                       <p className="text-xs text-muted-foreground">Số tiền</p>

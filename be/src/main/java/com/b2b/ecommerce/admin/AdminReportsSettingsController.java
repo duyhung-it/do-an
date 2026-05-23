@@ -259,16 +259,21 @@ public class AdminReportsSettingsController {
 	}
 
 	@GetMapping("/activity-logs")
-	public ApiResponse<List<ActivityLogDto>> activityLogs(@RequestParam(defaultValue = "1") int page,
-			@RequestParam(defaultValue = "20") int pageSize) {
+	public ApiResponse<List<ActivityLogDto>> activityLogs(
+			@RequestParam(defaultValue = "1") int page,
+			@RequestParam(defaultValue = "20") int pageSize,
+			@RequestParam(required = false) String action,
+			@RequestParam(required = false) String entity,
+			@RequestParam(required = false) String userId,
+			@RequestParam(required = false) String search) {
 		PageRequestParams params = new PageRequestParams(page, pageSize, null, "createdAt", "desc");
-		Page<ActivityLogDto> result = service.activityLogs(params);
+		Page<ActivityLogDto> result = service.activityLogs(params, action, entity, userId, search);
 		return ApiResponse.page(result.getContent(), (int) result.getTotalElements(), params.normalizedPage(),
 				params.normalizedPageSize());
 	}
 
 	@GetMapping("/activity-logs/stats")
-	public ApiResponse<List<StatusCountDto>> activityLogStats() {
+	public ApiResponse<ActivityLogStatsDto> activityLogStats() {
 		return ApiResponse.ok(service.activityLogStats());
 	}
 
@@ -324,22 +329,31 @@ public class AdminReportsSettingsController {
 			String updatedAt) {
 	}
 
-	public record BranchRequest(@NotBlank String name, String phone, String address, Boolean isActive) {
+	public record BranchRequest(@NotBlank String name, String phone, String address,
+			String district, String city, String workingHours,
+			Double lat, Double lng, Boolean isActive) {
 	}
 
-	public record BranchDto(String id, String name, String phone, String address, boolean isActive, String createdAt,
-			String updatedAt) {
+	public record BranchDto(String id, String name, String phone, String address,
+			String district, String city, String workingHours,
+			Double lat, Double lng, boolean isActive, String createdAt, String updatedAt) {
 	}
 
-	public record StaffRequest(@NotBlank String fullName, @NotBlank String email, String role, Boolean isActive) {
+	public record StaffRequest(@NotBlank String fullName, @NotBlank String email, String phone,
+			String role, String branchId, String joinedAt, Boolean isActive) {
 	}
 
-	public record StaffDto(String id, String fullName, String email, String role, boolean isActive, String createdAt,
-			String updatedAt) {
+	public record StaffDto(String id, String fullName, String email, String phone,
+			String role, String branchId, String branchName, String joinedAt,
+			boolean isActive, String createdAt, String updatedAt) {
 	}
 
 	public record ActivityLogDto(String id, String actorId, String actorName, String action, String entityType,
 			String entityId, String note, String createdAt) {
+	}
+
+	public record ActivityLogStatsDto(long todayCount, long weekCount, long monthCount,
+			List<StatusCountDto> byAction) {
 	}
 }
 
@@ -543,17 +557,24 @@ class AdminReportsSettingsService {
 	@Transactional
 	public AdminReportsSettingsController.BranchDto createBranch(AdminReportsSettingsController.BranchRequest request) {
 		UUID id = UUID.randomUUID();
-		jdbc.update("INSERT INTO branches (id, name, phone, address, is_active) VALUES (?, ?, ?, ?, ?)", id,
-				request.name(), fallback(request.phone(), ""), fallback(request.address(), ""),
-				request.isActive() == null || request.isActive());
+		jdbc.update("""
+				INSERT INTO branches (id, name, phone, address, district, city, working_hours, lat, lng, is_active)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+				""", id, request.name(), fallback(request.phone(), ""), fallback(request.address(), ""),
+				request.district(), request.city(), fallback(request.workingHours(), "8:00 - 22:00"),
+				request.lat(), request.lng(), request.isActive() == null || request.isActive());
 		return branch(id.toString());
 	}
 
 	@Transactional
 	public AdminReportsSettingsController.BranchDto updateBranch(String id, AdminReportsSettingsController.BranchRequest request) {
-		jdbc.update("UPDATE branches SET name = ?, phone = ?, address = ?, is_active = ?, updated_at = NOW() WHERE id = ?",
-				request.name(), fallback(request.phone(), ""), fallback(request.address(), ""),
-				request.isActive() == null || request.isActive(), UUID.fromString(id));
+		jdbc.update("""
+				UPDATE branches SET name = ?, phone = ?, address = ?, district = ?, city = ?,
+				                   working_hours = ?, lat = ?, lng = ?, is_active = ?, updated_at = NOW()
+				WHERE id = ?
+				""", request.name(), fallback(request.phone(), ""), fallback(request.address(), ""),
+				request.district(), request.city(), fallback(request.workingHours(), "8:00 - 22:00"),
+				request.lat(), request.lng(), request.isActive() == null || request.isActive(), UUID.fromString(id));
 		return branch(id);
 	}
 
@@ -565,22 +586,51 @@ class AdminReportsSettingsService {
 
 	@Transactional(readOnly = true)
 	public List<AdminReportsSettingsController.StaffDto> staff() {
-		return jdbc.query("SELECT * FROM staff_members ORDER BY created_at DESC", this::staffRow);
+		return jdbc.query("""
+				SELECT sm.*, b.name AS branch_name
+				FROM staff_members sm
+				LEFT JOIN branches b ON b.id = sm.branch_id
+				ORDER BY sm.created_at DESC
+				""", this::staffRow);
 	}
 
 	@Transactional
 	public AdminReportsSettingsController.StaffDto createStaff(AdminReportsSettingsController.StaffRequest request) {
 		UUID id = UUID.randomUUID();
-		jdbc.update("INSERT INTO staff_members (id, full_name, email, role, is_active) VALUES (?, ?, ?, ?, ?)", id,
-				request.fullName(), request.email(), fallback(request.role(), "STAFF"), request.isActive() == null || request.isActive());
+		UUID branchUuid = parseBranchId(request.branchId());
+		java.time.LocalDate joinedAt = request.joinedAt() != null && !request.joinedAt().isBlank()
+				? java.time.LocalDate.parse(request.joinedAt()) : java.time.LocalDate.now();
+		jdbc.update("""
+				INSERT INTO staff_members (id, full_name, email, phone, role, branch_id, joined_at, is_active)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+				""", id, request.fullName(), request.email(), fallback(request.phone(), ""),
+				fallback(request.role(), "STAFF"), branchUuid, joinedAt,
+				request.isActive() == null || request.isActive());
 		return staff(id.toString());
 	}
 
 	@Transactional
 	public AdminReportsSettingsController.StaffDto updateStaff(String id, AdminReportsSettingsController.StaffRequest request) {
-		jdbc.update("UPDATE staff_members SET full_name = ?, email = ?, role = ?, is_active = ?, updated_at = NOW() WHERE id = ?",
-				request.fullName(), request.email(), fallback(request.role(), "STAFF"), request.isActive() == null || request.isActive(),
-				UUID.fromString(id));
+		UUID branchUuid = parseBranchId(request.branchId());
+		java.time.LocalDate joinedAt = request.joinedAt() != null && !request.joinedAt().isBlank()
+				? java.time.LocalDate.parse(request.joinedAt()) : null;
+		if (joinedAt != null) {
+			jdbc.update("""
+					UPDATE staff_members
+					SET full_name = ?, email = ?, phone = ?, role = ?, branch_id = ?, joined_at = ?, is_active = ?, updated_at = NOW()
+					WHERE id = ?
+					""", request.fullName(), request.email(), fallback(request.phone(), ""),
+					fallback(request.role(), "STAFF"), branchUuid, joinedAt,
+					request.isActive() == null || request.isActive(), UUID.fromString(id));
+		} else {
+			jdbc.update("""
+					UPDATE staff_members
+					SET full_name = ?, email = ?, phone = ?, role = ?, branch_id = ?, is_active = ?, updated_at = NOW()
+					WHERE id = ?
+					""", request.fullName(), request.email(), fallback(request.phone(), ""),
+					fallback(request.role(), "STAFF"), branchUuid,
+					request.isActive() == null || request.isActive(), UUID.fromString(id));
+		}
 		return staff(id);
 	}
 
@@ -591,24 +641,58 @@ class AdminReportsSettingsService {
 	}
 
 	@Transactional(readOnly = true)
-	public Page<AdminReportsSettingsController.ActivityLogDto> activityLogs(PageRequestParams params) {
+	public Page<AdminReportsSettingsController.ActivityLogDto> activityLogs(
+			PageRequestParams params, String action, String entity, String userId, String search) {
 		int page = params.normalizedPage();
 		int pageSize = params.normalizedPageSize();
-		Long total = jdbc.queryForObject("SELECT COUNT(*) FROM admin_activity_logs", Long.class);
-		List<AdminReportsSettingsController.ActivityLogDto> content = jdbc.query("""
-				SELECT * FROM admin_activity_logs ORDER BY created_at DESC LIMIT ? OFFSET ?
-				""", this::activityLogRow, pageSize, (page - 1) * pageSize);
+
+		// Build dynamic WHERE clause
+		List<Object> args = new java.util.ArrayList<>();
+		StringBuilder where = new StringBuilder("WHERE 1=1");
+		if (action != null && !action.isBlank()) {
+			where.append(" AND action = ?");
+			args.add(action.toUpperCase());
+		}
+		if (entity != null && !entity.isBlank()) {
+			where.append(" AND entity_type ILIKE ?");
+			args.add("%" + entity + "%");
+		}
+		if (userId != null && !userId.isBlank()) {
+			try { args.add(UUID.fromString(userId)); where.append(" AND actor_id = ?"); }
+			catch (IllegalArgumentException ignored) {}
+		}
+		if (search != null && !search.isBlank()) {
+			where.append(" AND (actor_name ILIKE ? OR note ILIKE ? OR entity_type ILIKE ?)");
+			String like = "%" + search + "%";
+			args.add(like); args.add(like); args.add(like);
+		}
+
+		Long total = jdbc.queryForObject(
+				"SELECT COUNT(*) FROM admin_activity_logs " + where, Long.class, args.toArray());
+
+		List<Object> pageArgs = new java.util.ArrayList<>(args);
+		pageArgs.add(pageSize);
+		pageArgs.add((page - 1) * pageSize);
+		List<AdminReportsSettingsController.ActivityLogDto> content = jdbc.query(
+				"SELECT * FROM admin_activity_logs " + where + " ORDER BY created_at DESC LIMIT ? OFFSET ?",
+				this::activityLogRow, pageArgs.toArray());
 		return new PageImpl<>(content, PageRequest.of(page - 1, pageSize), total == null ? 0 : total);
 	}
 
 	@Transactional(readOnly = true)
-	public List<AdminReportsSettingsController.StatusCountDto> activityLogStats() {
-		return jdbc.query("""
+	public AdminReportsSettingsController.ActivityLogStatsDto activityLogStats() {
+		long todayCount = jdbc.queryForObject(
+				"SELECT COUNT(*) FROM admin_activity_logs WHERE created_at >= CURRENT_DATE", Long.class);
+		long weekCount = jdbc.queryForObject(
+				"SELECT COUNT(*) FROM admin_activity_logs WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'", Long.class);
+		long monthCount = jdbc.queryForObject(
+				"SELECT COUNT(*) FROM admin_activity_logs WHERE created_at >= CURRENT_DATE - INTERVAL '30 days'", Long.class);
+		List<AdminReportsSettingsController.StatusCountDto> byAction = jdbc.query("""
 				SELECT action AS status, COUNT(*)::bigint AS count
 				FROM admin_activity_logs
-				GROUP BY action
-				ORDER BY action
+				GROUP BY action ORDER BY count DESC
 				""", this::statusCount);
+		return new AdminReportsSettingsController.ActivityLogStatsDto(todayCount, weekCount, monthCount, byAction);
 	}
 
 	@Transactional
@@ -632,7 +716,12 @@ class AdminReportsSettingsService {
 	}
 
 	AdminReportsSettingsController.StaffDto staff(String id) {
-		return one("SELECT * FROM staff_members WHERE id = ?", this::staffRow, id);
+		return one("""
+				SELECT sm.*, b.name AS branch_name
+				FROM staff_members sm
+				LEFT JOIN branches b ON b.id = sm.branch_id
+				WHERE sm.id = ?
+				""", this::staffRow, id);
 	}
 
 	private <T> T one(String sql, org.springframework.jdbc.core.RowMapper<T> mapper, String id) {
@@ -674,15 +763,31 @@ class AdminReportsSettingsService {
 	}
 
 	private AdminReportsSettingsController.BranchDto branchRow(ResultSet rs, int rowNum) throws SQLException {
-		return new AdminReportsSettingsController.BranchDto(rs.getObject("id").toString(), rs.getString("name"),
-				rs.getString("phone"), rs.getString("address"), rs.getBoolean("is_active"),
-				iso(rs.getObject("created_at", OffsetDateTime.class)), iso(rs.getObject("updated_at", OffsetDateTime.class)));
+		Object latObj = rs.getObject("lat");
+		Object lngObj = rs.getObject("lng");
+		return new AdminReportsSettingsController.BranchDto(
+				rs.getObject("id").toString(), rs.getString("name"),
+				rs.getString("phone"), rs.getString("address"),
+				rs.getString("district"), rs.getString("city"), rs.getString("working_hours"),
+				latObj == null ? null : ((Number) latObj).doubleValue(),
+				lngObj == null ? null : ((Number) lngObj).doubleValue(),
+				rs.getBoolean("is_active"),
+				iso(rs.getObject("created_at", OffsetDateTime.class)),
+				iso(rs.getObject("updated_at", OffsetDateTime.class)));
 	}
 
 	private AdminReportsSettingsController.StaffDto staffRow(ResultSet rs, int rowNum) throws SQLException {
-		return new AdminReportsSettingsController.StaffDto(rs.getObject("id").toString(), rs.getString("full_name"),
-				rs.getString("email"), rs.getString("role"), rs.getBoolean("is_active"),
-				iso(rs.getObject("created_at", OffsetDateTime.class)), iso(rs.getObject("updated_at", OffsetDateTime.class)));
+		Object branchId = rs.getObject("branch_id");
+		Object joinedAt = rs.getObject("joined_at");
+		return new AdminReportsSettingsController.StaffDto(
+				rs.getObject("id").toString(), rs.getString("full_name"),
+				rs.getString("email"), rs.getString("phone"), rs.getString("role"),
+				branchId == null ? null : branchId.toString(),
+				rs.getString("branch_name"),
+				joinedAt == null ? null : joinedAt.toString(),
+				rs.getBoolean("is_active"),
+				iso(rs.getObject("created_at", OffsetDateTime.class)),
+				iso(rs.getObject("updated_at", OffsetDateTime.class)));
 	}
 
 	private AdminReportsSettingsController.ActivityLogDto activityLogRow(ResultSet rs, int rowNum) throws SQLException {
@@ -716,6 +821,11 @@ class AdminReportsSettingsService {
 
 	private String fallback(String value, String fallback) {
 		return value == null || value.isBlank() ? fallback : value;
+	}
+
+	private UUID parseBranchId(String branchId) {
+		if (branchId == null || branchId.isBlank()) return null;
+		try { return UUID.fromString(branchId); } catch (IllegalArgumentException e) { return null; }
 	}
 
 	private String iso(OffsetDateTime value) {

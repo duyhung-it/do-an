@@ -182,7 +182,7 @@ function ReviewCard({
               <div className="mt-3 p-3 bg-blue-50/50 dark:bg-blue-950/10 rounded-xl border border-blue-100/50 dark:border-blue-900/20">
                 <div className="flex items-center gap-1.5 mb-1">
                   <Building2 className="h-3.5 w-3.5 text-blue-500" />
-                  <span className="text-xs text-blue-600 dark:text-blue-400" style={{ fontFamily: 'var(--font-heading)' }}>Phản hồi NCC</span>
+                  <span className="text-xs text-blue-600 dark:text-blue-400" style={{ fontFamily: 'var(--font-heading)' }}>Phản hồi cửa hàng</span>
                   {review.sellerReplyDate && <span className="text-[10px] text-muted-foreground">{review.sellerReplyDate}</span>}
                 </div>
                 <p className="text-sm text-muted-foreground">{review.sellerReply}</p>

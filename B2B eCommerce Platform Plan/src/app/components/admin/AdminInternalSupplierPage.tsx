@@ -1,6 +1,6 @@
 // ============================================================
-// AdminInternalSupplierPage — Quản lý nhà cung cấp nội bộ
-// Khác với marketplace supplier: NCC chỉ admin thấy, dùng để
+// AdminInternalSupplierPage — Quản lý nguồn hàng nội bộ
+// Khác với cửa hàng marketplace: nguồn hàng chỉ admin thấy, dùng để
 // quản lý nguồn hàng nhập (Apple VN, Samsung VN, Digiworld...)
 // ============================================================
 
@@ -114,15 +114,15 @@ export function AdminInternalSupplierPage() {
 
   const handleSave = () => {
     if (!form.name.trim()) {
-      toast.error('Vui lòng nhập tên nhà cung cấp');
+      toast.error('Vui lòng nhập tên nguồn hàng');
       return;
     }
     if (editTarget) {
       setSuppliers(prev => prev.map(s => s.id === editTarget.id ? { ...s, ...form } : s));
-      toast.success('Đã cập nhật nhà cung cấp');
+      toast.success('Đã cập nhật nguồn hàng');
     } else {
       setSuppliers(prev => [...prev, { ...form, id: `sup-${Date.now()}`, createdAt: new Date().toISOString().split('T')[0] }]);
-      toast.success('Đã thêm nhà cung cấp mới');
+      toast.success('Đã thêm nguồn hàng mới');
     }
     setShowForm(false);
   };
@@ -130,13 +130,13 @@ export function AdminInternalSupplierPage() {
   const handleDelete = () => {
     if (!deleteTarget) return;
     setSuppliers(prev => prev.filter(s => s.id !== deleteTarget.id));
-    toast.success('Đã xóa nhà cung cấp');
+    toast.success('Đã xóa nguồn hàng');
     setDeleteTarget(null);
   };
 
   const columns = [
     {
-      key: 'name', label: 'Nhà cung cấp',
+      key: 'name', label: 'Nguồn hàng',
       render: (item: InternalSupplier) => (
         <div className="flex items-center gap-2">
           <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center">
@@ -194,21 +194,21 @@ export function AdminInternalSupplierPage() {
 
   return (
     <div className="space-y-6">
-      <AppBreadcrumb items={[{ label: 'Admin', href: '/admin' }, { label: 'Nhà cung cấp' }]} />
+      <AppBreadcrumb items={[{ label: 'Admin', href: '/admin' }, { label: 'Nguồn hàng' }]} />
 
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="flex items-center gap-2"><Building2 className="h-6 w-6 text-primary" /> Nhà cung cấp nội bộ</h1>
-          <p className="text-muted-foreground">Quản lý các nhà cung cấp & nhà phân phối nguồn hàng</p>
+          <h1 className="flex items-center gap-2"><Building2 className="h-6 w-6 text-primary" /> Nguồn hàng nội bộ</h1>
+          <p className="text-muted-foreground">Quản lý đối tác nhập hàng và nhà phân phối</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={fetchData}><RefreshCw className="h-4 w-4 mr-1" />Làm mới</Button>
-          <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4 mr-1" />Thêm NCC</Button>
+          <Button size="sm" onClick={openCreate}><Plus className="h-4 w-4 mr-1" />Thêm nguồn hàng</Button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <StatsCard title="Tổng NCC" value={suppliers.length} icon={Building2} />
+        <StatsCard title="Tổng nguồn hàng" value={suppliers.length} icon={Building2} />
         <StatsCard title="Đang hợp tác" value={activeCount} icon={Building2} variant="success" />
         <StatsCard title="Danh mục cung cấp" value={categoryCount} icon={Package} variant="info" />
         <StatsCard title="Tạm dừng" value={suppliers.length - activeCount} icon={Building2} variant="warning" />
@@ -216,13 +216,13 @@ export function AdminInternalSupplierPage() {
 
       <FilterBar
         search={search} onSearchChange={setSearch}
-        searchPlaceholder="Tìm tên NCC, người liên hệ..."
+        searchPlaceholder="Tìm tên nguồn hàng, người liên hệ..."
         filters={[
           { key: 'status', label: 'Trạng thái', value: statusFilter, onChange: setStatusFilter, options: ['Tất cả', 'Hoạt động', 'Tạm dừng'] },
         ]}
       />
 
-      <SimpleTable columns={columns} data={filtered} loading={loading} emptyMessage="Chưa có nhà cung cấp nào" />
+      <SimpleTable columns={columns} data={filtered} loading={loading} emptyMessage="Chưa có nguồn hàng nào" />
 
       {/* Form Dialog */}
       <Dialog open={showForm} onOpenChange={setShowForm}>
@@ -230,12 +230,12 @@ export function AdminInternalSupplierPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               {editTarget ? <Edit2 className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
-              {editTarget ? 'Chỉnh sửa NCC' : 'Thêm nhà cung cấp mới'}
+              {editTarget ? 'Chỉnh sửa nguồn hàng' : 'Thêm nguồn hàng mới'}
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <div>
-              <Label>Tên NCC *</Label>
+              <Label>Tên nguồn hàng *</Label>
               <Input value={form.name} onChange={e => setForm(p => ({ ...p, name: e.target.value }))} placeholder="Apple Việt Nam" />
             </div>
             <div className="grid grid-cols-2 gap-3">
@@ -288,7 +288,7 @@ export function AdminInternalSupplierPage() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowForm(false)}>Hủy</Button>
-            <Button onClick={handleSave}>{editTarget ? 'Lưu thay đổi' : 'Thêm NCC'}</Button>
+            <Button onClick={handleSave}>{editTarget ? 'Lưu thay đổi' : 'Thêm nguồn hàng'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -297,7 +297,7 @@ export function AdminInternalSupplierPage() {
       <Dialog open={!!deleteTarget} onOpenChange={() => setDeleteTarget(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader><DialogTitle>Xác nhận xóa</DialogTitle></DialogHeader>
-          <p className="text-sm text-muted-foreground">Bạn có chắc muốn xóa nhà cung cấp <strong>"{deleteTarget?.name}"</strong>?</p>
+          <p className="text-sm text-muted-foreground">Bạn có chắc muốn xóa nguồn hàng <strong>"{deleteTarget?.name}"</strong>?</p>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteTarget(null)}>Hủy</Button>
             <Button variant="destructive" onClick={handleDelete}>Xóa</Button>

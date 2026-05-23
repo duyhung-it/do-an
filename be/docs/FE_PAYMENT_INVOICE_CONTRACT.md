@@ -2,7 +2,7 @@
 
 Base URL local: `http://localhost:8080/api/v1`
 
-Module status: implemented payment side effects, customer payment list/detail, invoice metadata, and admin manual mark-paid.
+Module status: implemented payment side effects, customer payment list/detail, invoice metadata, admin manual mark-paid, and local gateway session/callback for `MOMO`/`VNPAY`.
 
 BA source:
 
@@ -70,6 +70,172 @@ Ownership:
 - Backend reads current dev user from `X-User-Id`.
 - If payment exists but belongs to another user, backend returns `403 PAYMENT_ACCESS_DENIED`.
 
+## Submit Customer Payment Proof
+
+`POST /payments/{id}/proof`
+
+Use this when buyer uploads/submits a bank-transfer proof URL. This does not mark the payment as paid; admin still confirms via `PATCH /admin/payments/{id}/mark-paid`.
+
+Request:
+
+```json
+{
+  "proofUrl": "https://cdn.cellphones.vn/payment-proofs/proof-001.jpg",
+  "note": "Khach da chuyen khoan, cho admin xac nhan",
+  "amount": 520000,
+  "method": "BANK_TRANSFER",
+  "transactionRef": "PROOF-20260523-001"
+}
+```
+
+Response `PaymentProofDto`:
+
+```json
+{
+  "id": "9b2d4c6e-2ef9-4fd9-9a0b-caf0ad541001",
+  "paymentId": "97500820-9f45-4c9b-afaf-fbb52c9709f5",
+  "orderId": "8c2f5d3b-5a3d-4a0d-a7cc-568f0b0ddcc1",
+  "customerId": "00000000-0000-4000-8000-000000000199",
+  "proofUrl": "https://cdn.cellphones.vn/payment-proofs/proof-001.jpg",
+  "note": "Khach da chuyen khoan, cho admin xac nhan",
+  "amount": 520000,
+  "method": "BANK_TRANSFER",
+  "transactionRef": "PROOF-20260523-001",
+  "status": "PENDING_REVIEW",
+  "createdAt": "2026-05-23T14:12:00+07:00"
+}
+```
+
+Rules:
+
+- Backend validates ownership with `X-User-Id`.
+- `PAID` payments return `PAYMENT_ALREADY_PAID`.
+- `REFUNDED` and `PARTIALLY_REFUNDED` payments return `PAYMENT_REFUNDED`.
+- `transactionRef` is unique when provided.
+- If `amount` is missing or `<= 0`, backend stores current `remainingAmount`.
+
+## List Customer Payment Proofs
+
+`GET /payments/{id}/proofs`
+
+Response: array of `PaymentProofDto`, newest first.
+
+## Create Online Payment Session
+
+`POST /payments/{id}/gateway-session`
+
+Use this after `POST /orders` when `data.payment.method` is `MOMO` or `VNPAY`.
+
+Headers:
+
+| Header | Note |
+| --- | --- |
+| `X-User-Id` | dev ownership bridge, must match payment owner |
+
+Request:
+
+```json
+{
+  "provider": "MOMO",
+  "returnUrl": "http://localhost:3000/payment-return",
+  "callbackUrl": "http://localhost:8080/api/v1/payments/gateway/callback"
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "id": "b2ad8cb5-6cfb-49d6-a09e-f88b5d1b4ed1",
+    "paymentId": "97500820-9f45-4c9b-afaf-fbb52c9709f5",
+    "orderId": "8c2f5d3b-5a3d-4a0d-a7cc-568f0b0ddcc1",
+    "provider": "MOMO",
+    "requestId": "MOMO-20260520-4a844a3d-2f8b-4f8a-9f62-33cc6bb9b64a",
+    "transactionRef": null,
+    "amount": 33490000,
+    "status": "PENDING",
+    "paymentUrl": "/api/v1/payments/gateway/return?provider=MOMO&requestId=MOMO-20260520-4a844a3d-2f8b-4f8a-9f62-33cc6bb9b64a&status=SUCCESS",
+    "returnUrl": "http://localhost:3000/payment-return",
+    "callbackUrl": "http://localhost:8080/api/v1/payments/gateway/callback",
+    "paidAt": null,
+    "createdAt": "2026-05-20T00:26:08+07:00"
+  },
+  "success": true,
+  "message": "Thao tac thanh cong",
+  "pagination": null,
+  "error": null
+}
+```
+
+Rules:
+
+- `provider` must be `MOMO` or `VNPAY`.
+- `provider` must match `payment.method`.
+- Payment owner only; other `X-User-Id` returns `403 PAYMENT_ACCESS_DENIED`.
+- If a pending session already exists for the same payment/provider, backend returns it instead of creating a duplicate.
+- `paymentUrl` is a local mock gateway return URL for FE/dev integration. External provider signing is still deferred.
+
+## Gateway Callback / Return
+
+`POST /payments/gateway/callback`
+
+Request:
+
+```json
+{
+  "provider": "MOMO",
+  "requestId": "MOMO-20260520-4a844a3d-2f8b-4f8a-9f62-33cc6bb9b64a",
+  "transactionRef": "MOMO-TEST-001",
+  "status": "SUCCESS",
+  "amount": 33490000,
+  "signature": "optional-for-dev"
+}
+```
+
+`GET /payments/gateway/return?provider=MOMO&requestId={requestId}&status=SUCCESS&transactionRef=MOMO-TEST-001&amount=33490000`
+
+Response for both callback and return:
+
+```json
+{
+  "data": {
+    "requestId": "MOMO-20260520-4a844a3d-2f8b-4f8a-9f62-33cc6bb9b64a",
+    "provider": "MOMO",
+    "status": "PAID",
+    "transactionRef": "MOMO-TEST-001",
+    "amount": 33490000,
+    "paymentId": "97500820-9f45-4c9b-afaf-fbb52c9709f5",
+    "orderId": "8c2f5d3b-5a3d-4a0d-a7cc-568f0b0ddcc1",
+    "payment": {
+      "id": "97500820-9f45-4c9b-afaf-fbb52c9709f5",
+      "orderId": "8c2f5d3b-5a3d-4a0d-a7cc-568f0b0ddcc1",
+      "orderNumber": "CP2026052000001",
+      "customerId": "00000000-0000-4000-8000-000000000199",
+      "amount": 33490000,
+      "paidAmount": 33490000,
+      "remainingAmount": 0,
+      "dueDate": "2026-05-23",
+      "status": "PAID",
+      "method": "MOMO",
+      "transactionRef": "MOMO-TEST-001",
+      "paidAt": "2026-05-20T00:26:20+07:00",
+      "createdAt": "2026-05-20T00:25:55+07:00"
+    }
+  }
+}
+```
+
+Callback status mapping:
+
+| Input status | Session status | Payment side effect |
+| --- | --- | --- |
+| `SUCCESS`, `PAID` | `PAID` | `payments.status = PAID`, `orders.payment_status = PAID`, invoice becomes `PAID` if already created |
+| `FAILED` | `FAILED` | payment remains unpaid/overdue |
+| `CANCELLED`, `CANCELED` | `CANCELLED` | payment remains unpaid/overdue |
+
+Callback is idempotent: repeated callback for the same `requestId` returns the already-paid payment and does not double count.
+
 ## List My Invoices
 
 `GET /invoices?page=1&pageSize=20&status=PENDING&search=CP20260514`
@@ -90,6 +256,14 @@ Response: paginated list of `InvoiceDto`.
 `GET /invoices/{id}`
 
 Response: `InvoiceDto`.
+
+`InvoiceDto` now includes print/detail fields so FE does not need display fallbacks for invoice detail:
+
+- `customerEmail`, `customerPhone`
+- `invoiceType`: currently `ORDER`
+- `sellerName`, `sellerTaxCode`, `sellerAddress`
+- `notes`
+- `lines[]`: `productId`, `variantId`, `productName`, `productImage`, `variantName`, `sku`, `quantity`, `unitPrice`, `originalPrice`, `discount`, `totalPrice`
 
 Ownership:
 
@@ -177,7 +351,29 @@ Response:
     "issueDate": "2026-05-14",
     "dueDate": "2026-05-17",
     "paidAt": null,
-    "createdAt": "2026-05-14T08:28:11+07:00"
+    "createdAt": "2026-05-14T08:28:11+07:00",
+    "customerEmail": "nguyenvana@gmail.com",
+    "customerPhone": "0901234567",
+    "invoiceType": "ORDER",
+    "sellerName": "CELLPHONES",
+    "sellerTaxCode": "0310000000",
+    "sellerAddress": "350-352 Vo Van Kiet, Quan 1, TP. Ho Chi Minh",
+    "notes": "Giao hang gio hanh chinh",
+    "lines": [
+      {
+        "productId": "b1b2c3d4-0001-0001-0001-000000000001",
+        "variantId": "c1b2c3d4-0001-0001-0001-000000000001",
+        "productName": "iPhone 15 Pro Max 256GB",
+        "productImage": "https://cdn.cellphones.vn/products/iphone15promax-1.jpg",
+        "variantName": "256GB - Titan Tu Nhien",
+        "sku": "IP15PM-256-TN",
+        "quantity": 1,
+        "unitPrice": 33990000,
+        "originalPrice": 36990000,
+        "discount": 0,
+        "totalPrice": 33990000
+      }
+    ]
   },
   "success": true,
   "message": "Thao tac thanh cong",
@@ -225,7 +421,8 @@ Admin status `SHIPPING -> DELIVERED`:
   - `orders.paymentStatus = PAID`
   - `invoices.status = PAID`
   - `invoices.paidAt = now`
-- If payment method is not `COD`, no gateway/manual payment action is implemented yet.
+- If payment method is `MOMO` or `VNPAY`, FE can use gateway session/callback endpoints above.
+- If payment method is `BANK_TRANSFER`, admin/manual mark-paid flow is available.
 
 Order cancel:
 
@@ -344,6 +541,7 @@ Rules:
 - Supported `method`: `BANK_TRANSFER`, `MOMO`, `VNPAY`, `CASH`.
 - Backend sets `payments.status = REFUNDED`.
 - Backend sets `orders.paymentStatus = REFUNDED`.
+- If the order previously awarded loyalty points, backend creates one `EXPIRE` loyalty transaction to reverse those points without making the balance negative.
 
 Response: `AdminPaymentDto` with refund fields:
 
@@ -359,7 +557,8 @@ Response: `AdminPaymentDto` with refund fields:
 
 ## Deferred
 
-- Admin shipment create/tracking-edit endpoints. Admin shipment list/detail/status is documented in `be/docs/FE_SHIPMENT_CONTRACT.md`.
+- Real external MOMO/VNPAY credentials, provider signature verification, and production redirect URL signing.
+- Security/RBAC is still deferred by request; customer ownership currently uses `X-User-Id`.
 
 ## BA Mapping
 
@@ -372,6 +571,8 @@ Response: `AdminPaymentDto` with refund fields:
 | COD paid on delivered | `05-api-orders.md`, section `4.3`, delivered side effects |
 | `GET /api/v1/payments` | `06-api-payments-invoices.md`, section `GET /payments` |
 | `GET /api/v1/payments/{id}` | `06-api-payments-invoices.md`, section `GET /payments/{id}` |
+| `POST /api/v1/payments/{id}/proof` | Customer bank transfer proof bridge for FE buyer payment detail |
+| `GET /api/v1/payments/{id}/proofs` | Customer proof history for payment detail |
 | `GET /api/v1/invoices` | `06-api-payments-invoices.md`, section `GET /invoices` |
 | `GET /api/v1/invoices/{id}` | `06-api-payments-invoices.md`, section `GET /invoices/{id}` |
 | `GET /api/v1/invoices/{id}/download` | `06-api-payments-invoices.md`, section `GET /invoices/{id}/download` |
@@ -384,3 +585,7 @@ Response: `AdminPaymentDto` with refund fields:
 | `PATCH /api/v1/admin/payments/{id}/mark-paid` | `06-api-payments-invoices.md`, section `PATCH /admin/payments/{id}/mark-paid` |
 | `PATCH /api/v1/admin/payments/{id}/mark-overdue` | `06-api-payments-invoices.md`, section `PATCH /admin/payments/{id}/mark-overdue` |
 | `POST /api/v1/admin/payments/{id}/refund` | `06-api-payments-invoices.md`, section `POST /admin/payments/{id}/refund` |
+| Loyalty reverse on refund | `10-business-rules.md`, refund/return side effects |
+| `POST /api/v1/payments/{id}/gateway-session` | BA online payment URL expectation from order/payment object |
+| `POST /api/v1/payments/gateway/callback` | BA payment status synchronization/business side effect |
+| `GET /api/v1/payments/gateway/return` | FE/dev return bridge for online payment flow |

@@ -3,12 +3,13 @@
 // ============================================================
 import type {
   AuthUser, LoginCredentials, RegisterData,
-  Category, Product, Order, OrderStatus, User, UserStatus,
+  ActiveFilter, Category, Product, Order, OrderStatus, User, UserStatus,
   Review, Promotion, CartItem, WishlistItem,
   WarrantyItem, TradeInRequest, BlogPost, ProductCombo,
   StoreLocation, IMEICheckResult, StockMovement,
   PaginatedResponse, PaginationParams, SortParams, ReturnRequest,
   ActivityLog, AppNotification, ShippingAddress,
+  Payment, Invoice, Shipment,
 } from '../types';
 import {
   mockCategories, mockProducts, mockOrders, mockUsers, mockReviews,
@@ -37,6 +38,243 @@ function paginate<T>(arr: T[], params: PaginationParams): PaginatedResponse<T> {
   const { page, pageSize } = params;
   const start = (page - 1) * pageSize;
   return { data: arr.slice(start, start + pageSize), total: arr.length, page, pageSize, totalPages: Math.ceil(arr.length / pageSize) };
+}
+
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api/v1';
+
+type ApiEnvelope<T> = {
+  success: boolean;
+  data: T;
+  message?: string;
+  pagination?: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  } | null;
+  error?: {
+    code: string;
+    message: string;
+  } | null;
+};
+
+type BackendCategory = Omit<Category, 'children'> & {
+  children?: BackendCategory[];
+};
+
+type BackendProductImage = {
+  url: string;
+};
+
+type BackendProduct = Omit<Product, 'images' | 'categoryName' | 'status' | 'condition'> & {
+  category?: { id: string; name: string; slug: string };
+  images?: BackendProductImage[];
+  status: 'ACTIVE' | 'INACTIVE' | 'OUT_OF_STOCK' | 'DISCONTINUED';
+  condition: 'NEW' | 'LIKE_NEW' | 'USED' | 'REFURBISHED';
+};
+
+function toQuery(params: Record<string, string | number | boolean | null | undefined>) {
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+  });
+  const text = query.toString();
+  return text ? `?${text}` : '';
+}
+
+const DEFAULT_DEV_USER_ID = '00000000-0000-4000-8000-000000000199';
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+let addressStore: ShippingAddress[] = Array.from({ length: 10 }, (_, index) => ({
+  id: `addr-demo-${index + 1}`,
+  userId: DEFAULT_DEV_USER_ID,
+  label: index === 0 ? 'Nhà riêng' : `Địa chỉ ${index + 1}`,
+  fullName: 'Demo Buyer',
+  phone: '0900000199',
+  address: `${index + 1} Demo Street`,
+  ward: `Phường ${index + 1}`,
+  district: `Quận ${index + 1}`,
+  city: 'TP. Hồ Chí Minh',
+  country: 'Việt Nam',
+  isDefault: index === 0,
+  notes: index === 0 ? 'Địa chỉ mặc định' : undefined,
+}));
+
+function getDevUserHeaders(user?: { id?: string; fullName?: string; email?: string; phone?: string } | null) {
+  const uuidLike = user?.id && UUID_PATTERN.test(user.id);
+  const headers: Record<string, string> = {
+    'X-User-Id': uuidLike ? user!.id! : DEFAULT_DEV_USER_ID,
+  };
+  if (user?.fullName) headers['X-User-Name'] = user.fullName;
+  if (user?.email) headers['X-User-Email'] = user.email;
+  if (user?.phone) headers['X-User-Phone'] = user.phone;
+  return headers;
+}
+
+async function backendRequest<T>(path: string, init?: RequestInit): Promise<{ data: T; pagination?: ApiEnvelope<T>['pagination'] }> {
+  const headers = new Headers(init?.headers);
+  if (init?.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  const response = await fetch(`${API_BASE_URL}${path}`, { ...init, headers });
+  if (response.status === 204) return { data: undefined as T, pagination: null };
+  const payload = await response.json() as ApiEnvelope<T>;
+  if (!response.ok || payload.success === false) {
+    throw new Error(payload.error?.message ?? payload.message ?? `API error ${response.status}`);
+  }
+  return { data: payload.data, pagination: payload.pagination };
+}
+
+function mapProductStatus(status: BackendProduct['status']): Product['status'] {
+  if (status === 'OUT_OF_STOCK') return 'Hết hàng';
+  if (status === 'DISCONTINUED') return 'Ngừng kinh doanh';
+  return 'Đang bán';
+}
+
+function mapProductCondition(condition: BackendProduct['condition']): Product['condition'] {
+  if (condition === 'LIKE_NEW') return 'Like New';
+  if (condition === 'USED' || condition === 'REFURBISHED') return 'Qua sử dụng';
+  return 'Mới';
+}
+
+function mapBackendProduct(product: BackendProduct): Product {
+  const images = product.images?.map(image => image.url).filter(Boolean) ?? [];
+  const primaryImage = images[0] ?? `https://placehold.co/600x600/f5f5f5/999?text=${encodeURIComponent(product.name)}`;
+  return {
+    ...product,
+    categoryName: product.category?.name ?? product.categoryId,
+    images: images.length ? images : [primaryImage],
+    status: mapProductStatus(product.status),
+    condition: mapProductCondition(product.condition),
+    rating: Number(product.rating ?? 0),
+    reviewCount: Number(product.reviewCount ?? 0),
+    variants: product.variants ?? [],
+    tags: product.tags ?? [],
+    specifications: product.specifications ?? {},
+    minOrderQty: 1,
+    unit: 'sp',
+    supplierId: 'cellphones',
+    supplierName: 'CELLPHONES',
+  } as Product;
+}
+
+function normalizeProductFilters(filters?: Record<string, unknown> | ActiveFilter[], search?: string) {
+  const normalized: Record<string, unknown> = {};
+  if (Array.isArray(filters)) {
+    filters.forEach(filter => { normalized[filter.key] = filter.value; });
+  } else if (filters) {
+    Object.assign(normalized, filters);
+  }
+  if (search) normalized.search = search;
+  return normalized;
+}
+
+type BackendCart = {
+  items: CartItem[];
+  itemCount: number;
+  subtotal: number;
+  estimatedShipping: number;
+};
+
+type BackendOrderStatus = 'PENDING' | 'CONFIRMED' | 'SHIPPING' | 'DELIVERED' | 'CANCELLED' | 'RETURNED';
+type BackendPaymentStatus = 'UNPAID' | 'PAID' | 'REFUNDED';
+
+type BackendShippingAddress = {
+  recipientName: string;
+  phone: string;
+  province: string;
+  district: string;
+  ward: string;
+  addressLine: string;
+  fullAddress?: string;
+};
+
+type BackendOrder = Omit<Order, 'status' | 'paymentStatus' | 'paymentMethod' | 'shippingAddress'> & {
+  status: BackendOrderStatus;
+  paymentStatus: BackendPaymentStatus;
+  paymentMethod: 'COD' | 'BANK_TRANSFER' | 'MOMO' | 'VNPAY' | 'INSTALLMENT';
+  shippingAddress: BackendShippingAddress;
+  statusHistory?: unknown[];
+};
+
+type CreateBackendOrderPayload = {
+  items: Array<{ productId: string; variantId?: string; quantity: number }>;
+  shippingAddress: BackendShippingAddress;
+  paymentMethod: 'COD' | 'BANK_TRANSFER' | 'MOMO' | 'VNPAY' | 'INSTALLMENT';
+  promotionCode?: string;
+  notes?: string;
+};
+
+function mapOrderStatus(status: BackendOrderStatus): OrderStatus {
+  if (status === 'CONFIRMED') return 'Đã xác nhận';
+  if (status === 'SHIPPING') return 'Đang giao hàng';
+  if (status === 'DELIVERED') return 'Đã giao';
+  if (status === 'CANCELLED') return 'Đã huỷ';
+  if (status === 'RETURNED') return 'Hoàn trả';
+  return 'Chờ xác nhận';
+}
+
+function mapPaymentStatus(status: BackendPaymentStatus): Order['paymentStatus'] {
+  if (status === 'PAID') return 'Đã thanh toán';
+  if (status === 'REFUNDED') return 'Hoàn tiền';
+  return 'Chưa thanh toán';
+}
+
+function mapPaymentMethod(method: BackendOrder['paymentMethod']): Order['paymentMethod'] {
+  if (method === 'BANK_TRANSFER') return 'Chuyển khoản';
+  if (method === 'MOMO' || method === 'VNPAY') return 'Ví điện tử';
+  return 'COD';
+}
+
+function mapBackendOrder(order: BackendOrder): Order {
+  const rawItems = (order as unknown as { items?: unknown }).items;
+  const items = Array.isArray(rawItems)
+    ? rawItems
+    : (rawItems as { firstItem?: Partial<Order['items'][number]> } | undefined)?.firstItem
+      ? [{
+        id: `${order.id}-first-item`,
+        productId: (rawItems as { firstItem: Partial<Order['items'][number]> }).firstItem.productId ?? '',
+        productName: (rawItems as { firstItem: Partial<Order['items'][number]> }).firstItem.productName ?? 'San pham',
+        productImage: (rawItems as { firstItem: Partial<Order['items'][number]> }).firstItem.productImage ?? '',
+        brand: '',
+        quantity: 1,
+        unitPrice: order.totalAmount,
+        totalPrice: order.totalAmount,
+        variantName: (rawItems as { firstItem: Partial<Order['items'][number]> }).firstItem.variantName,
+      }]
+      : [];
+  const address = order.shippingAddress?.fullAddress
+    ?? [
+      order.shippingAddress?.addressLine,
+      order.shippingAddress?.ward,
+      order.shippingAddress?.district,
+      order.shippingAddress?.province,
+    ].filter(Boolean).join(', ');
+  return {
+    ...order,
+    items,
+    supplierId: 'cellphones',
+    supplierName: 'CELLPHONES',
+    buyerName: order.customerName,
+    buyerEmail: order.customerEmail,
+    tax: 0,
+    status: mapOrderStatus(order.status),
+    paymentStatus: mapPaymentStatus(order.paymentStatus),
+    paymentMethod: mapPaymentMethod(order.paymentMethod),
+    shippingAddress: address,
+    shippingAddressDetail: {
+      id: order.id,
+      userId: order.customerId,
+      label: 'Giao hàng',
+      recipientName: order.shippingAddress?.recipientName ?? order.customerName,
+      phone: order.shippingAddress?.phone ?? order.customerPhone,
+      province: order.shippingAddress?.province ?? '',
+      district: order.shippingAddress?.district ?? '',
+      ward: order.shippingAddress?.ward ?? '',
+      addressLine: order.shippingAddress?.addressLine ?? '',
+      fullAddress: address,
+      isDefault: false,
+      createdAt: order.createdAt,
+      updatedAt: order.updatedAt,
+    },
+  } as Order;
 }
 
 // ============================================================
@@ -72,8 +310,24 @@ export const authApi = {
 // CATEGORY API
 // ============================================================
 export const categoryApi = {
-  getAll: async () => { await delay(200); return mockCategories; },
-  getById: async (id: string) => { await delay(150); return mockCategories.find(c => c.id === id) ?? null; },
+  getAll: async () => {
+    try {
+      const { data } = await backendRequest<BackendCategory[]>('/categories');
+      return data as Category[];
+    } catch {
+      await delay(200);
+      return mockCategories;
+    }
+  },
+  getById: async (id: string) => {
+    try {
+      const { data } = await backendRequest<BackendCategory>(`/categories/${id}`);
+      return data as Category;
+    } catch {
+      await delay(150);
+      return mockCategories.find(c => c.id === id) ?? null;
+    }
+  },
   create: async (data: Partial<Category>) => { await delay(300); const c = { ...data, id: nextId('cat'), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as Category; return c; },
   update: async (id: string, data: Partial<Category>) => { await delay(300); return { ...mockCategories.find(c => c.id === id)!, ...data }; },
   delete: async (_id: string) => { await delay(300); },
@@ -83,9 +337,48 @@ export const categoryApi = {
 // PRODUCT API
 // ============================================================
 export const productApi = {
-  getAll: async () => { await delay(200); return productStore; },
-  getPaginated: async (params: PaginationParams, sort?: SortParams, filters?: Record<string, unknown>) => {
-    await delay(300);
+  getAll: async () => {
+    try {
+      const page = await productApi.getPaginated({ page: 1, pageSize: 100 });
+      return page.data;
+    } catch {
+      await delay(200);
+      return productStore;
+    }
+  },
+  getPaginated: async (params: PaginationParams, sort?: SortParams, filters?: Record<string, unknown> | ActiveFilter[], search?: string) => {
+    try {
+      const normalized = normalizeProductFilters(filters, search);
+      const query = toQuery({
+        page: params.page,
+        pageSize: params.pageSize,
+        sortBy: sort?.field || undefined,
+        sortDir: sort?.direction,
+        search: normalized.search as string | undefined,
+        categoryId: (normalized.categoryId ?? normalized.categoryName) as string | undefined,
+        categorySlug: normalized.categorySlug as string | undefined,
+        brand: normalized.brand as string | undefined,
+        status: normalized.status === 'Hết hàng' ? 'OUT_OF_STOCK' : normalized.status === 'Ngừng kinh doanh' ? 'DISCONTINUED' : normalized.status ? 'ACTIVE' : undefined,
+        condition: normalized.condition as string | undefined,
+        minPrice: normalized.minPrice as number | undefined,
+        maxPrice: normalized.maxPrice as number | undefined,
+        color: normalized.color as string | undefined,
+        isFeatured: normalized.isFeatured as boolean | undefined,
+        isNew: normalized.isNew as boolean | undefined,
+        isHot: normalized.isHot as boolean | undefined,
+      });
+      const { data, pagination } = await backendRequest<BackendProduct[]>(`/products${query}`);
+      return {
+        data: data.map(mapBackendProduct),
+        total: pagination?.total ?? data.length,
+        page: pagination?.page ?? params.page,
+        pageSize: pagination?.pageSize ?? params.pageSize,
+        totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
+      };
+    } catch {
+      await delay(300);
+      filters = normalizeProductFilters(filters, search);
+    }
     let list = [...productStore];
     if (filters) {
       if (filters.search) list = list.filter(p => p.name.toLowerCase().includes(String(filters.search).toLowerCase()) || p.brand.toLowerCase().includes(String(filters.search).toLowerCase()));
@@ -109,18 +402,68 @@ export const productApi = {
     });
     return paginate(list, params);
   },
-  getById: async (id: string) => { await delay(200); return productStore.find(p => p.id === id) ?? null; },
+  getById: async (id: string) => {
+    try {
+      const { data } = await backendRequest<BackendProduct>(`/products/${id}`);
+      return mapBackendProduct(data);
+    } catch {
+      await delay(200);
+      return productStore.find(p => p.id === id) ?? null;
+    }
+  },
   getByCategory: async (categoryId: string) => { await delay(200); return productStore.filter(p => p.categoryId === categoryId); },
   getByBrand: async (brand: string) => { await delay(200); return productStore.filter(p => p.brand === brand); },
-  getFeatured: async (limit = 8) => { await delay(200); return productStore.filter(p => p.isFeatured).slice(0, limit); },
-  getHot: async (limit = 6) => { await delay(200); return productStore.filter(p => p.isHot).slice(0, limit); },
-  getNew: async (limit = 6) => { await delay(200); return productStore.filter(p => p.isNew).slice(0, limit); },
-  getSimilar: async (productId: string, limit = 4) => { await delay(200); const p = productStore.find(x => x.id === productId); if (!p) return []; return productStore.filter(x => x.id !== productId && (x.categoryId === p.categoryId || x.brand === p.brand)).slice(0, limit); },
+  getFeatured: async (limit = 8) => {
+    try {
+      const { data } = await backendRequest<BackendProduct[]>(`/products/featured${toQuery({ limit })}`);
+      return data.map(mapBackendProduct);
+    } catch {
+      await delay(200);
+      return productStore.filter(p => p.isFeatured).slice(0, limit);
+    }
+  },
+  getHot: async (limit = 6) => {
+    try {
+      const { data } = await backendRequest<BackendProduct[]>(`/products/hot${toQuery({ limit })}`);
+      return data.map(mapBackendProduct);
+    } catch {
+      await delay(200);
+      return productStore.filter(p => p.isHot).slice(0, limit);
+    }
+  },
+  getNew: async (limit = 6) => {
+    try {
+      const { data } = await backendRequest<BackendProduct[]>(`/products/new${toQuery({ limit })}`);
+      return data.map(mapBackendProduct);
+    } catch {
+      await delay(200);
+      return productStore.filter(p => p.isNew).slice(0, limit);
+    }
+  },
+  getSimilar: async (productId: string, limit = 4) => {
+    try {
+      const { data } = await backendRequest<BackendProduct[]>(`/products/${productId}/similar${toQuery({ limit })}`);
+      return data.map(mapBackendProduct);
+    } catch {
+      await delay(200);
+      const p = productStore.find(x => x.id === productId);
+      if (!p) return [];
+      return productStore.filter(x => x.id !== productId && (x.categoryId === p.categoryId || x.brand === p.brand)).slice(0, limit);
+    }
+  },
   getCompatibleAccessories: async (productId: string) => { await delay(200); const p = productStore.find(x => x.id === productId); if (!p?.compatibleAccessories) return []; return productStore.filter(x => p.compatibleAccessories!.includes(x.id)); },
   create: async (data: Partial<Product>) => { await delay(400); const p = { ...data, id: nextId('prod'), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as Product; productStore = [p, ...productStore]; return p; },
   update: async (id: string, data: Partial<Product>) => { await delay(400); productStore = productStore.map(p => p.id === id ? { ...p, ...data, updatedAt: new Date().toISOString() } : p); return productStore.find(p => p.id === id)!; },
   delete: async (id: string) => { await delay(300); productStore = productStore.filter(p => p.id !== id); },
-  getBrands: async () => { await delay(100); return [...new Set(productStore.map(p => p.brand))].sort(); },
+  getBrands: async () => {
+    try {
+      const { data } = await backendRequest<string[]>('/products/brands');
+      return data;
+    } catch {
+      await delay(100);
+      return [...new Set(productStore.map(p => p.brand))].sort();
+    }
+  },
 };
 
 // ============================================================
@@ -143,6 +486,137 @@ export const orderApi = {
   cancel: async (id: string, reason: string) => { await delay(300); orderStore = orderStore.map(o => o.id === id ? { ...o, status: 'Đã huỷ' as OrderStatus, cancelReason: reason, cancelledAt: new Date().toISOString(), updatedAt: new Date().toISOString() } : o); return orderStore.find(o => o.id === id)!; },
 };
 
+Object.assign(orderApi, {
+  getPaginated: async (params: PaginationParams, filters?: Record<string, unknown>) => {
+    try {
+      const query = toQuery({
+        page: params.page,
+        pageSize: params.pageSize,
+        status: filters?.status as string | undefined,
+        search: filters?.search as string | undefined,
+      });
+      const { data, pagination } = await backendRequest<BackendOrder[]>(`/orders${query}`, {
+        headers: getDevUserHeaders(),
+      });
+      return {
+        data: data.map(mapBackendOrder),
+        total: pagination?.total ?? data.length,
+        page: pagination?.page ?? params.page,
+        pageSize: pagination?.pageSize ?? params.pageSize,
+        totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
+      };
+    } catch {
+      await delay(300);
+      let list = [...orderStore];
+      if (filters?.customerId) list = list.filter(o => o.customerId === filters.customerId);
+      if (filters?.status) list = list.filter(o => o.status === filters.status);
+      if (filters?.search) list = list.filter(o => o.orderNumber.includes(String(filters.search)) || o.customerName.toLowerCase().includes(String(filters.search).toLowerCase()));
+      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return paginate(list, params);
+    }
+  },
+  getById: async (id: string) => {
+    try {
+      const { data } = await backendRequest<BackendOrder>(`/orders/${id}`, { headers: getDevUserHeaders() });
+      return mapBackendOrder(data);
+    } catch {
+      await delay(200);
+      return orderStore.find(o => o.id === id) ?? null;
+    }
+  },
+  getByCustomer: async (customerId: string) => {
+    try {
+      const page = await orderApi.getPaginated({ page: 1, pageSize: 50 });
+      return page.data;
+    } catch {
+      await delay(200);
+      return orderStore.filter(o => o.customerId === customerId);
+    }
+  },
+  create: async (data: Partial<Order> | CreateBackendOrderPayload, user?: { id?: string; fullName?: string; email?: string; phone?: string } | null) => {
+    try {
+      const payload = data as CreateBackendOrderPayload;
+      if (payload.items?.length && payload.shippingAddress && typeof payload.shippingAddress !== 'string') {
+        const { data: result } = await backendRequest<{ order: BackendOrder; payment?: unknown }>('/orders', {
+          method: 'POST',
+          headers: getDevUserHeaders(user),
+          body: JSON.stringify(payload),
+        });
+        return mapBackendOrder(result.order);
+      }
+    } catch {
+      // Fall through to local mock behavior when BE is unavailable.
+    }
+    await delay(500);
+    const o = { ...data, id: nextId('ord'), orderNumber: `CP${Date.now()}`, status: 'Chờ xác nhận', paymentStatus: 'Chưa thanh toán', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as Order;
+    orderStore = [o, ...orderStore];
+    return o;
+  },
+  cancel: async (id: string, reason: string) => {
+    try {
+      const { data } = await backendRequest<BackendOrder>(`/orders/${id}/cancel`, {
+        method: 'DELETE',
+        headers: getDevUserHeaders(),
+        body: JSON.stringify({ reason }),
+      });
+      return mapBackendOrder(data);
+    } catch {
+      await delay(300);
+      orderStore = orderStore.map(o => o.id === id ? { ...o, status: 'Đã huỷ' as OrderStatus, cancelReason: reason, cancelledAt: new Date().toISOString(), updatedAt: new Date().toISOString() } : o);
+      return orderStore.find(o => o.id === id)!;
+    }
+  },
+});
+
+Object.assign(orderApi, {
+  getPaginated: async (
+    params: PaginationParams,
+    sortOrFilters?: SortParams | Record<string, unknown>,
+    maybeFilters?: ActiveFilter[] | Record<string, unknown>,
+    search?: string,
+  ) => {
+    const rawFilters = Array.isArray(maybeFilters)
+      ? Object.fromEntries(maybeFilters.map(filter => [filter.key, filter.value]))
+      : maybeFilters ?? (!sortOrFilters || 'field' in sortOrFilters ? {} : sortOrFilters);
+    const statusMap: Record<string, BackendOrderStatus> = {
+      'Chờ xác nhận': 'PENDING',
+      'Đã xác nhận': 'CONFIRMED',
+      'Đang xử lý': 'CONFIRMED',
+      'Đang giao hàng': 'SHIPPING',
+      'Đã giao': 'DELIVERED',
+      'Đã huỷ': 'CANCELLED',
+      'Hoàn trả': 'RETURNED',
+    };
+
+    try {
+      const query = toQuery({
+        page: params.page,
+        pageSize: params.pageSize,
+        status: typeof rawFilters.status === 'string' ? (statusMap[rawFilters.status] ?? rawFilters.status) : undefined,
+        search: search || rawFilters.search as string | undefined,
+      });
+      const { data, pagination } = await backendRequest<BackendOrder[]>(`/orders${query}`, {
+        headers: getDevUserHeaders(),
+      });
+      return {
+        data: data.map(mapBackendOrder),
+        total: pagination?.total ?? data.length,
+        page: pagination?.page ?? params.page,
+        pageSize: pagination?.pageSize ?? params.pageSize,
+        totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
+      };
+    } catch {
+      await delay(300);
+      let list = [...orderStore];
+      if (rawFilters.customerId) list = list.filter(o => o.customerId === rawFilters.customerId);
+      if (rawFilters.status) list = list.filter(o => o.status === rawFilters.status);
+      if (rawFilters.search) list = list.filter(o => o.orderNumber.includes(String(rawFilters.search)) || o.customerName.toLowerCase().includes(String(rawFilters.search).toLowerCase()));
+      list.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      return paginate(list, params);
+    }
+  },
+});
+
 // ============================================================
 // REVIEW API
 // ============================================================
@@ -159,6 +633,8 @@ export const reviewApi = {
   },
   getStarDistribution: async (productId: string) => { await delay(150); const list = reviewStore.filter(r => r.productId === productId && r.status === 'Hiển thị'); return [5, 4, 3, 2, 1].map(star => ({ star, count: list.filter(r => r.rating === star).length })); },
   getPaginated: async (params: PaginationParams, filters?: Record<string, unknown>) => { await delay(250); let list = [...reviewStore]; if (filters?.status) list = list.filter(r => r.status === filters.status); return paginate(list, params); },
+  getByUser: async (userId: string) => { await delay(200); return reviewStore.filter(r => r.userId === userId); },
+  getByOrder: async (orderId: string) => { await delay(200); return reviewStore.filter(r => r.orderId === orderId); },
   create: async (data: Partial<Review>): Promise<Review> => { await delay(400); const r = { ...data, id: nextId('rev'), status: 'Chờ duyệt' as const, helpfulCount: 0, images: data.images ?? [], tags: data.tags ?? [], createdAt: new Date().toISOString() } as Review; reviewStore = [r, ...reviewStore]; return r; },
   update: async (id: string, data: Partial<Review>): Promise<Review> => { await delay(300); reviewStore = reviewStore.map(r => r.id === id ? { ...r, ...data } : r); return reviewStore.find(r => r.id === id)!; },
   delete: async (id: string) => { await delay(250); reviewStore = reviewStore.filter(r => r.id !== id); },
@@ -198,10 +674,94 @@ export const cartApi = {
   clear: async () => { await delay(150); cartStore = []; },
 };
 
+Object.assign(cartApi, {
+  getItems: async (): Promise<CartItem[]> => {
+    if (cartStore.length > 0 && cartStore.some(item => !UUID_PATTERN.test(item.productId))) {
+      await delay(150);
+      return cartStore;
+    }
+    try {
+      const { data } = await backendRequest<BackendCart>('/cart', { headers: getDevUserHeaders() });
+      return data.items.map(item => ({ supplierId: 'cellphones', supplierName: 'CELLPHONES', ...item } as CartItem));
+    } catch {
+      await delay(150);
+      return cartStore;
+    }
+  },
+  addItem: async (item: Omit<CartItem, 'id' | 'totalPrice'>): Promise<CartItem> => {
+    if (!UUID_PATTERN.test(item.productId)) {
+      await delay(200);
+      const newItem: CartItem = { ...item, id: nextId('cart'), totalPrice: item.unitPrice * item.quantity };
+      cartStore = [...cartStore, newItem];
+      return newItem;
+    }
+    try {
+      const { data } = await backendRequest<CartItem>('/cart/items', {
+        method: 'POST',
+        headers: getDevUserHeaders(),
+        body: JSON.stringify({
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+          note: item.note ?? null,
+        }),
+      });
+      return { supplierId: 'cellphones', supplierName: 'CELLPHONES', ...data } as CartItem;
+    } catch {
+      await delay(200);
+      const newItem: CartItem = { ...item, id: nextId('cart'), totalPrice: item.unitPrice * item.quantity };
+      cartStore = [...cartStore, newItem];
+      return newItem;
+    }
+  },
+  updateQuantity: async (id: string, quantity: number): Promise<CartItem> => {
+    try {
+      const { data } = await backendRequest<CartItem>(`/cart/items/${id}`, {
+        method: 'PATCH',
+        headers: getDevUserHeaders(),
+        body: JSON.stringify({ quantity }),
+      });
+      return { supplierId: 'cellphones', supplierName: 'CELLPHONES', ...data } as CartItem;
+    } catch {
+      await delay(150);
+      cartStore = cartStore.map(i => i.id === id ? { ...i, quantity, totalPrice: i.unitPrice * quantity } : i);
+      return cartStore.find(i => i.id === id)!;
+    }
+  },
+  removeItem: async (id: string) => {
+    try {
+      await backendRequest<void>(`/cart/items/${id}`, { method: 'DELETE', headers: getDevUserHeaders() });
+    } catch {
+      await delay(150);
+      cartStore = cartStore.filter(i => i.id !== id);
+    }
+  },
+  clear: async () => {
+    try {
+      await backendRequest<void>('/cart', { method: 'DELETE', headers: getDevUserHeaders() });
+    } catch {
+      await delay(150);
+      cartStore = [];
+    }
+  },
+  validate: async () => {
+    try {
+      const { data } = await backendRequest<{ valid: boolean; issues: Array<{ message: string }> }>('/cart/validate', {
+        method: 'POST',
+        headers: getDevUserHeaders(),
+      });
+      return data;
+    } catch {
+      return { valid: true, issues: [] };
+    }
+  },
+});
+
 // ============================================================
 // WISHLIST API
 // ============================================================
 export const wishlistApi = {
+  get: async (_userId: string): Promise<WishlistItem[]> => { await delay(200); return wishStore; },
   getByUser: async (_userId: string): Promise<WishlistItem[]> => { await delay(200); return wishStore; },
   add: async (userId: string, productId: string): Promise<WishlistItem> => { await delay(250); const p = productStore.find(x => x.id === productId); if (!p) throw new Error('Sản phẩm không tồn tại'); const item: WishlistItem = { id: nextId('wl'), userId, productId, productName: p.name, productImage: p.images[0], brand: p.brand, categoryName: p.categoryName, price: p.price, originalPrice: p.originalPrice, stock: p.variants.reduce((s, v) => s + v.stock, 0), addedAt: new Date().toISOString() }; wishStore = [item, ...wishStore]; return item; },
   remove: async (id: string) => { await delay(150); wishStore = wishStore.filter(i => i.id !== id); },
@@ -399,6 +959,7 @@ export const addressApi = {
   create: async (data: Partial<ShippingAddress>): Promise<ShippingAddress> => { await delay(300); return { ...data, id: nextId('addr') } as ShippingAddress; },
   update: async (id: string, data: Partial<ShippingAddress>): Promise<ShippingAddress> => { await delay(250); return { ...data, id } as ShippingAddress; },
   delete: async (_id: string) => { await delay(200); },
+  setDefault: async (_id: string) => { await delay(200); },
 };
 
 // ============================================================
@@ -930,3 +1491,1410 @@ Object.assign(warehouseApi, {
 
 // warehouseTransferApi stub (SellerDashboard imports from its own file)
 // This must be resolved via the separate warehouseTransferApi.ts file
+
+type BackendCustomerPaymentStatus = 'UNPAID' | 'PAID' | 'OVERDUE' | 'FAILED' | 'REFUNDED' | 'PARTIALLY_REFUNDED';
+type BackendCustomerPaymentMethod = 'CASH' | 'BANK_TRANSFER' | 'MOMO' | 'VNPAY' | 'COD' | 'INSTALLMENT';
+type BackendCustomerPayment = {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  customerId: string;
+  amount: number;
+  paidAmount: number;
+  remainingAmount: number;
+  dueDate: string;
+  status: BackendCustomerPaymentStatus;
+  method: BackendCustomerPaymentMethod;
+  transactionRef?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+};
+
+type BackendCustomerInvoiceStatus = 'PENDING' | 'PAID' | 'OVERDUE' | 'CANCELLED';
+type BackendCustomerInvoice = {
+  id: string;
+  invoiceNumber: string;
+  orderId: string;
+  orderNumber: string;
+  customerId: string;
+  customerName: string;
+  totalAmount: number;
+  taxAmount?: number;
+  status: BackendCustomerInvoiceStatus;
+  issueDate: string;
+  dueDate: string;
+  paidAt?: string | null;
+  createdAt: string;
+};
+
+type BackendCustomerShipmentStatus = 'AWAITING_PICKUP' | 'IN_TRANSIT' | 'DELIVERED' | 'FAILED';
+type BackendCustomerShipment = {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  trackingNumber: string;
+  carrierName: string;
+  status: BackendCustomerShipmentStatus;
+  estimatedDelivery: string;
+  actualDelivery?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function filtersToRecord(filters?: ActiveFilter[] | Record<string, unknown>) {
+  if (Array.isArray(filters)) return Object.fromEntries(filters.map(filter => [filter.key, filter.value]));
+  return filters ?? {};
+}
+
+function mapCustomerPaymentStatus(status: BackendCustomerPaymentStatus): Payment['status'] {
+  if (status === 'PAID') return 'Đã thanh toán';
+  if (status === 'OVERDUE') return 'Quá hạn';
+  if (status === 'REFUNDED' || status === 'PARTIALLY_REFUNDED') return 'Hoàn tiền';
+  return 'Chưa thanh toán';
+}
+
+function toBackendPaymentStatus(status?: unknown): BackendCustomerPaymentStatus | undefined {
+  const map: Record<string, BackendCustomerPaymentStatus> = {
+    'Chưa thanh toán': 'UNPAID',
+    'Chờ thanh toán': 'UNPAID',
+    'Đã thanh toán': 'PAID',
+    'Quá hạn': 'OVERDUE',
+    'Hoàn tiền': 'REFUNDED',
+  };
+  return typeof status === 'string' ? (map[status] ?? status as BackendCustomerPaymentStatus) : undefined;
+}
+
+function mapCustomerPaymentMethod(method: BackendCustomerPaymentMethod) {
+  const map: Record<BackendCustomerPaymentMethod, string> = {
+    CASH: 'Tiền mặt',
+    BANK_TRANSFER: 'Chuyển khoản',
+    MOMO: 'MOMO',
+    VNPAY: 'VNPAY',
+    COD: 'COD',
+    INSTALLMENT: 'Trả góp',
+  };
+  return map[method] ?? method;
+}
+
+function mapBackendCustomerPayment(payment: BackendCustomerPayment): Payment {
+  const transactions = payment.paidAmount > 0 ? [{
+    id: `${payment.id}-paid`,
+    paymentId: payment.id,
+    amount: payment.paidAmount,
+    method: mapCustomerPaymentMethod(payment.method),
+    transactionRef: payment.transactionRef ?? '',
+    paidAt: payment.paidAt ?? payment.createdAt,
+    createdAt: payment.paidAt ?? payment.createdAt,
+  }] : [];
+
+  return {
+    id: payment.id,
+    orderId: payment.orderId,
+    orderNumber: payment.orderNumber,
+    customerId: payment.customerId,
+    invoiceNumber: payment.orderNumber,
+    supplierId: 'cellphones',
+    supplierName: 'CELLPHONES',
+    amount: payment.amount,
+    paidAmount: payment.paidAmount,
+    remainingAmount: payment.remainingAmount,
+    dueDate: payment.dueDate,
+    status: mapCustomerPaymentStatus(payment.status),
+    method: mapCustomerPaymentMethod(payment.method),
+    paidAt: payment.paidAt ?? undefined,
+    createdAt: payment.createdAt,
+    transactions,
+  } as Payment;
+}
+
+function mapCustomerInvoiceStatus(status: BackendCustomerInvoiceStatus): Invoice['status'] {
+  if (status === 'PAID') return 'Đã thanh toán';
+  if (status === 'OVERDUE') return 'Quá hạn';
+  if (status === 'CANCELLED') return 'Đã huỷ';
+  return 'Chờ thanh toán';
+}
+
+function toBackendInvoiceStatus(status?: unknown): BackendCustomerInvoiceStatus | undefined {
+  const map: Record<string, BackendCustomerInvoiceStatus> = {
+    'Chờ thanh toán': 'PENDING',
+    'Chưa thanh toán': 'PENDING',
+    'Đã thanh toán': 'PAID',
+    'Quá hạn': 'OVERDUE',
+    'Đã huỷ': 'CANCELLED',
+  };
+  return typeof status === 'string' ? (map[status] ?? status as BackendCustomerInvoiceStatus) : undefined;
+}
+
+function mapBackendCustomerInvoice(invoice: BackendCustomerInvoice): Invoice {
+  const taxAmount = Number(invoice.taxAmount ?? 0);
+  const subtotal = Math.max(0, Number(invoice.totalAmount ?? 0) - taxAmount);
+  return {
+    ...invoice,
+    status: mapCustomerInvoiceStatus(invoice.status),
+    issueDate: invoice.issueDate,
+    issuedDate: invoice.issueDate,
+    paidAt: invoice.paidAt ?? undefined,
+    paidDate: invoice.paidAt ?? undefined,
+    taxAmount,
+    subtotal,
+    taxRate: subtotal > 0 ? Math.round((taxAmount / subtotal) * 100) : 0,
+    type: 'Hoá đơn bán hàng',
+    supplierName: 'CELLPHONES',
+    supplierCompany: 'CELLPHONES',
+    supplierTaxCode: 'N/A',
+    buyerCompany: invoice.customerName,
+    buyerTaxCode: 'N/A',
+    items: [{
+      description: `Đơn hàng ${invoice.orderNumber}`,
+      quantity: 1,
+      unitPrice: subtotal || invoice.totalAmount,
+      taxRate: subtotal > 0 ? Math.round((taxAmount / subtotal) * 100) : 0,
+      amount: invoice.totalAmount,
+    }],
+    notes: '',
+  } as Invoice;
+}
+
+function mapCustomerShipmentStatus(status: BackendCustomerShipmentStatus): Shipment['status'] {
+  if (status === 'AWAITING_PICKUP') return 'Chờ lấy hàng';
+  if (status === 'DELIVERED') return 'Đã giao';
+  if (status === 'FAILED') return 'Thất bại';
+  return 'Đang vận chuyển';
+}
+
+function toBackendShipmentStatus(status?: unknown): BackendCustomerShipmentStatus | undefined {
+  const map: Record<string, BackendCustomerShipmentStatus> = {
+    'Chờ lấy hàng': 'AWAITING_PICKUP',
+    'Chuẩn bị': 'AWAITING_PICKUP',
+    'Đang vận chuyển': 'IN_TRANSIT',
+    'Đang giao': 'IN_TRANSIT',
+    'Đã giao': 'DELIVERED',
+    'Thất bại': 'FAILED',
+  };
+  return typeof status === 'string' ? (map[status] ?? status as BackendCustomerShipmentStatus) : undefined;
+}
+
+function mapBackendCustomerShipment(shipment: BackendCustomerShipment): Shipment {
+  const status = mapCustomerShipmentStatus(shipment.status);
+  return {
+    ...shipment,
+    status,
+    actualDelivery: shipment.actualDelivery ?? undefined,
+    shippingFee: 0,
+    weight: 0,
+    dimensions: '',
+    supplierName: 'CELLPHONES',
+    buyerName: 'Khách hàng',
+    fromAddress: 'Kho CELLPHONES',
+    toAddress: 'Địa chỉ nhận hàng',
+    createdAt: shipment.createdAt,
+    updatedAt: shipment.updatedAt,
+    events: [{
+      status,
+      description: shipment.status === 'DELIVERED' ? 'Đơn hàng đã giao thành công' : 'Đơn hàng đang được vận chuyển',
+      timestamp: shipment.updatedAt ?? shipment.createdAt,
+      location: shipment.carrierName,
+    }],
+  } as Shipment;
+}
+
+Object.assign(paymentApi, {
+  getPaginated: async (
+    params: PaginationParams,
+    sortOrFilters?: SortParams | Record<string, unknown>,
+    maybeFilters?: ActiveFilter[] | Record<string, unknown>,
+    search?: string,
+  ) => {
+    const rawFilters = filtersToRecord(maybeFilters ?? (!sortOrFilters || 'field' in sortOrFilters ? {} : sortOrFilters));
+    try {
+      const query = toQuery({
+        page: params.page,
+        pageSize: params.pageSize,
+        status: toBackendPaymentStatus(rawFilters.status),
+        search: search || rawFilters.search as string | undefined,
+      });
+      const { data, pagination } = await backendRequest<BackendCustomerPayment[]>(`/payments${query}`, {
+        headers: getDevUserHeaders(),
+      });
+      return {
+        data: data.map(mapBackendCustomerPayment),
+        total: pagination?.total ?? data.length,
+        page: pagination?.page ?? params.page,
+        pageSize: pagination?.pageSize ?? params.pageSize,
+        totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
+      };
+    } catch {
+      await delay(250);
+      return { data: [], total: 0, page: params.page, pageSize: params.pageSize, totalPages: 0 };
+    }
+  },
+  getByBuyer: async (_buyerId: string) => {
+    const page = await paymentApi.getPaginated({ page: 1, pageSize: 100 });
+    return page.data;
+  },
+  getById: async (id: string) => {
+    try {
+      const { data } = await backendRequest<BackendCustomerPayment>(`/payments/${id}`, {
+        headers: getDevUserHeaders(),
+      });
+      return mapBackendCustomerPayment(data);
+    } catch {
+      await delay(200);
+      return null;
+    }
+  },
+  createGatewaySession: async (paymentId: string, provider: 'MOMO' | 'VNPAY') => {
+    const { data } = await backendRequest(`/payments/${paymentId}/gateway-session`, {
+      method: 'POST',
+      headers: getDevUserHeaders(),
+      body: JSON.stringify({
+        provider,
+        returnUrl: `${window.location.origin}/payments/${paymentId}`,
+        callbackUrl: `${API_BASE_URL}/payments/gateway/callback`,
+      }),
+    });
+    return data;
+  },
+  recordTransaction: async (paymentId: string, transaction: Record<string, unknown>) => {
+    await delay(200);
+    return { id: `txn-${Date.now()}`, paymentId, ...transaction, createdAt: new Date().toISOString() };
+  },
+});
+
+Object.assign(invoiceBuyerApi, {
+  getPaginated: async (
+    params: PaginationParams,
+    sortOrFilters?: SortParams | Record<string, unknown>,
+    maybeFilters?: ActiveFilter[] | Record<string, unknown>,
+    search?: string,
+  ) => {
+    const rawFilters = filtersToRecord(maybeFilters ?? (!sortOrFilters || 'field' in sortOrFilters ? {} : sortOrFilters));
+    try {
+      const query = toQuery({
+        page: params.page,
+        pageSize: params.pageSize,
+        status: toBackendInvoiceStatus(rawFilters.status),
+        search: search || rawFilters.search as string | undefined,
+      });
+      const { data, pagination } = await backendRequest<BackendCustomerInvoice[]>(`/invoices${query}`, {
+        headers: getDevUserHeaders(),
+      });
+      return {
+        data: data.map(mapBackendCustomerInvoice),
+        total: pagination?.total ?? data.length,
+        page: pagination?.page ?? params.page,
+        pageSize: pagination?.pageSize ?? params.pageSize,
+        totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
+      };
+    } catch {
+      await delay(250);
+      return { data: [], total: 0, page: params.page, pageSize: params.pageSize, totalPages: 0 };
+    }
+  },
+  getByBuyer: async (_buyerId: string, params: PaginationParams = { page: 1, pageSize: 100 }, sort?: SortParams, filters?: ActiveFilter[] | Record<string, unknown>) => {
+    return invoiceBuyerApi.getPaginated(params, sort, filters);
+  },
+  getByOrder: async (orderId: string) => {
+    try {
+      const { data } = await backendRequest<BackendCustomerInvoice>(`/orders/${orderId}/invoice`, {
+        headers: getDevUserHeaders(),
+      });
+      return mapBackendCustomerInvoice(data);
+    } catch {
+      await delay(200);
+      return null;
+    }
+  },
+  getById: async (id: string) => {
+    try {
+      const { data } = await backendRequest<BackendCustomerInvoice>(`/invoices/${id}`, {
+        headers: getDevUserHeaders(),
+      });
+      return mapBackendCustomerInvoice(data);
+    } catch {
+      await delay(200);
+      return null;
+    }
+  },
+});
+
+Object.assign(shipmentApi, {
+  getPaginated: async (
+    params: PaginationParams,
+    sortOrFilters?: SortParams | Record<string, unknown>,
+    maybeFilters?: ActiveFilter[] | Record<string, unknown>,
+    search?: string,
+  ) => {
+    const rawFilters = filtersToRecord(maybeFilters ?? (!sortOrFilters || 'field' in sortOrFilters ? {} : sortOrFilters));
+    try {
+      const query = toQuery({
+        page: params.page,
+        pageSize: params.pageSize,
+        status: toBackendShipmentStatus(rawFilters.status),
+        search: search || rawFilters.search as string | undefined,
+      });
+      const { data, pagination } = await backendRequest<BackendCustomerShipment[]>(`/shipments${query}`, {
+        headers: getDevUserHeaders(),
+      });
+      return {
+        data: data.map(mapBackendCustomerShipment),
+        total: pagination?.total ?? data.length,
+        page: pagination?.page ?? params.page,
+        pageSize: pagination?.pageSize ?? params.pageSize,
+        totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
+      };
+    } catch {
+      await delay(250);
+      return { data: [], total: 0, page: params.page, pageSize: params.pageSize, totalPages: 0 };
+    }
+  },
+  getByBuyer: async (_buyerId: string) => {
+    const page = await shipmentApi.getPaginated({ page: 1, pageSize: 100 });
+    return page.data;
+  },
+  getByOrder: async (orderId: string) => {
+    try {
+      const { data } = await backendRequest<BackendCustomerShipment>(`/orders/${orderId}/shipment`, {
+        headers: getDevUserHeaders(),
+      });
+      return mapBackendCustomerShipment(data);
+    } catch {
+      await delay(200);
+      return null;
+    }
+  },
+  getById: async (id: string) => {
+    try {
+      const { data } = await backendRequest<BackendCustomerShipment>(`/shipments/${id}`, {
+        headers: getDevUserHeaders(),
+      });
+      return mapBackendCustomerShipment(data);
+    } catch {
+      await delay(200);
+      return null;
+    }
+  },
+  track: async (code: string) => {
+    const page = await shipmentApi.getPaginated({ page: 1, pageSize: 1 }, {}, { search: code });
+    return page.data[0] ?? null;
+  },
+});
+
+type BackendReturnStatus = 'PENDING' | 'APPROVED' | 'PROCESSING' | 'REFUNDED' | 'CLOSED' | 'REJECTED';
+type BackendCustomerReturn = {
+  id: string;
+  returnNumber: string;
+  orderId: string;
+  customerId: string;
+  customerName: string;
+  customerPhone?: string;
+  reason: string;
+  status: BackendReturnStatus;
+  refundAmount: number;
+  disputeResolution?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type BackendTradeInCondition = 'GOOD' | 'FAIR' | 'AVERAGE' | 'POOR';
+type BackendTradeInStatus = 'AWAITING_VALUATION' | 'VALUED' | 'ACCEPTED' | 'REJECTED' | 'COMPLETED';
+type BackendTradeIn = {
+  id: string;
+  requestNumber: string;
+  customerId: string;
+  customerName: string;
+  customerPhone?: string;
+  deviceName: string;
+  brand: string;
+  model: string;
+  condition: BackendTradeInCondition;
+  estimatedValue: number;
+  finalValuation?: number | null;
+  targetProductId?: string | null;
+  status: BackendTradeInStatus;
+  images?: string[];
+  adminNote?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+function mapReturnStatus(status: BackendReturnStatus): ReturnRequest['status'] {
+  if (status === 'APPROVED') return 'Đã duyệt';
+  if (status === 'PROCESSING') return 'Đang xử lý';
+  if (status === 'REFUNDED') return 'Đã hoàn tiền';
+  if (status === 'CLOSED') return 'Đã đóng';
+  if (status === 'REJECTED') return 'Từ chối';
+  return 'Chờ duyệt';
+}
+
+function toBackendReturnStatus(status?: unknown): BackendReturnStatus | undefined {
+  const map: Record<string, BackendReturnStatus> = {
+    'Chờ duyệt': 'PENDING',
+    'Đã duyệt': 'APPROVED',
+    'Đang xử lý': 'PROCESSING',
+    'Đã hoàn tiền': 'REFUNDED',
+    'Đã đóng': 'CLOSED',
+    'Từ chối': 'REJECTED',
+  };
+  return typeof status === 'string' ? (map[status] ?? status as BackendReturnStatus) : undefined;
+}
+
+function mapBackendReturn(item: BackendCustomerReturn): ReturnRequest {
+  return {
+    id: item.id,
+    orderId: item.orderId,
+    orderNumber: item.returnNumber,
+    customerId: item.customerId,
+    customerName: item.customerName,
+    items: [],
+    reason: item.reason as ReturnRequest['reason'],
+    status: mapReturnStatus(item.status),
+    refundAmount: item.refundAmount,
+    adminNote: item.disputeResolution ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+function mapTradeInCondition(condition: BackendTradeInCondition): TradeInRequest['condition'] {
+  if (condition === 'GOOD') return 'Tốt';
+  if (condition === 'FAIR') return 'Khá';
+  if (condition === 'POOR') return 'Kém';
+  return 'Trung bình';
+}
+
+function toBackendTradeInCondition(condition: string): BackendTradeInCondition {
+  if (condition === 'Tốt') return 'GOOD';
+  if (condition === 'Khá') return 'FAIR';
+  if (condition === 'Kém') return 'POOR';
+  return 'AVERAGE';
+}
+
+function mapTradeInStatus(status: BackendTradeInStatus): TradeInRequest['status'] {
+  if (status === 'VALUED') return 'Đã định giá';
+  if (status === 'ACCEPTED') return 'Chấp nhận';
+  if (status === 'REJECTED') return 'Từ chối';
+  if (status === 'COMPLETED') return 'Đã hoàn thành';
+  return 'Chờ định giá';
+}
+
+function toBackendTradeInStatus(status?: unknown): BackendTradeInStatus | undefined {
+  const map: Record<string, BackendTradeInStatus> = {
+    'Chờ định giá': 'AWAITING_VALUATION',
+    'Đã định giá': 'VALUED',
+    'Chấp nhận': 'ACCEPTED',
+    'Từ chối': 'REJECTED',
+    'Đã hoàn thành': 'COMPLETED',
+  };
+  return typeof status === 'string' ? (map[status] ?? status as BackendTradeInStatus) : undefined;
+}
+
+function mapBackendTradeIn(item: BackendTradeIn): TradeInRequest {
+  return {
+    id: item.id,
+    customerId: item.customerId,
+    customerName: item.customerName,
+    customerPhone: item.customerPhone ?? '',
+    brand: item.brand,
+    model: item.model,
+    storage: item.deviceName.replace(`${item.brand} ${item.model}`, '').trim() || '',
+    condition: mapTradeInCondition(item.condition),
+    estimatedValue: item.estimatedValue,
+    finalValue: item.finalValuation ?? undefined,
+    targetProductId: item.targetProductId ?? undefined,
+    status: mapTradeInStatus(item.status),
+    images: item.images ?? [],
+    note: item.adminNote ?? undefined,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+  };
+}
+
+Object.assign(returnApi, {
+  getByBuyer: async (
+    _buyerId: string,
+    params: PaginationParams = { page: 1, pageSize: 10 },
+    _sort?: SortParams,
+    filters?: ActiveFilter[] | Record<string, unknown>,
+  ) => {
+    return returnApi.getPaginated(params, filtersToRecord(filters));
+  },
+  getPaginated: async (params: PaginationParams, filters?: Record<string, unknown>) => {
+    try {
+      const query = toQuery({
+        page: params.page,
+        pageSize: params.pageSize,
+        status: toBackendReturnStatus(filters?.status),
+      });
+      const { data, pagination } = await backendRequest<BackendCustomerReturn[]>(`/returns${query}`, {
+        headers: getDevUserHeaders(),
+      });
+      return {
+        data: data.map(mapBackendReturn),
+        total: pagination?.total ?? data.length,
+        page: pagination?.page ?? params.page,
+        pageSize: pagination?.pageSize ?? params.pageSize,
+        totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
+      };
+    } catch {
+      await delay(250);
+      return paginate([], params);
+    }
+  },
+  getByOrderId: async (orderId: string) => {
+    const page = await returnApi.getPaginated({ page: 1, pageSize: 100 });
+    return page.data.filter((item: ReturnRequest) => item.orderId === orderId);
+  },
+  getById: async (id: string) => {
+    try {
+      const { data } = await backendRequest<BackendCustomerReturn>(`/returns/${id}`, {
+        headers: getDevUserHeaders(),
+      });
+      return mapBackendReturn(data);
+    } catch {
+      await delay(200);
+      return null;
+    }
+  },
+  create: async (data: Partial<ReturnRequest>) => {
+    try {
+      const { data: created } = await backendRequest<BackendCustomerReturn>('/returns', {
+        method: 'POST',
+        headers: getDevUserHeaders(),
+        body: JSON.stringify({
+          orderId: data.orderId,
+          reason: data.reason ?? data.description ?? 'Khach yeu cau tra hang',
+          refundAmount: data.refundAmount ?? 0,
+        }),
+      });
+      return mapBackendReturn(created);
+    } catch {
+      await delay(400);
+      return { ...data, id: nextId('ret'), status: 'Chờ duyệt', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as ReturnRequest;
+    }
+  },
+  getBuyerStats: async (_buyerId: string) => {
+    const page = await returnApi.getPaginated({ page: 1, pageSize: 100 });
+    const rows = page.data as ReturnRequest[];
+    return {
+      total: rows.length,
+      pending: rows.filter(row => row.status === 'Chờ duyệt').length,
+      approved: rows.filter(row => row.status === 'Đã duyệt' || row.status === 'Đang xử lý').length,
+      refunded: rows.filter(row => row.status === 'Đã hoàn tiền').length,
+      rejected: rows.filter(row => row.status === 'Từ chối').length,
+    };
+  },
+  delete: async (_id: string) => {
+    await delay(150);
+  },
+});
+
+Object.assign(tradeInApi, {
+  getPaginated: async (params: PaginationParams, filters?: Record<string, unknown>) => {
+    try {
+      const query = toQuery({
+        page: params.page,
+        pageSize: params.pageSize,
+        status: toBackendTradeInStatus(filters?.status),
+      });
+      const { data, pagination } = await backendRequest<BackendTradeIn[]>(`/trade-in${query}`, {
+        headers: getDevUserHeaders(),
+      });
+      return {
+        data: data.map(mapBackendTradeIn),
+        total: pagination?.total ?? data.length,
+        page: pagination?.page ?? params.page,
+        pageSize: pagination?.pageSize ?? params.pageSize,
+        totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
+      };
+    } catch {
+      await delay(250);
+      return paginate([], params);
+    }
+  },
+  getById: async (id: string) => {
+    try {
+      const { data } = await backendRequest<BackendTradeIn>(`/trade-in/${id}`, {
+        headers: getDevUserHeaders(),
+      });
+      return mapBackendTradeIn(data);
+    } catch {
+      await delay(200);
+      return tradeInStore.find(t => t.id === id) ?? null;
+    }
+  },
+  create: async (data: Partial<TradeInRequest>) => {
+    try {
+      const { data: created } = await backendRequest<BackendTradeIn>('/trade-in', {
+        method: 'POST',
+        headers: getDevUserHeaders(),
+        body: JSON.stringify({
+          deviceName: [data.brand, data.model, data.storage].filter(Boolean).join(' '),
+          brand: data.brand,
+          model: data.model,
+          condition: toBackendTradeInCondition(data.condition ?? 'Trung bình'),
+          targetProductId: data.targetProductId,
+          images: data.images ?? [],
+        }),
+      });
+      return mapBackendTradeIn(created);
+    } catch {
+      await delay(400);
+      const t = { ...data, id: nextId('ti'), status: 'Chờ định giá' as const, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as TradeInRequest;
+      tradeInStore = [t, ...tradeInStore];
+      return t;
+    }
+  },
+  estimateValue: async (brand: string, model: string, _storage: string, condition: string) => {
+    try {
+      const query = toQuery({
+        brand,
+        model,
+        condition: toBackendTradeInCondition(condition),
+      });
+      const { data } = await backendRequest<{ estimatedValue: number } | number>(`/trade-in/estimate${query}`, {
+        headers: getDevUserHeaders(),
+      });
+      return typeof data === 'number' ? data : data.estimatedValue;
+    } catch {
+      await delay(600);
+      const baseValues: Record<string, number> = { 'iPhone 16 Pro Max': 29000000, 'iPhone 15 Pro Max': 24000000, 'iPhone 14 Pro Max': 18000000, 'Galaxy S25 Ultra': 26000000, 'Galaxy S24 Ultra': 21000000 };
+      const conditionMultipliers: Record<string, number> = { 'Tốt': 1, 'Khá': 0.85, 'Trung bình': 0.7, 'Kém': 0.5 };
+      const base = baseValues[model] ?? 5000000;
+      const cmul = conditionMultipliers[condition] ?? 0.7;
+      return Math.round(base * cmul / 500000) * 500000;
+    }
+  },
+});
+
+type BackendWishlistItem = Partial<WishlistItem>;
+type BackendShippingAddress = Partial<ShippingAddress> & {
+  recipientName?: string;
+  province?: string;
+  addressLine?: string;
+  fullAddress?: string;
+};
+
+function mapBackendWishlistItem(item: BackendWishlistItem): WishlistItem {
+  const product = item.productId ? productStore.find(p => p.id === item.productId) : undefined;
+  return {
+    id: item.id ?? nextId('wl'),
+    userId: item.userId ?? DEFAULT_DEV_USER_ID,
+    productId: item.productId ?? product?.id ?? '',
+    productName: item.productName ?? product?.name ?? 'Sản phẩm',
+    productImage: item.productImage ?? product?.images?.[0] ?? '',
+    brand: item.brand ?? product?.brand ?? '',
+    categoryName: item.categoryName ?? product?.categoryName ?? '',
+    price: Number(item.price ?? product?.price ?? 0),
+    originalPrice: item.originalPrice ?? product?.originalPrice,
+    stock: Number(item.stock ?? product?.variants?.reduce((sum, variant) => sum + variant.stock, 0) ?? 0),
+    addedAt: item.addedAt ?? new Date().toISOString(),
+    priceAlert: item.priceAlert,
+  };
+}
+
+function mapBackendShippingAddress(item: BackendShippingAddress): ShippingAddress {
+  return {
+    id: item.id ?? nextId('addr'),
+    userId: item.userId ?? DEFAULT_DEV_USER_ID,
+    label: item.label ?? 'Địa chỉ',
+    fullName: item.fullName ?? item.recipientName ?? 'Khách hàng',
+    phone: item.phone ?? '',
+    address: item.address ?? item.addressLine ?? item.fullAddress ?? '',
+    ward: item.ward ?? '',
+    district: item.district ?? '',
+    city: item.city ?? item.province ?? '',
+    country: item.country ?? 'Việt Nam',
+    isDefault: Boolean(item.isDefault),
+    notes: item.notes,
+    postalCode: item.postalCode,
+    type: item.type,
+  };
+}
+
+function toBackendShippingAddress(data: Partial<ShippingAddress>) {
+  const fullAddress = [data.address, data.ward, data.district, data.city].filter(Boolean).join(', ');
+  return {
+    label: data.label,
+    recipientName: data.fullName,
+    fullName: data.fullName,
+    phone: data.phone,
+    province: data.city,
+    city: data.city,
+    district: data.district,
+    ward: data.ward,
+    addressLine: data.address,
+    address: data.address,
+    fullAddress,
+    country: data.country ?? 'Việt Nam',
+    isDefault: data.isDefault,
+    notes: data.notes,
+    postalCode: data.postalCode,
+    type: data.type,
+  };
+}
+
+Object.assign(wishlistApi, {
+  getByUser: async (userId: string): Promise<WishlistItem[]> => {
+    try {
+      const { data } = await backendRequest<BackendWishlistItem[]>('/users/me/wishlist', {
+        headers: getDevUserHeaders({ id: userId }),
+      });
+      return data.map(mapBackendWishlistItem);
+    } catch {
+      try {
+        const { data } = await backendRequest<BackendWishlistItem[]>(`/mock/wishlist/${userId}`);
+        return data.map(mapBackendWishlistItem);
+      } catch {
+        await delay(200);
+        return wishStore;
+      }
+    }
+  },
+  get: async (userId: string): Promise<WishlistItem[]> => {
+    return wishlistApi.getByUser(userId);
+  },
+  add: async (userId: string, productId: string): Promise<WishlistItem> => {
+    try {
+      const { data } = await backendRequest<BackendWishlistItem>('/users/me/wishlist', {
+        method: 'POST',
+        headers: getDevUserHeaders({ id: userId }),
+        body: JSON.stringify({ productId }),
+      });
+      return mapBackendWishlistItem(data);
+    } catch {
+      try {
+        const { data } = await backendRequest<BackendWishlistItem>('/mock/wishlist', {
+          method: 'POST',
+          body: JSON.stringify({ userId, productId }),
+        });
+        return mapBackendWishlistItem(data);
+      } catch {
+        await delay(250);
+        const p = productStore.find(x => x.id === productId);
+        if (!p) throw new Error('Sản phẩm không tồn tại');
+        const item: WishlistItem = { id: nextId('wl'), userId, productId, productName: p.name, productImage: p.images[0], brand: p.brand, categoryName: p.categoryName, price: p.price, originalPrice: p.originalPrice, stock: p.variants.reduce((s, v) => s + v.stock, 0), addedAt: new Date().toISOString() };
+        wishStore = [item, ...wishStore];
+        return item;
+      }
+    }
+  },
+  remove: async (id: string) => {
+    try {
+      await backendRequest(`/users/me/wishlist/items/${id}`, {
+        method: 'DELETE',
+        headers: getDevUserHeaders(),
+      });
+    } catch {
+      try {
+        await backendRequest(`/mock/wishlist/${id}`, { method: 'DELETE' });
+      } catch {
+        await delay(150);
+        wishStore = wishStore.filter(i => i.id !== id);
+      }
+    }
+  },
+  removeByProduct: async (userId: string, productId: string) => {
+    try {
+      await backendRequest(`/users/me/wishlist/${productId}`, {
+        method: 'DELETE',
+        headers: getDevUserHeaders({ id: userId }),
+      });
+    } catch {
+      try {
+        await backendRequest(`/mock/wishlist/user/${userId}/product/${productId}`, { method: 'DELETE' });
+      } catch {
+        await delay(150);
+        wishStore = wishStore.filter(i => i.productId !== productId);
+      }
+    }
+  },
+  clear: async (userId: string) => {
+    try {
+      await backendRequest('/users/me/wishlist', {
+        method: 'DELETE',
+        headers: getDevUserHeaders({ id: userId }),
+      });
+    } catch {
+      await delay(150);
+      wishStore = wishStore.filter(i => i.userId !== userId);
+    }
+  },
+});
+
+Object.assign(addressApi, {
+  getByUser: async (userId: string): Promise<ShippingAddress[]> => {
+    try {
+      const { data } = await backendRequest<BackendShippingAddress[]>('/users/me/addresses', {
+        headers: getDevUserHeaders({ id: userId }),
+      });
+      return data.map(mapBackendShippingAddress);
+    } catch {
+      await delay(200);
+      const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+      const effectiveUserId = uuidLike ? userId : DEFAULT_DEV_USER_ID;
+      return addressStore.filter(address => address.userId === effectiveUserId);
+    }
+  },
+  create: async (data: Partial<ShippingAddress>): Promise<ShippingAddress> => {
+    try {
+      const { data: created } = await backendRequest<BackendShippingAddress>('/users/me/addresses', {
+        method: 'POST',
+        headers: getDevUserHeaders({ id: data.userId }),
+        body: JSON.stringify(toBackendShippingAddress(data)),
+      });
+      return mapBackendShippingAddress(created);
+    } catch {
+      await delay(300);
+      const address = mapBackendShippingAddress({ ...data, id: nextId('addr'), userId: data.userId ?? DEFAULT_DEV_USER_ID });
+      if (address.isDefault) {
+        addressStore = addressStore.map(item => item.userId === address.userId ? { ...item, isDefault: false } : item);
+      }
+      addressStore = [address, ...addressStore];
+      return address;
+    }
+  },
+  update: async (id: string, data: Partial<ShippingAddress>): Promise<ShippingAddress> => {
+    try {
+      const { data: updated } = await backendRequest<BackendShippingAddress>(`/users/me/addresses/${id}`, {
+        method: 'PATCH',
+        headers: getDevUserHeaders({ id: data.userId }),
+        body: JSON.stringify(toBackendShippingAddress(data)),
+      });
+      return mapBackendShippingAddress(updated);
+    } catch {
+      await delay(250);
+      addressStore = addressStore.map(address => address.id === id ? { ...address, ...data, id } : address);
+      const updated = addressStore.find(address => address.id === id);
+      if (!updated) throw new Error('Không tìm thấy địa chỉ');
+      return updated;
+    }
+  },
+  delete: async (id: string) => {
+    try {
+      await backendRequest(`/users/me/addresses/${id}`, {
+        method: 'DELETE',
+        headers: getDevUserHeaders(),
+      });
+    } catch {
+      await delay(200);
+      addressStore = addressStore.filter(address => address.id !== id);
+    }
+  },
+  setDefault: async (id: string) => {
+    try {
+      await backendRequest(`/users/me/addresses/${id}/set-default`, {
+        method: 'PATCH',
+        headers: getDevUserHeaders(),
+      });
+    } catch {
+      await delay(200);
+      const target = addressStore.find(address => address.id === id);
+      if (!target) return;
+      addressStore = addressStore.map(address => address.userId === target.userId ? { ...address, isDefault: address.id === id } : address);
+    }
+  },
+});
+
+type BackendReview = Partial<Review> & {
+  customerId?: string;
+  customerName?: string;
+  userFullName?: string;
+};
+
+function mapBackendReview(item: BackendReview): Review {
+  const product = item.productId ? productStore.find(p => p.id === item.productId) : undefined;
+  const rawStatus = String(item.status ?? '').toUpperCase();
+  const status = rawStatus === 'APPROVED' || rawStatus === 'HIEN THI'
+    ? 'Hiển thị'
+    : rawStatus === 'HIDDEN'
+      ? 'Ẩn'
+      : 'Chờ duyệt';
+  return {
+    id: item.id ?? nextId('rev'),
+    productId: item.productId ?? '',
+    productName: item.productName ?? product?.name,
+    userId: item.userId ?? item.customerId ?? DEFAULT_DEV_USER_ID,
+    userName: item.userName ?? item.customerName ?? item.userFullName ?? 'Khách hàng',
+    rating: Number(item.rating ?? 5),
+    title: item.title,
+    comment: item.comment ?? '',
+    status: status as Review['status'],
+    createdAt: item.createdAt ?? new Date().toISOString(),
+    orderId: item.orderId,
+    orderNumber: item.orderNumber,
+    isVerifiedPurchase: Boolean(item.isVerifiedPurchase),
+    helpfulCount: Number(item.helpfulCount ?? 0),
+    images: item.images ?? [],
+    tags: item.tags ?? [],
+    sellerReply: item.sellerReply,
+    sellerReplyAt: item.sellerReplyAt,
+  };
+}
+
+Object.assign(reviewApi, {
+  getByProduct: async (productId: string) => {
+    try {
+      const { data } = await backendRequest<BackendReview[]>(`/products/${productId}/reviews`);
+      return data.map(mapBackendReview);
+    } catch {
+      try {
+        const { data } = await backendRequest<BackendReview[]>(`/mock/products/${productId}/reviews`);
+        return data.map(mapBackendReview);
+      } catch {
+        await delay(200);
+        return reviewStore.filter(r => r.productId === productId && r.status === 'Hiển thị');
+      }
+    }
+  },
+  getByProductPaginated: async (productId: string, params: PaginationParams, sort?: SortParams, starFilter = 0, verifiedOnly = false, hasImages = false) => {
+    try {
+      const query = toQuery({
+        page: params.page,
+        pageSize: params.pageSize,
+        rating: starFilter || undefined,
+        verifiedOnly,
+        hasImages,
+        sortBy: sort?.field,
+        sortDirection: sort?.direction,
+      });
+      const { data, pagination } = await backendRequest<BackendReview[]>(`/products/${productId}/reviews${query}`);
+      const mapped = data.map(mapBackendReview);
+      return {
+        data: mapped,
+        total: pagination?.total ?? mapped.length,
+        page: pagination?.page ?? params.page,
+        pageSize: pagination?.pageSize ?? params.pageSize,
+        totalPages: pagination?.totalPages ?? Math.ceil(mapped.length / params.pageSize),
+      };
+    } catch {
+      const rows = await reviewApi.getByProduct(productId) as Review[];
+      let list = rows;
+      if (starFilter > 0) list = list.filter(r => r.rating === starFilter);
+      if (verifiedOnly) list = list.filter(r => r.isVerifiedPurchase);
+      if (hasImages) list = list.filter(r => r.images.length > 0);
+      if (sort) list.sort((a, b) => {
+        const av = (a as unknown as Record<string, unknown>)[sort.field] ?? 0;
+        const bv = (b as unknown as Record<string, unknown>)[sort.field] ?? 0;
+        return sort.direction === 'asc' ? (av > bv ? 1 : -1) : (av < bv ? 1 : -1);
+      });
+      return paginate(list, params);
+    }
+  },
+  getByUser: async (userId: string) => {
+    try {
+      const { data } = await backendRequest<BackendReview[]>('/users/me/reviews', {
+        headers: getDevUserHeaders({ id: userId }),
+      });
+      return data.map(mapBackendReview);
+    } catch {
+      try {
+        const query = toQuery({ userId, page: 1, pageSize: 100 });
+        const { data } = await backendRequest<BackendReview[]>(`/mock/reviews${query}`);
+        return data.map(mapBackendReview);
+      } catch {
+        await delay(200);
+        return reviewStore.filter(r => r.userId === userId);
+      }
+    }
+  },
+  getByOrder: async (orderId: string) => {
+    try {
+      const query = toQuery({ orderId, page: 1, pageSize: 100 });
+      const { data } = await backendRequest<BackendReview[]>(`/reviews${query}`, {
+        headers: getDevUserHeaders(),
+      });
+      return data.map(mapBackendReview);
+    } catch {
+      await delay(200);
+      return reviewStore.filter(r => r.orderId === orderId);
+    }
+  },
+  create: async (data: Partial<Review>): Promise<Review> => {
+    try {
+      const path = data.productId ? `/products/${data.productId}/reviews` : '/reviews';
+      const { data: created } = await backendRequest<BackendReview>(path, {
+        method: 'POST',
+        headers: getDevUserHeaders({ id: data.userId }),
+        body: JSON.stringify(data),
+      });
+      return mapBackendReview(created);
+    } catch {
+      try {
+        const { data: created } = await backendRequest<BackendReview>('/mock/reviews', {
+          method: 'POST',
+          body: JSON.stringify(data),
+        });
+        return mapBackendReview(created);
+      } catch {
+        await delay(400);
+        const r = { ...data, id: nextId('rev'), status: 'Chờ duyệt' as Review['status'], helpfulCount: 0, images: data.images ?? [], tags: data.tags ?? [], createdAt: new Date().toISOString() } as Review;
+        reviewStore = [r, ...reviewStore];
+        return r;
+      }
+    }
+  },
+  update: async (id: string, data: Partial<Review>): Promise<Review> => {
+    try {
+      const { data: updated } = await backendRequest<BackendReview>(`/reviews/${id}`, {
+        method: 'PATCH',
+        headers: getDevUserHeaders({ id: data.userId }),
+        body: JSON.stringify(data),
+      });
+      return mapBackendReview(updated);
+    } catch {
+      try {
+        const { data: updated } = await backendRequest<BackendReview>(`/mock/reviews/${id}`, {
+          method: 'PATCH',
+          body: JSON.stringify(data),
+        });
+        return mapBackendReview(updated);
+      } catch {
+        await delay(300);
+        reviewStore = reviewStore.map(r => r.id === id ? { ...r, ...data } : r);
+        return reviewStore.find(r => r.id === id)!;
+      }
+    }
+  },
+  delete: async (id: string) => {
+    try {
+      await backendRequest(`/reviews/${id}`, {
+        method: 'DELETE',
+        headers: getDevUserHeaders(),
+      });
+    } catch {
+      try {
+        await backendRequest(`/mock/reviews/${id}`, { method: 'DELETE' });
+      } catch {
+        await delay(250);
+        reviewStore = reviewStore.filter(r => r.id !== id);
+      }
+    }
+  },
+  toggleHelpful: async (id: string): Promise<Review> => {
+    try {
+      const { data } = await backendRequest<BackendReview>(`/reviews/${id}/helpful`, {
+        method: 'PATCH',
+        headers: getDevUserHeaders(),
+      });
+      return mapBackendReview(data);
+    } catch {
+      await delay(150);
+      reviewStore = reviewStore.map(r => r.id === id ? { ...r, helpfulCount: r.helpfulCount + 1 } : r);
+      return reviewStore.find(r => r.id === id)!;
+    }
+  },
+  getStarDistribution: async (productId: string) => {
+    const rows = await reviewApi.getByProduct(productId) as Review[];
+    return [5, 4, 3, 2, 1].map(star => ({ star, count: rows.filter(r => r.rating === star).length }));
+  },
+});
+
+type BackendBlogPost = Partial<BlogPost>;
+type BackendStoreLocation = Partial<StoreLocation> & {
+  latitude?: number;
+  longitude?: number;
+};
+type BackendImeiResult = Partial<IMEICheckResult>;
+
+function mapBackendBlogPost(item: BackendBlogPost): BlogPost {
+  return {
+    id: item.id ?? nextId('blog'),
+    title: item.title ?? '',
+    slug: item.slug ?? '',
+    excerpt: item.excerpt ?? '',
+    content: item.content ?? '',
+    coverImage: item.coverImage ?? '',
+    category: (item.category ?? 'Tin tức') as BlogPost['category'],
+    tags: item.tags ?? [],
+    author: item.author ?? 'CELLPHONES',
+    authorAvatar: item.authorAvatar,
+    publishedAt: item.publishedAt ?? new Date().toISOString(),
+    viewCount: Number(item.viewCount ?? 0),
+    isPublished: item.isPublished ?? true,
+    relatedProducts: item.relatedProducts ?? [],
+    metaTitle: item.metaTitle,
+    metaDescription: item.metaDescription,
+  };
+}
+
+function mapBackendStoreLocation(item: BackendStoreLocation): StoreLocation {
+  return {
+    id: item.id ?? nextId('store'),
+    name: item.name ?? '',
+    address: item.address ?? '',
+    district: item.district ?? '',
+    city: item.city ?? '',
+    phone: item.phone ?? '',
+    workingHours: item.workingHours ?? '08:00 - 21:00',
+    lat: item.lat ?? item.latitude,
+    lng: item.lng ?? item.longitude,
+    isActive: item.isActive ?? true,
+    mapUrl: item.mapUrl,
+  };
+}
+
+function mapBackendImeiResult(item: BackendImeiResult, imei: string): IMEICheckResult {
+  return {
+    imei: item.imei ?? imei,
+    brand: item.brand ?? '',
+    model: item.model ?? '',
+    isLocked: Boolean(item.isLocked),
+    lockType: item.lockType,
+    warrantyStatus: item.warrantyStatus ?? 'Không xác định',
+    warrantyExpiry: item.warrantyExpiry,
+    purchaseCountry: item.purchaseCountry,
+    isBlacklisted: Boolean(item.isBlacklisted),
+    activationStatus: item.activationStatus ?? 'Không xác định',
+    checkedAt: item.checkedAt ?? new Date().toISOString(),
+  };
+}
+
+Object.assign(blogApi, {
+  getAll: async () => {
+    const page = await blogApi.getPaginated({ page: 1, pageSize: 100 }, { isPublished: true });
+    return page.data;
+  },
+  getPaginated: async (params: PaginationParams, filters?: Record<string, unknown>) => {
+    const query = toQuery({
+      page: params.page,
+      pageSize: params.pageSize,
+      search: filters?.search as string | undefined,
+      category: filters?.category as string | undefined,
+      isPublished: filters?.isPublished as boolean | undefined,
+    });
+    try {
+      const { data, pagination } = await backendRequest<BackendBlogPost[]>(`/blog${query}`);
+      const mapped = data.map(mapBackendBlogPost);
+      return {
+        data: mapped,
+        total: pagination?.total ?? mapped.length,
+        page: pagination?.page ?? params.page,
+        pageSize: pagination?.pageSize ?? params.pageSize,
+        totalPages: pagination?.totalPages ?? Math.ceil(mapped.length / params.pageSize),
+      };
+    } catch {
+      try {
+        const { data, pagination } = await backendRequest<BackendBlogPost[]>(`/mock/blogs${query}`);
+        const mapped = data.map(mapBackendBlogPost);
+        return {
+          data: mapped,
+          total: pagination?.total ?? mapped.length,
+          page: pagination?.page ?? params.page,
+          pageSize: pagination?.pageSize ?? params.pageSize,
+          totalPages: pagination?.totalPages ?? Math.ceil(mapped.length / params.pageSize),
+        };
+      } catch {
+        await delay(250);
+        let list = [...blogStore];
+        if (filters?.isPublished !== undefined) list = list.filter(b => b.isPublished === filters.isPublished);
+        if (filters?.category) list = list.filter(b => b.category === filters.category);
+        if (filters?.search) list = list.filter(b => b.title.toLowerCase().includes(String(filters.search).toLowerCase()));
+        return paginate(list, params);
+      }
+    }
+  },
+  getBySlug: async (slug: string) => {
+    try {
+      const { data } = await backendRequest<BackendBlogPost>(`/blog/${slug}`);
+      return mapBackendBlogPost(data);
+    } catch {
+      try {
+        const { data } = await backendRequest<BackendBlogPost>(`/mock/blogs/slug/${slug}`);
+        return mapBackendBlogPost(data);
+      } catch {
+        await delay(200);
+        return blogStore.find(b => b.slug === slug && b.isPublished) ?? null;
+      }
+    }
+  },
+  getLatest: async (limit = 3) => {
+    try {
+      const { data } = await backendRequest<BackendBlogPost[]>(`/blog${toQuery({ page: 1, pageSize: limit, isPublished: true })}`);
+      return data.map(mapBackendBlogPost).slice(0, limit);
+    } catch {
+      try {
+        const { data } = await backendRequest<BackendBlogPost[]>(`/mock/blogs/latest${toQuery({ limit })}`);
+        return data.map(mapBackendBlogPost);
+      } catch {
+        await delay(150);
+        return blogStore.filter(b => b.isPublished).sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()).slice(0, limit);
+      }
+    }
+  },
+});
+
+Object.assign(storeApi, {
+  getAll: async () => {
+    try {
+      const { data } = await backendRequest<BackendStoreLocation[]>('/stores');
+      return data.map(mapBackendStoreLocation);
+    } catch {
+      try {
+        const { data } = await backendRequest<BackendStoreLocation[]>('/mock/stores');
+        return data.map(mapBackendStoreLocation);
+      } catch {
+        await delay(200);
+        return mockStoreLocations;
+      }
+    }
+  },
+  getById: async (id: string) => {
+    const stores = await storeApi.getAll() as StoreLocation[];
+    return stores.find(store => store.id === id) ?? null;
+  },
+  checkAvailability: async (storeId: string, productId: string): Promise<number> => {
+    try {
+      const query = toQuery({ productId });
+      const { data } = await backendRequest<{ stock: number; availableQuantity?: number } | number>(`/stores/${storeId}/availability${query}`);
+      return typeof data === 'number' ? data : Number(data.availableQuantity ?? data.stock ?? 0);
+    } catch {
+      await delay(300);
+      const p = productStore.find(x => x.id === productId);
+      return p ? Math.floor(Math.random() * 10) : 0;
+    }
+  },
+});
+
+Object.assign(imeiApi, {
+  check: async (imei: string): Promise<IMEICheckResult> => {
+    try {
+      const { data } = await backendRequest<BackendImeiResult>('/imei/check', {
+        method: 'POST',
+        body: JSON.stringify({ imei }),
+      });
+      return mapBackendImeiResult(data, imei);
+    } catch {
+      try {
+        const { data } = await backendRequest<BackendImeiResult>(`/mock/imei/${imei}`);
+        return mapBackendImeiResult(data, imei);
+      } catch {
+        await delay(1500);
+        return { imei, brand: 'Apple', model: 'iPhone 16 Pro Max', isLocked: false, warrantyStatus: 'Còn bảo hành', warrantyExpiry: '2026-10-01', purchaseCountry: 'Việt Nam', isBlacklisted: false, activationStatus: 'Đã kích hoạt', checkedAt: new Date().toISOString() };
+      }
+    }
+  },
+});
+
+type BackendNotificationType = 'ORDER' | 'PAYMENT' | 'PROMOTION' | 'LOYALTY' | 'SYSTEM' | 'REVIEW';
+type BackendNotification = {
+  id: string;
+  userId: string;
+  type: BackendNotificationType;
+  title: string;
+  message: string;
+  isRead: boolean;
+  priority?: AppNotification['priority'];
+  category?: string;
+  entityType?: string;
+  entityId?: string;
+  actionUrl?: string;
+  actionLabel?: string;
+  isActionable?: boolean;
+  createdAt: string;
+  readAt?: string | null;
+};
+
+function mapNotificationType(type: BackendNotificationType): AppNotification['type'] {
+  if (type === 'ORDER') return 'order';
+  if (type === 'PAYMENT') return 'order';
+  if (type === 'PROMOTION') return 'promotion';
+  if (type === 'REVIEW') return 'review';
+  if (type === 'SYSTEM') return 'system';
+  return 'promotion';
+}
+
+function mapNotificationCategory(category?: string): AppNotification['category'] {
+  if (category === 'payment' || category === 'returns' || category === 'warranty' || category === 'trade_in') return 'giao_dich';
+  if (category === 'loyalty') return 'tuong_tac';
+  if (category === 'order_cancelled') return 'canh_bao';
+  return 'he_thong';
+}
+
+function mapBackendNotification(notification: BackendNotification): AppNotification {
+  return {
+    id: notification.id,
+    type: mapNotificationType(notification.type),
+    title: notification.title,
+    message: notification.message,
+    isRead: notification.isRead,
+    link: notification.actionUrl,
+    createdAt: notification.createdAt,
+    priority: notification.priority ?? 'medium',
+    category: mapNotificationCategory(notification.category),
+    actionUrl: notification.actionUrl,
+    actionLabel: notification.actionLabel,
+    isActionable: Boolean(notification.isActionable || notification.actionUrl),
+    entityType: notification.entityType,
+    entityId: notification.entityId,
+  };
+}
+
+Object.assign(notificationApi, {
+  getAll: async () => {
+    try {
+      const { data } = await backendRequest<BackendNotification[]>('/notifications?page=1&pageSize=50', {
+        headers: getDevUserHeaders(),
+      });
+      return data.map(mapBackendNotification);
+    } catch {
+      await delay(150);
+      return notifStore;
+    }
+  },
+  getUnreadCount: async () => {
+    try {
+      const { data } = await backendRequest<{ unreadCount: number }>('/notifications/unread-count', {
+        headers: getDevUserHeaders(),
+      });
+      return data.unreadCount;
+    } catch {
+      await delay(100);
+      return notifStore.filter(n => !n.isRead).length;
+    }
+  },
+  markAsRead: async (id: string) => {
+    try {
+      await backendRequest(`/notifications/${id}/read`, {
+        method: 'PATCH',
+        headers: getDevUserHeaders(),
+      });
+    } catch {
+      await delay(100);
+      notifStore = notifStore.map(n => n.id === id ? { ...n, isRead: true } : n);
+    }
+  },
+  markRead: async (id: string) => {
+    await notificationApi.markAsRead(id);
+  },
+  markAllAsRead: async () => {
+    try {
+      await backendRequest('/notifications/read-all', {
+        method: 'PATCH',
+        headers: getDevUserHeaders(),
+      });
+    } catch {
+      await delay(150);
+      notifStore = notifStore.map(n => ({ ...n, isRead: true }));
+    }
+  },
+  markAllRead: async () => {
+    await notificationApi.markAllAsRead();
+  },
+  delete: async (id: string) => {
+    try {
+      await backendRequest(`/notifications/${id}`, {
+        method: 'DELETE',
+        headers: getDevUserHeaders(),
+      });
+    } catch {
+      await delay(100);
+      notifStore = notifStore.filter(n => n.id !== id);
+    }
+  },
+  add: async (notification: AppNotification) => {
+    await delay(100);
+    notifStore = [notification, ...notifStore];
+    return notification;
+  },
+});

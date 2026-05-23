@@ -36,6 +36,21 @@ const sortOptions: { value: SortOption; label: string }[] = [
   { value: 'name-asc', label: 'Tên A-Z' },
 ];
 
+const wishlistMeta = (item: WishlistItem) => {
+  const extra = item as WishlistItem & {
+    supplierId?: string;
+    supplierName?: string;
+    minOrderQty?: number;
+    unit?: string;
+  };
+  return {
+    supplierId: extra.supplierId ?? 'cellphones',
+    supplierName: extra.supplierName ?? 'CELLPHONES',
+    quantity: extra.minOrderQty ?? 1,
+    unit: extra.unit ?? 'sp',
+  };
+};
+
 function sortItems(items: WishlistItem[], sortBy: SortOption): WishlistItem[] {
   const sorted = [...items];
   switch (sortBy) {
@@ -116,11 +131,12 @@ export function BuyerWishlistPage() {
   const handleAddToCart = async (item: WishlistItem, e?: React.MouseEvent) => {
     e?.stopPropagation();
     setAddingToCart(item.id);
+    const meta = wishlistMeta(item);
     try {
       await addItem({
         productId: item.productId, productName: item.productName,
-        productImage: item.productImage, supplierId: item.supplierId,
-        supplierName: item.supplierName, quantity: item.minOrderQty, unitPrice: item.price,
+        productImage: item.productImage, supplierId: meta.supplierId,
+        supplierName: meta.supplierName, quantity: meta.quantity, unitPrice: item.price,
       });
       toast.success(`Đã thêm "${item.productName}" vào giỏ hàng`);
     } finally { setAddingToCart(null); }
@@ -134,10 +150,11 @@ export function BuyerWishlistPage() {
 
   const handleAddAllToCart = async () => {
     for (const item of sortedItems) {
+      const meta = wishlistMeta(item);
       await addItem({
         productId: item.productId, productName: item.productName,
-        productImage: item.productImage, supplierId: item.supplierId,
-        supplierName: item.supplierName, quantity: item.minOrderQty, unitPrice: item.price,
+        productImage: item.productImage, supplierId: meta.supplierId,
+        supplierName: meta.supplierName, quantity: meta.quantity, unitPrice: item.price,
       });
     }
     toast.success(`Đã thêm ${sortedItems.length} sản phẩm vào giỏ hàng`);
@@ -173,6 +190,7 @@ export function BuyerWishlistPage() {
   // ─── P3.01: Masonry Grid Card ───────────────────────────
   const renderMasonryCard = (item: WishlistItem) => {
     const oldPrice = getMockOldPrice(item);
+    const meta = wishlistMeta(item);
     return (
       <div
         key={item.id}
@@ -235,7 +253,7 @@ export function BuyerWishlistPage() {
               <PriceCompare current={item.price} old={oldPrice} />
             </div>
             <div className="flex items-center justify-between mt-1.5">
-              <span className="text-white/70 text-xs truncate">{item.supplierName}</span>
+              <span className="text-white/70 text-xs truncate">{meta.supplierName}</span>
               <Badge variant="secondary" className="text-[10px] bg-white/20 text-white border-0">
                 {item.categoryName}
               </Badge>
@@ -257,6 +275,7 @@ export function BuyerWishlistPage() {
   // List row
   const renderListRow = (item: WishlistItem) => {
     const oldPrice = getMockOldPrice(item);
+    const meta = wishlistMeta(item);
     return (
       <Card
         key={item.id}
@@ -272,10 +291,10 @@ export function BuyerWishlistPage() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="truncate" style={{ fontFamily: 'var(--font-heading)' }}>{item.productName}</p>
-            <p className="text-muted-foreground text-sm truncate">{item.supplierName}</p>
+            <p className="text-muted-foreground text-sm truncate">{meta.supplierName}</p>
             <div className="flex items-center gap-2 mt-1 flex-wrap">
               <Badge variant="secondary" className="text-xs">{item.categoryName}</Badge>
-              <span className="text-muted-foreground text-xs">MOQ: {item.minOrderQty} {item.unit}</span>
+              <span className="text-muted-foreground text-xs">SL: {meta.quantity} {meta.unit}</span>
             </div>
           </div>
           <div className="text-right shrink-0">

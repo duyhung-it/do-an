@@ -12,7 +12,7 @@ BA source:
 
 Security note: auth/RBAC dang tam bo qua. Trong local dev, order dung header `X-User-Id` de gan customer id. FE co the gui them `X-User-Name`, `X-User-Email`, `X-User-Phone` de backend snapshot thong tin customer. Khi bat security/users, cac header dev nay se duoc thay bang JWT + users table.
 
-Address note: BA yeu cau `shippingAddressId`. Do user/address module chua lam, endpoint hien tai nhan `shippingAddress` inline de tao snapshot giao hang. Khi lam users/addresses, backend se chuyen sang validate ownership `shippingAddressId` theo BA.
+Address note: BA yeu cau `shippingAddressId`. Backend da ho tro saved address bang `GET/POST/PATCH/DELETE /users/me/addresses` trong `FE_BUYER_PROFILE_CONTRACT.md`. `POST /orders` uu tien `shippingAddressId`, validate ownership theo `X-User-Id`, snapshot vao `orders.shipping_address`, va luu `orders.shipping_address_id`. Inline `shippingAddress` van duoc giu de FE tuong thich.
 
 ## Create Order
 
@@ -38,6 +38,7 @@ Request:
       "quantity": 1
     }
   ],
+  "shippingAddressId": "dd000000-0199-4000-8000-000000000001",
   "shippingAddress": {
     "recipientName": "Nguyen Van A",
     "phone": "0901234567",
@@ -49,6 +50,22 @@ Request:
   "paymentMethod": "COD",
   "promotionCode": "WELCOME10",
   "notes": "Giao hang gio hanh chinh"
+}
+```
+
+FE co the gui chi `shippingAddressId` khi user chon dia chi da luu:
+
+```json
+{
+  "items": [
+    {
+      "productId": "b1b2c3d4-0001-0001-0001-000000000002",
+      "variantId": "c1b2c3d4-0001-0001-0001-000000000003",
+      "quantity": 1
+    }
+  ],
+  "shippingAddressId": "dd000000-0199-4000-8000-000000000001",
+  "paymentMethod": "COD"
 }
 ```
 
@@ -148,12 +165,13 @@ All steps run in one database transaction:
 5. Validate promotion code if provided.
 6. Calculate `subtotal`, `discount`, `shippingFee`, `totalAmount`.
 7. Generate `orderNumber = CP + yyyyMMdd + 5-digit daily sequence`.
-8. Insert `orders`.
-9. Insert `order_items`.
-10. Insert first `order_status_history` row with `toStatus = PENDING`.
-11. Insert `payments` placeholder with `status = UNPAID`.
-12. Increment promotion `usedCount` if promotion is used.
-13. Clear current user's cart.
+8. If `shippingAddressId` is provided, validate saved address ownership and snapshot it.
+9. Insert `orders` with `shipping_address` and optional `shipping_address_id`.
+10. Insert `order_items`.
+11. Insert first `order_status_history` row with `toStatus = PENDING`.
+12. Insert `payments` placeholder with `status = UNPAID`.
+13. Increment promotion `usedCount` if promotion is used.
+14. Clear current user's cart.
 
 ## Payment Methods
 
@@ -207,6 +225,7 @@ Current temporary rule:
 | Clear cart after success | `05-api-orders.md`, order create rules step 8 |
 | Increment promotion usage | `05-api-orders.md`, order create rules step 10 and `10-business-rules.md`, section `2.3.4` |
 | Transaction rollback | `05-api-orders.md`, order create rules step 11 |
+| Saved address checkout | `03-api-auth-users.md` ShippingAddress, `05-api-orders.md` `shippingAddressId` |
 | Order number format | `10-business-rules.md`, order number rule |
 | `GET /api/v1/orders` | `05-api-orders.md`, section `3.2 GET /orders` |
 | `GET /api/v1/orders/{id}` | `05-api-orders.md`, section `3.3 GET /orders/:id` |
@@ -247,6 +266,8 @@ Response:
       "items": {
         "count": 1,
         "firstItem": {
+          "productId": "b1b2c3d4-0001-0001-0001-000000000001",
+          "variantId": "c1b2c3d4-0001-0001-0001-000000000001",
           "productName": "iPhone 15 Pro Max 256GB",
           "productImage": "https://cdn.cellphones.vn/products/iphone15promax-1.jpg",
           "variantName": "256GB - Titan Tu Nhien"

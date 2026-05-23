@@ -24,19 +24,35 @@ import { productApi, categoryApi } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
-import type { Product, PaginationParams, SortParams, ActiveFilter, FilterConfig, ColumnConfig } from '../../types';
+import type { Product, Category, PaginationParams, SortParams, ActiveFilter, FilterConfig, ColumnConfig } from '../../types';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { toast } from 'sonner';
 
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
 
+const getProductRetailMeta = (product: Product) => {
+  const legacy = product as Product & {
+    supplierId?: string;
+    supplierName?: string;
+    minOrderQty?: number;
+    unit?: string;
+  };
+
+  return {
+    storeId: legacy.supplierId ?? 'cellphones',
+    storeName: legacy.supplierName ?? 'CELLPHONES',
+    minQty: legacy.minOrderQty ?? 1,
+    unit: legacy.unit ?? 'sp',
+  };
+};
+
 const columns: ColumnConfig[] = [
   { key: 'name', label: 'Tên sản phẩm', visible: true, sortable: true },
   { key: 'categoryName', label: 'Danh mục', visible: true, sortable: true },
-  { key: 'supplierName', label: 'Nhà cung cấp', visible: true, sortable: true },
+  { key: 'brand', label: 'Thương hiệu', visible: true, sortable: true },
   { key: 'price', label: 'Giá (VNĐ)', visible: true, sortable: true },
-  { key: 'minOrderQty', label: 'MOQ', visible: true, sortable: true },
+  { key: 'soldCount', label: 'Đã bán', visible: true, sortable: true },
   { key: 'rating', label: 'Đánh giá', visible: true, sortable: true },
   { key: 'status', label: 'Trạng thái', visible: true, sortable: true },
 ];
@@ -72,7 +88,7 @@ export function ProductListPage() {
 
   const initialPage = Number(searchParams.get('page')) || 1;
   const initialSearch = searchParams.get('search') ?? '';
-  const initialCategory = searchParams.get('categoryName') ?? searchParams.get('category') ?? '';
+  const initialCategory = searchParams.get('categoryId') ?? searchParams.get('categoryName') ?? searchParams.get('category') ?? '';
   const initialStatus = searchParams.get('status') ?? '';
 
   const [pagination, setPagination] = useState<PaginationParams>({ page: initialPage, pageSize: 12 });
@@ -80,7 +96,7 @@ export function ProductListPage() {
   const [sortString, setSortString] = useState('createdAt:desc');
   const [filters, setFilters] = useState<ActiveFilter[]>(() => {
     const f: ActiveFilter[] = [];
-    if (initialCategory) f.push({ key: 'categoryName', value: initialCategory });
+    if (initialCategory) f.push({ key: 'categoryId', value: initialCategory });
     if (initialStatus) f.push({ key: 'status', value: initialStatus });
     return f;
   });
@@ -100,7 +116,7 @@ export function ProductListPage() {
     if (pagination.page > 1) params.page = String(pagination.page);
     if (search) params.search = search;
     for (const f of filters) {
-      if (typeof f.value === 'string' && f.value) params[f.key] = f.value;
+      if (typeof f.value === 'string' && f.value) params[f.key === 'categoryName' ? 'categoryId' : f.key] = f.value;
     }
     setSearchParams(params, { replace: true });
   }, [pagination, search, filters, setSearchParams]);
@@ -115,29 +131,39 @@ export function ProductListPage() {
 
   useEffect(() => {
     categoryApi.getAll().then(cats =>
-      setCategoryOptions(cats.filter(c => !c.parentId).map(c => ({ label: c.name, value: c.name, count: c.productCount }))),
+      setCategoryOptions(
+        cats
+          .flatMap((cat: Category) => [cat, ...(cat.children ?? [])])
+          .map(c => ({ label: c.parentId ? `- ${c.name}` : c.name, value: c.id, count: c.productCount })),
+      ),
     );
   }, []);
 
   const filterConfigs: FilterConfig[] = [
-    { key: 'categoryName', label: 'Danh mục', type: 'select', options: categoryOptions },
+    { key: 'categoryId', label: 'Danh mục', type: 'select', options: categoryOptions },
     { key: 'status', label: 'Trạng thái', type: 'select', options: [
-      { label: 'Đã duyệt', value: 'Đã duyệt' },
-      { label: 'Chờ duyệt', value: 'Chờ duyệt' },
+      { label: 'Đang bán', value: 'Đang bán' },
       { label: 'Hết hàng', value: 'Hết hàng' },
+      { label: 'Ngừng kinh doanh', value: 'Ngừng kinh doanh' },
     ]},
   ];
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await productApi.getPaginated(pagination, sort.field ? sort : undefined, filters, search);
+      const allFilters = [...filters];
+      if (selectedPriceRange !== null) {
+        const range = priceRanges[selectedPriceRange];
+        allFilters.push({ key: 'minPrice', value: range.min });
+        if (Number.isFinite(range.max)) allFilters.push({ key: 'maxPrice', value: range.max });
+      }
+      const res = await productApi.getPaginated(pagination, sort.field ? sort : undefined, allFilters, search);
       setProducts(res.data);
       setTotal(res.total);
     } finally {
       setLoading(false);
     }
-  }, [pagination, sort, filters, search]);
+  }, [pagination, sort, filters, search, selectedPriceRange]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 
@@ -173,13 +199,14 @@ export function ProductListPage() {
     }
     setAddingToCart(product.id);
     try {
+      const retailMeta = getProductRetailMeta(product);
       await addItem({
         productId: product.id,
         productName: product.name,
         productImage: product.images[0],
-        supplierId: product.supplierId,
-        supplierName: product.supplierName,
-        quantity: product.minOrderQty,
+        supplierId: retailMeta.storeId,
+        supplierName: retailMeta.storeName,
+        quantity: retailMeta.minQty,
         unitPrice: product.price,
       });
       toast.success(`Đã thêm "${product.name}" vào giỏ hàng`);
@@ -189,24 +216,25 @@ export function ProductListPage() {
   };
 
   const handleCategoryClick = (catName: string) => {
-    const existingIdx = filters.findIndex(f => f.key === 'categoryName');
+    const existingIdx = filters.findIndex(f => f.key === 'categoryId');
     if (existingIdx >= 0 && filters[existingIdx].value === catName) {
-      setFilters(prev => prev.filter(f => f.key !== 'categoryName'));
+      setFilters(prev => prev.filter(f => f.key !== 'categoryId'));
     } else {
       setFilters(prev => [
-        ...prev.filter(f => f.key !== 'categoryName'),
-        { key: 'categoryName', value: catName },
+        ...prev.filter(f => f.key !== 'categoryId'),
+        { key: 'categoryId', value: catName },
       ]);
     }
     setPagination(p => ({ ...p, page: 1 }));
   };
 
-  const activeCategory = filters.find(f => f.key === 'categoryName')?.value as string | undefined;
+  const activeCategory = filters.find(f => f.key === 'categoryId')?.value as string | undefined;
 
   // E17.01: Grid card redesign
   const renderGridCard = (product: Product) => {
     const isCompare = compareIds.includes(product.id);
     const wishlisted = isInWishlist(product.id);
+    const retailMeta = getProductRetailMeta(product);
 
     return (
       <Card className="overflow-hidden group hover:shadow-lg hover:-translate-y-1 transition-all duration-300 h-full border-0 shadow-sm relative">
@@ -289,10 +317,10 @@ export function ProductListPage() {
           </div>
           <div className="flex items-center justify-between">
             <p className="text-[#e31837] font-bold text-sm">{formatPrice(product.price)}</p>
-            <span className="text-[10px] text-muted-foreground">MOQ: {product.minOrderQty} {product.unit}</span>
+            <span className="text-[10px] text-muted-foreground">Từ {retailMeta.minQty} {retailMeta.unit}</span>
           </div>
           <p className="text-xs text-muted-foreground mt-1 truncate flex items-center gap-1">
-            <Building2 className="h-3 w-3 shrink-0" /> {product.supplierName}
+            <Building2 className="h-3 w-3 shrink-0" /> {retailMeta.storeName}
           </p>
         </CardContent>
       </Card>
@@ -302,6 +330,7 @@ export function ProductListPage() {
   const renderListItem = (product: Product) => {
     const wishlisted = isInWishlist(product.id);
     const isCompare = compareIds.includes(product.id);
+    const retailMeta = getProductRetailMeta(product);
 
     return (
       <Card className="hover:shadow-md transition-all duration-200 border-0 shadow-sm overflow-hidden">
@@ -325,7 +354,7 @@ export function ProductListPage() {
               <div className="min-w-0">
                 <p className="line-clamp-1 text-sm" style={{ fontWeight: 500 }}>{product.name}</p>
                 <p className="text-xs text-muted-foreground flex items-center gap-1 mt-0.5">
-                  <Building2 className="h-3 w-3" /> {product.supplierName}
+                  <Building2 className="h-3 w-3" /> {retailMeta.storeName}
                 </p>
               </div>
               <StatusBadge status={product.status} />
@@ -333,7 +362,7 @@ export function ProductListPage() {
             <div className="flex items-center gap-3 mt-2 flex-wrap">
               <span className="text-primary text-sm" style={{ fontWeight: 600 }}>{formatPrice(product.price)}</span>
               <Badge variant="secondary" className="text-[10px]">{product.categoryName}</Badge>
-              <span className="text-xs text-muted-foreground">MOQ: {product.minOrderQty} {product.unit}</span>
+              <span className="text-xs text-muted-foreground">Từ {retailMeta.minQty} {retailMeta.unit}</span>
               <div className="flex items-center gap-1">
                 {[1, 2, 3, 4, 5].map(s => (
                   <Star key={s} className={`h-3 w-3 ${s <= product.rating ? 'fill-amber-400 text-amber-400' : 'fill-muted text-muted'}`} />
@@ -380,7 +409,7 @@ export function ProductListPage() {
         <div>
           <h1 style={{ fontFamily: 'var(--font-heading)' }}>Sản phẩm</h1>
           <p className="text-muted-foreground mt-0.5">
-            {search ? `Kết quả cho "${search}"` : 'Khám phá hàng nghìn sản phẩm từ NCC uy tín'}
+            {search ? `Kết quả cho "${search}"` : 'Khám phá sản phẩm công nghệ chính hãng'}
             {total > 0 && <span className="text-foreground" style={{ fontWeight: 500 }}> · {total} sản phẩm</span>}
           </p>
         </div>
@@ -474,7 +503,7 @@ export function ProductListPage() {
                 Trạng thái
               </h4>
               <div className="space-y-1.5">
-                {['Đã duyệt', 'Chờ duyệt', 'Hết hàng'].map(status => {
+                {['Đang bán', 'Hết hàng', 'Ngừng kinh doanh'].map(status => {
                   const isActive = filters.some(f => f.key === 'status' && f.value === status);
                   return (
                     <label key={status} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg hover:bg-muted/50 cursor-pointer transition-colors">
@@ -563,7 +592,7 @@ export function ProductListPage() {
             <Badge
               variant={!activeCategory ? 'default' : 'outline'}
               className="cursor-pointer shrink-0"
-              onClick={() => { setFilters(prev => prev.filter(f => f.key !== 'categoryName')); setPagination(p => ({ ...p, page: 1 })); }}
+              onClick={() => { setFilters(prev => prev.filter(f => f.key !== 'categoryId')); setPagination(p => ({ ...p, page: 1 })); }}
             >
               Tất cả
             </Badge>

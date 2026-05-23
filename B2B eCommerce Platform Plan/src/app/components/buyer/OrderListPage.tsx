@@ -25,9 +25,11 @@ import type { Order, PaginationParams, SortParams, ActiveFilter, FilterConfig, C
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
 
+const getOrderStoreName = (order: Pick<Order, 'supplierName'>) => order.supplierName || 'CELLPHONES';
+
 const columns: ColumnConfig[] = [
   { key: 'orderNumber', label: 'Mã đơn hàng', visible: true, sortable: true },
-  { key: 'supplierName', label: 'Nhà cung cấp', visible: true, sortable: true },
+  { key: 'supplierName', label: 'Cửa hàng', visible: true, sortable: true },
   { key: 'totalAmount', label: 'Tổng tiền', visible: true, sortable: true },
   { key: 'status', label: 'Trạng thái', visible: true, sortable: true },
   { key: 'paymentMethod', label: 'Thanh toán', visible: true, sortable: false },
@@ -176,7 +178,7 @@ export function OrderListPage() {
                 <StatusBadge status={order.status} />
               </div>
               <p className="text-xs text-muted-foreground flex items-center gap-1.5">
-                <Building2 className="h-3 w-3 shrink-0" /> {order.supplierName}
+                <Building2 className="h-3 w-3 shrink-0" /> {getOrderStoreName(order)}
               </p>
               <p className="text-xs text-muted-foreground flex items-center gap-1.5 mt-0.5">
                 <Calendar className="h-3 w-3 shrink-0" /> {timeAgo(order.createdAt)}

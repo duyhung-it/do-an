@@ -1,6 +1,6 @@
 // ============================================================
 // AdminAnalyticsPage — Phân tích toàn sàn (D11)
-// KPI cards, GMV LineChart, Top NCC, Top Buyer, Phân bổ ngành
+// KPI cards, GMV LineChart, Top stores, Top customers, Phân bổ ngành
 // ============================================================
 
 import { useState, useCallback, useEffect } from 'react';
@@ -47,9 +47,9 @@ const topSuppliers = [
 const topBuyers = [
   { name: 'Tập đoàn XYZ', spend: 3500000000, orders: 89, tier: 'Kim cương' },
   { name: 'Ngân hàng DEF', spend: 2800000000, orders: 67, tier: 'Kim cương' },
-  { name: 'Công ty ABC', spend: 1900000000, orders: 54, tier: 'Vàng' },
-  { name: 'Công ty GHI', spend: 1400000000, orders: 43, tier: 'Vàng' },
-  { name: 'Công ty JKL', spend: 980000000, orders: 32, tier: 'Bạc' },
+  { name: 'Khách hàng ABC', spend: 1900000000, orders: 54, tier: 'Vàng' },
+  { name: 'Khách hàng GHI', spend: 1400000000, orders: 43, tier: 'Vàng' },
+  { name: 'Khách hàng JKL', spend: 980000000, orders: 32, tier: 'Bạc' },
 ];
 
 const industryDist = [
@@ -81,7 +81,7 @@ export function AdminAnalyticsPage() {
   const kpis = [
     { label: 'GMV tháng này', value: 23500000000, prev: 21800000000, icon: <DollarSign className="h-5 w-5 text-green-500" />, color: 'success' as const, format: formatCurrency },
     { label: 'Tổng đơn hàng', value: 531, prev: 498, icon: <ShoppingCart className="h-5 w-5 text-blue-500" />, color: 'info' as const, format: formatNum },
-    { label: 'Nhà cung cấp', value: 48, prev: 44, icon: <Building2 className="h-5 w-5 text-purple-500" />, color: 'info' as const, format: formatNum },
+    { label: 'Cửa hàng', value: 48, prev: 44, icon: <Building2 className="h-5 w-5 text-purple-500" />, color: 'info' as const, format: formatNum },
     { label: 'Buyer hoạt động', value: 142, prev: 131, icon: <Users className="h-5 w-5 text-orange-500" />, color: 'warning' as const, format: formatNum },
     { label: 'Tỷ lệ chuyển đổi', value: 18.4, prev: 16.2, icon: <Target className="h-5 w-5 text-teal-500" />, color: 'success' as const, format: (v: number) => `${v}%` },
     { label: 'Giá trị đơn TB', value: 44200000, prev: 43800000, icon: <TrendingUp className="h-5 w-5 text-indigo-500" />, color: 'info' as const, format: formatCurrency },
@@ -143,7 +143,7 @@ export function AdminAnalyticsPage() {
 
       {/* Tabs */}
       <div className="flex border-b gap-4">
-        {[{ key: 'overview', label: 'Tổng quan' }, { key: 'buyers', label: 'Top Buyer' }, { key: 'sellers', label: 'Top NCC' }].map(t => (
+        {[{ key: 'overview', label: 'Tổng quan' }, { key: 'buyers', label: 'Top khách hàng' }, { key: 'sellers', label: 'Top cửa hàng' }].map(t => (
           <button
             key={t.key} onClick={() => setActiveTab(t.key as typeof activeTab)}
             className={`pb-2 px-1 border-b-2 text-sm font-medium transition-colors ${activeTab === t.key ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
@@ -196,7 +196,7 @@ export function AdminAnalyticsPage() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>Top 5 NCC theo doanh thu</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Top 5 cửa hàng theo doanh thu</CardTitle></CardHeader>
               <CardContent>
                 <div className="h-56">
                   <ResponsiveContainer width="100%" height="100%">
@@ -243,7 +243,7 @@ export function AdminAnalyticsPage() {
 
       {activeTab === 'sellers' && (
         <Card>
-          <CardHeader><CardTitle>Top NCC theo doanh thu</CardTitle></CardHeader>
+          <CardHeader><CardTitle>Top cửa hàng theo doanh thu</CardTitle></CardHeader>
           <CardContent>
             <div className="space-y-3">
               {topSuppliers.map((s, i) => (

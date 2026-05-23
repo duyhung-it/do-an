@@ -97,7 +97,7 @@ function Confetti() {
 function OrderTimeline() {
   const steps = [
     { icon: ShoppingCart, label: 'Đặt hàng', desc: 'Đơn hàng đã được tạo', active: true, done: true },
-    { icon: ClipboardCheck, label: 'Xác nhận', desc: 'Chờ NCC xác nhận', active: true, done: false },
+    { icon: ClipboardCheck, label: 'Xác nhận', desc: 'Chờ cửa hàng xác nhận', active: true, done: false },
     { icon: Truck, label: 'Vận chuyển', desc: 'Đang chuẩn bị giao', active: false, done: false },
     { icon: PackageCheck, label: 'Nhận hàng', desc: 'Giao hàng thành công', active: false, done: false },
   ];
@@ -145,6 +145,8 @@ interface OrderData {
   totalAmount: number;
   items: Array<{ productName: string; quantity: number }>;
 }
+
+const getConfirmationStoreName = (order: Pick<OrderData, 'supplierName'>) => order.supplierName || 'CELLPHONES';
 
 export function OrderConfirmationPage() {
   const location = useLocation();
@@ -235,7 +237,7 @@ export function OrderConfirmationPage() {
                       <p className="text-sm" style={{ fontWeight: 600 }}>Đơn #{order.orderNumber}</p>
                       <Badge variant="secondary" className="text-[10px]">Chờ xác nhận</Badge>
                     </div>
-                    <p className="text-xs text-muted-foreground mt-0.5">{order.supplierName}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{getConfirmationStoreName(order)}</p>
                   </div>
                   <div className="flex items-center gap-2">
                     <button

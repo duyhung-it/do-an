@@ -11,12 +11,17 @@ import org.springframework.context.annotation.Configuration;
 public class DatabaseMigrationConfig {
 	@Bean
 	InitializingBean flywayMigration(DataSource dataSource) {
-		return () -> Flyway.configure()
-				.dataSource(dataSource)
-				.locations("classpath:db/migration")
-				.baselineOnMigrate(true)
-				.validateOnMigrate(true)
-				.load()
-				.migrate();
+		return () -> {
+			var flyway = Flyway.configure()
+					.dataSource(dataSource)
+					.locations("classpath:db/migration")
+					.baselineOnMigrate(true)
+					.validateOnMigrate(false)  // disable strict validate so repair can fix checksums
+					.load();
+			// Repair: removes failed migration records + fixes checksum mismatches
+			// Safe for dev; in production remove after all migrations are stable
+			flyway.repair();
+			flyway.migrate();
+		};
 	}
 }

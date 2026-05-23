@@ -12,24 +12,24 @@ import { useAuth } from '../../context/AuthContext';
 const slides = [
   {
     icon: Globe,
-    title: 'Nền tảng B2B số 1 Việt Nam',
-    description: 'Kết nối hơn 50.000 doanh nghiệp và 5.000+ nhà cung cấp uy tín trên toàn quốc.',
+    title: 'Mua sắm công nghệ chính hãng',
+    description: 'Tìm điện thoại, phụ kiện và thiết bị công nghệ với thông tin rõ ràng, giao hàng toàn quốc.',
     stat: '50K+',
-    statLabel: 'Doanh nghiệp',
+    statLabel: 'Khách hàng',
     accent: 'from-blue-400 to-indigo-500',
   },
   {
     icon: Shield,
     title: 'An toàn & Bảo mật tuyệt đối',
-    description: 'Mọi giao dịch được bảo vệ bởi hệ thống xác minh NCC đa tầng và mã hóa SSL.',
+    description: 'Mọi giao dịch được bảo vệ bởi hệ thống thanh toán an toàn và mã hóa SSL.',
     stat: '100%',
-    statLabel: 'NCC đã xác minh',
+    statLabel: 'Bảo mật',
     accent: 'from-emerald-400 to-teal-500',
   },
   {
     icon: TrendingUp,
     title: 'Tiết kiệm chi phí đáng kể',
-    description: 'Trung bình doanh nghiệp tiết kiệm 30% chi phí mua hàng khi sử dụng VietB2B.',
+    description: 'Săn ưu đãi theo mùa, mã giảm giá và quà tặng khi mua sắm tại CELLPHONES.',
     stat: '30%',
     statLabel: 'Tiết kiệm trung bình',
     accent: 'from-amber-400 to-orange-500',
@@ -39,7 +39,7 @@ const slides = [
 const trustBadges = [
   { icon: CheckCircle, label: 'Đã xác minh' },
   { icon: Lock, label: 'SSL bảo mật' },
-  { icon: Star, label: 'Top Platform' },
+  { icon: Star, label: 'Được yêu thích' },
   { icon: Zap, label: 'Nhanh chóng' },
 ];
 
@@ -87,10 +87,10 @@ export function AuthLayout() {
         <div className="lg:hidden p-4" style={{ background: 'linear-gradient(135deg, #8a0e23, #c91432)' }}>
           <Link to="/" className="flex items-center gap-2.5">
             <div className="h-8 w-8 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center border border-white/20">
-              <span className="text-white text-xs font-black" style={{ fontFamily: 'var(--font-heading)' }}>B2B</span>
+              <span className="text-white text-xs font-black" style={{ fontFamily: 'var(--font-heading)' }}>CP</span>
             </div>
             <span className="text-white font-bold" style={{ fontFamily: 'var(--font-heading)' }}>
-              VietB2B
+              CELLPHONES
             </span>
           </Link>
         </div>
@@ -105,7 +105,7 @@ export function AuthLayout() {
         {/* Footer */}
         <div className="lg:hidden py-3 px-4 border-t text-center">
           <p className="text-xs text-muted-foreground">
-            © 2025 VietB2B · <Link to="/privacy" className="hover:underline">Bảo mật</Link> · <Link to="/terms" className="hover:underline">Điều khoản</Link>
+            © 2025 CELLPHONES · <Link to="/privacy" className="hover:underline">Bảo mật</Link> · <Link to="/terms" className="hover:underline">Điều khoản</Link>
           </p>
         </div>
       </div>
@@ -128,11 +128,11 @@ export function AuthLayout() {
           {/* Top: Logo */}
           <Link to="/" className="flex items-center gap-3 self-start group">
             <div className="h-12 w-12 rounded-xl bg-white/15 backdrop-blur-md border border-white/30 flex items-center justify-center group-hover:bg-white/20 transition-all">
-              <span className="text-white font-black text-sm" style={{ fontFamily: 'var(--font-heading)' }}>B2B</span>
+              <span className="text-white font-black text-sm" style={{ fontFamily: 'var(--font-heading)' }}>CP</span>
             </div>
             <div>
-              <p className="text-white font-black text-xl leading-none" style={{ fontFamily: 'var(--font-heading)' }}>VietB2B</p>
-              <p className="text-red-100/50 text-xs mt-0.5">Nền tảng B2B #1 Việt Nam</p>
+              <p className="text-white font-black text-xl leading-none" style={{ fontFamily: 'var(--font-heading)' }}>CELLPHONES</p>
+              <p className="text-red-100/50 text-xs mt-0.5">Điện thoại và phụ kiện chính hãng</p>
             </div>
           </Link>
 
@@ -185,7 +185,7 @@ export function AuthLayout() {
               ))}
             </div>
             <p className="text-white/40 text-xs text-center mt-6">
-              © 2025 VietB2B · Bảo mật · Điều khoản
+              © 2025 CELLPHONES · Bảo mật · Điều khoản
             </p>
           </div>
         </div>

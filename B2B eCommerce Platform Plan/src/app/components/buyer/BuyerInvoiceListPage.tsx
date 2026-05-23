@@ -46,6 +46,10 @@ type DebitCreditNote = { id: string; amount: number; status: string; type: strin
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(price);
 
+const getInvoiceStoreName = (invoice: Pick<Invoice, 'supplierName'>) => invoice.supplierName || 'CELLPHONES';
+const getInvoiceStoreCompany = (invoice: Pick<Invoice, 'supplierCompany'>) => invoice.supplierCompany || 'CELLPHONES';
+const getInvoiceBuyerName = (invoice: Pick<Invoice, 'buyerCompany'>) => invoice.buyerCompany || 'Khách hàng';
+
 const fmtShort = (v: number) => {
   if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)} tỷ`;
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(0)} tr`;
@@ -72,7 +76,7 @@ function overdueDays(inv: Invoice): number {
 
 const columns: ColumnConfig[] = [
   { key: 'invoiceNumber', label: 'Số HĐ', visible: true, sortable: true },
-  { key: 'supplierName', label: 'NCC', visible: true, sortable: true },
+  { key: 'supplierName', label: 'Cửa hàng', visible: true, sortable: true },
   { key: 'totalAmount', label: 'Tổng tiền', visible: true, sortable: true },
   { key: 'taxAmount', label: 'Thuế', visible: true, sortable: false },
   { key: 'status', label: 'Trạng thái', visible: true, sortable: true },
@@ -85,7 +89,7 @@ const filterConfigs: FilterConfig[] = [
     key: 'status', label: 'Trạng thái', type: 'select',
     options: ['Đã xuất', 'Đã gửi', 'Đã thanh toán', 'Quá hạn'].map(v => ({ label: v, value: v })),
   },
-  { key: 'supplierName', label: 'NCC', type: 'text' },
+  { key: 'supplierName', label: 'Cửa hàng', type: 'text' },
 ];
 
 // ─── P2.14: Print Preview Dialog ──────────────────────────
@@ -121,12 +125,12 @@ function InvoicePrintPreview({ invoice, onClose }: { invoice: Invoice; onClose: 
           <div className="grid sm:grid-cols-2 gap-4">
             <div className="p-3 rounded-xl bg-muted/30">
               <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5">Bên bán</p>
-              <p style={{ fontFamily: 'var(--font-heading)' }}>{invoice.supplierCompany}</p>
+              <p style={{ fontFamily: 'var(--font-heading)' }}>{getInvoiceStoreCompany(invoice)}</p>
               <p className="text-muted-foreground text-sm">MST: {invoice.supplierTaxCode}</p>
             </div>
             <div className="p-3 rounded-xl bg-muted/30">
               <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1.5">Bên mua</p>
-              <p style={{ fontFamily: 'var(--font-heading)' }}>{invoice.buyerCompany}</p>
+              <p style={{ fontFamily: 'var(--font-heading)' }}>{getInvoiceBuyerName(invoice)}</p>
               <p className="text-muted-foreground text-sm">MST: {invoice.buyerTaxCode}</p>
             </div>
           </div>
@@ -187,7 +191,7 @@ function InvoicePrintPreview({ invoice, onClose }: { invoice: Invoice; onClose: 
 
           {/* Footer */}
           <div className="text-center text-xs text-muted-foreground border-t pt-3">
-            <p>Hoá đơn điện tử — Hệ thống B2B Marketplace</p>
+            <p>Hoá đơn điện tử — Hệ thống bán hàng CELLPHONES</p>
           </div>
         </div>
 
@@ -341,7 +345,7 @@ export function BuyerInvoiceListPage() {
             <FileText className="h-6 w-6 text-primary" />
             Hoá đơn của tôi
           </h1>
-          <p className="text-muted-foreground mt-1">Danh sách hoá đơn nhận được từ nhà cung cấp</p>
+          <p className="text-muted-foreground mt-1">Danh sách hoá đơn từ các đơn hàng của bạn</p>
         </div>
         <div className="flex gap-2">
           <Button variant={activeMainTab === 'invoices' ? 'default' : 'outline'} size="sm"
@@ -520,7 +524,7 @@ export function BuyerInvoiceListPage() {
                             )}
                             <div className="min-w-0">
                               <p style={{ fontFamily: 'var(--font-heading)' }} className="truncate">{inv.invoiceNumber}</p>
-                              <p className="text-muted-foreground text-sm truncate">{inv.supplierName}</p>
+                              <p className="text-muted-foreground text-sm truncate">{getInvoiceStoreName(inv)}</p>
                             </div>
                           </div>
                           <div className="flex flex-col items-end gap-1">
@@ -558,7 +562,7 @@ export function BuyerInvoiceListPage() {
                 <div className="max-h-40 overflow-y-auto space-y-1.5 border rounded-lg p-2">
                   {selectedInvoices.map(inv => (
                     <div key={inv.id} className="flex items-center justify-between text-sm p-1.5 rounded hover:bg-muted/30">
-                      <span>{inv.invoiceNumber} — {inv.supplierName}</span>
+                      <span>{inv.invoiceNumber} — {getInvoiceStoreName(inv)}</span>
                       <span style={{ fontFamily: 'var(--font-heading)' }}>{formatPrice(inv.totalAmount)}</span>
                     </div>
                   ))}
@@ -609,7 +613,7 @@ export function BuyerInvoiceListPage() {
                 </div>
                 <p className="text-sm text-muted-foreground mb-1">{note.description}</p>
                 <div className="flex items-center justify-between text-sm">
-                  <span className="text-muted-foreground">HĐ: {note.invoiceNumber} · {note.sellerName}</span>
+                  <span className="text-muted-foreground">HĐ: {note.invoiceNumber} · {note.sellerName || 'CELLPHONES'}</span>
                   <span className={`${note.type === 'Ghi nợ' ? 'text-red-600' : 'text-green-600'}`} style={{ fontFamily: 'var(--font-heading)' }}>
                     {note.type === 'Ghi nợ' ? '+' : '-'}{formatPrice(note.totalAmount)}
                   </span>
@@ -643,8 +647,8 @@ export function BuyerInvoiceListPage() {
                   <p>{selectedDC.invoiceNumber}</p>
                 </div>
                 <div className="p-2.5 rounded-lg bg-muted/30">
-                  <span className="text-xs text-muted-foreground">NCC</span>
-                  <p>{selectedDC.sellerName}</p>
+                  <span className="text-xs text-muted-foreground">Cửa hàng</span>
+                  <p>{selectedDC.sellerName || 'CELLPHONES'}</p>
                 </div>
               </div>
               <div className="p-3 rounded-lg bg-muted/20">

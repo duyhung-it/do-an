@@ -25,6 +25,9 @@ import type { Invoice } from '../../types';
 const formatPrice = (n: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(n);
 
+const getInvoiceStoreCompany = (invoice: Pick<Invoice, 'supplierCompany'>) => invoice.supplierCompany || 'CELLPHONES';
+const getInvoiceBuyerName = (invoice: Pick<Invoice, 'buyerCompany'>) => invoice.buyerCompany || 'Khách hàng';
+
 function getDaysUntilDue(dueDate: string): number {
   const due = new Date(dueDate).getTime();
   const now = Date.now();
@@ -156,11 +159,11 @@ export function BuyerInvoiceDetail() {
         <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
-              <Building2 className="h-4 w-4" /> Bên bán (Nhà cung cấp)
+              <Building2 className="h-4 w-4" /> Bên bán
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <InfoRow icon={Building2} label="Công ty" value={invoice.supplierCompany} />
+            <InfoRow icon={Building2} label="Cửa hàng" value={getInvoiceStoreCompany(invoice)} />
             <InfoRow icon={Hash} label="Mã số thuế" value={invoice.supplierTaxCode} />
           </CardContent>
         </Card>
@@ -173,7 +176,7 @@ export function BuyerInvoiceDetail() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <InfoRow icon={Building2} label="Công ty" value={invoice.buyerCompany} />
+            <InfoRow icon={Building2} label="Khách hàng" value={getInvoiceBuyerName(invoice)} />
             <InfoRow icon={Hash} label="Mã số thuế" value={invoice.buyerTaxCode} />
           </CardContent>
         </Card>

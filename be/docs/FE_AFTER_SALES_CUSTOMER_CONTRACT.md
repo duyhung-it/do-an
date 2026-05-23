@@ -2,7 +2,7 @@
 
 Source: `B2B eCommerce Platform Plan/ba-docs/07-api-after-sales.md`
 
-Status: DONE on 2026-05-17. All endpoints use standard `ApiResponse`. During security-deferred phase, customer ownership is scoped by `X-User-Id`.
+Status: DONE on 2026-05-20. All endpoints use standard `ApiResponse`. During security-deferred phase, customer ownership is scoped by `X-User-Id`.
 
 ## Returns
 
@@ -27,9 +27,19 @@ Rules:
 - Backend blocks duplicate active return for the same order.
 - Customer can only read own returns.
 
-Return fields: `id`, `returnNumber`, `orderId`, `customerId`, `customerName`, `customerPhone`, `reason`, `status`, `refundAmount`, `disputeResolution`, `createdAt`, `updatedAt`.
+Return fields: `id`, `returnNumber`, `orderId`, `customerId`, `customerName`, `customerPhone`, `reason`, `status`, `refundAmount`, `disputeResolution`, `createdAt`, `updatedAt`, `orderNumber`, `refundMethod`, `items`.
+
+Return `items[]` fields: `orderItemId`, `productId`, `variantId`, `productName`, `productImage`, `variantName`, `sku`, `quantity`, `unitPrice`, `totalPrice`.
+
+Current `refundMethod` value is `ORIGINAL_PAYMENT`.
 
 Statuses: `PENDING`, `APPROVED`, `PROCESSING`, `REFUNDED`, `CLOSED`, `REJECTED`.
+
+Return refund side effect:
+
+- When admin moves a return request to `REFUNDED`, backend reverses loyalty points previously earned from that order.
+- Reverse appears in `GET /api/v1/loyalty/me/transactions?type=EXPIRE`.
+- Reverse is idempotent per order and never makes current points negative.
 
 ## Warranty
 
@@ -43,6 +53,18 @@ Warranty item fields: `id`, `orderId`, `orderItemId`, `productId`, `customerId`,
 
 Warranty item statuses: `ACTIVE`, `EXPIRED`, `VOIDED`.
 
+Warranty creation side effect:
+
+- Backend auto-creates warranty items when an order transitions to `DELIVERED`.
+- Triggered by both admin order status `SHIPPING -> DELIVERED` and admin shipment status `IN_TRANSIT -> DELIVERED` when it also closes the order.
+- One warranty item is created per purchased unit.
+- `warrantyMonths` uses `products.warranty`; fallback is `12`.
+- `warrantyStart = current date`; `warrantyExpiry = warrantyStart + warrantyMonths`.
+- `serialNumber` is generated as `WR-{orderNumber}-{sku-or-productId}-{unit}` for dev/local flow.
+- The operation is idempotent per `orderItemId`; repeated delivered side effects do not create duplicates.
+
+FE flow: after order detail shows `status=DELIVERED`, call `GET /api/v1/warranty?status=ACTIVE` with the same `X-User-Id` to show warranty cards.
+
 Create claim request:
 
 ```json
@@ -52,7 +74,7 @@ Create claim request:
 }
 ```
 
-Claim fields: `id`, `claimNumber`, `warrantyId`, `orderId`, `productId`, `customerId`, `customerName`, `customerPhone`, `issueDescription`, `status`, `resolutionNote`, `createdAt`, `updatedAt`.
+Claim fields: `id`, `claimNumber`, `warrantyId`, `orderId`, `productId`, `customerId`, `customerName`, `customerPhone`, `issueDescription`, `status`, `resolutionNote`, `createdAt`, `updatedAt`, `productName`, `productImage`, `brand`, `serialNumber`, `warrantyStatus`.
 
 Claim statuses: `NEW`, `PROCESSING`, `RESOLVED`, `REJECTED`.
 

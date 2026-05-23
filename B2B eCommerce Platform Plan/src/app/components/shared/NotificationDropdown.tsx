@@ -40,7 +40,7 @@ const typeLabel: Record<NotificationType, string> = {
   system: 'Hệ thống',
   message: 'Tin nhắn',
   rfq: 'Báo giá',
-  contract: 'Hợp đồng',
+  contract: 'Thỏa thuận',
   payment: 'Thanh toán',
   shipment: 'Vận chuyển',
   approval: 'Phê duyệt',

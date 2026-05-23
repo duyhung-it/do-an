@@ -11,7 +11,7 @@ import {
   Home, Package, ClipboardList, Building2, FileText, ScrollText,
   Truck, CreditCard, Heart, Tag, MessageSquare, LayoutDashboard,
   Warehouse, Users, BarChart3, History, ShieldCheck, Settings,
-  Clock, Copy, Zap, FileUp,
+  Clock, Copy, Zap,
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -19,7 +19,7 @@ import { motion, AnimatePresence } from 'motion/react';
 interface SearchItem {
   id: string;
   label: string;
-  group: 'Trang' | 'Đơn hàng' | 'Sản phẩm' | 'NCC' | 'Gần đây';
+  group: 'Trang' | 'Đơn hàng' | 'Sản phẩm' | 'Cửa hàng' | 'Gần đây';
   path: string;
   icon: React.ElementType;
   keywords?: string;
@@ -28,10 +28,8 @@ interface SearchItem {
 const BUYER_PAGES: SearchItem[] = [
   { id: 'p-home', label: 'Trang chủ', group: 'Trang', path: '/', icon: Home },
   { id: 'p-products', label: 'Sản phẩm', group: 'Trang', path: '/products', icon: Package, keywords: 'danh sách sản phẩm' },
-  { id: 'p-suppliers', label: 'Nhà cung cấp', group: 'Trang', path: '/suppliers', icon: Building2 },
+  { id: 'p-stores', label: 'Cửa hàng', group: 'Trang', path: '/stores', icon: Building2 },
   { id: 'p-orders', label: 'Đơn hàng', group: 'Trang', path: '/orders', icon: ClipboardList },
-  { id: 'p-rfq', label: 'Yêu cầu báo giá', group: 'Trang', path: '/rfq', icon: FileText },
-  { id: 'p-contracts', label: 'Hợp đồng', group: 'Trang', path: '/contracts', icon: ScrollText },
   { id: 'p-shipments', label: 'Vận chuyển', group: 'Trang', path: '/shipments', icon: Truck },
   { id: 'p-payments', label: 'Thanh toán', group: 'Trang', path: '/payments', icon: CreditCard },
   { id: 'p-wishlist', label: 'Yêu thích', group: 'Trang', path: '/wishlist', icon: Heart },
@@ -39,10 +37,8 @@ const BUYER_PAGES: SearchItem[] = [
   { id: 'p-invoices', label: 'Hoá đơn', group: 'Trang', path: '/invoices', icon: FileText },
   { id: 'p-promotions', label: 'Khuyến mãi', group: 'Trang', path: '/promotions', icon: Tag },
   { id: 'p-chat', label: 'Tin nhắn', group: 'Trang', path: '/chat', icon: MessageSquare },
-  { id: 'p-bulk', label: 'Đặt hàng từ file', group: 'Trang', path: '/bulk-order', icon: FileUp },
   { id: 'p-quick', label: 'Đặt nhanh', group: 'Trang', path: '/quick-order', icon: Zap },
   { id: 'p-cart', label: 'Giỏ hàng', group: 'Trang', path: '/cart', icon: Package },
-  { id: 'p-pr', label: 'Yêu cầu mua hàng', group: 'Trang', path: '/pr-list', icon: ClipboardList, keywords: 'purchase requisition PR yêu cầu nội bộ' },
 ];
 
 const SELLER_PAGES: SearchItem[] = [
@@ -50,10 +46,10 @@ const SELLER_PAGES: SearchItem[] = [
   { id: 'sp-products', label: 'Sản phẩm', group: 'Trang', path: '/seller/products', icon: Package },
   { id: 'sp-orders', label: 'Đơn hàng', group: 'Trang', path: '/seller/orders', icon: ClipboardList },
   { id: 'sp-rfq', label: 'Báo giá', group: 'Trang', path: '/seller/rfq', icon: FileText },
-  { id: 'sp-contracts', label: 'Hợp đồng', group: 'Trang', path: '/seller/contracts', icon: ScrollText },
+  { id: 'sp-contracts', label: 'Thỏa thuận', group: 'Trang', path: '/seller/contracts', icon: ScrollText },
   { id: 'sp-warehouse', label: 'Kho hàng', group: 'Trang', path: '/seller/warehouse', icon: Warehouse },
   { id: 'sp-shipments', label: 'Vận chuyển', group: 'Trang', path: '/seller/shipments', icon: Truck },
-  { id: 'sp-payments', label: 'Công nợ', group: 'Trang', path: '/seller/payments', icon: CreditCard },
+  { id: 'sp-payments', label: 'Thanh toán', group: 'Trang', path: '/seller/payments', icon: CreditCard },
   { id: 'sp-promotions', label: 'Khuyến mãi', group: 'Trang', path: '/seller/promotions', icon: Tag },
   { id: 'sp-invoices', label: 'Hoá đơn', group: 'Trang', path: '/seller/invoices', icon: FileText },
   { id: 'sp-approvals', label: 'Phê duyệt', group: 'Trang', path: '/seller/approvals', icon: ShieldCheck },
@@ -64,7 +60,7 @@ const SELLER_PAGES: SearchItem[] = [
   { id: 'sp-profile', label: 'Hồ sơ', group: 'Trang', path: '/seller/profile', icon: Settings },
 ];
 
-// Mock search items for orders/products/suppliers
+// Mock search items for orders/products/stores
 const MOCK_ORDERS: SearchItem[] = [
   { id: 'o-001', label: 'DH-2025-00001 — Lê Hoàng Anh', group: 'Đơn hàng', path: '/orders/order-001', icon: ClipboardList, keywords: 'đơn hàng DH 001' },
   { id: 'o-002', label: 'DH-2025-00002 — Trần Minh Đức', group: 'Đơn hàng', path: '/orders/order-002', icon: ClipboardList, keywords: 'đơn hàng DH 002' },
@@ -74,18 +70,18 @@ const MOCK_ORDERS: SearchItem[] = [
 ];
 
 const MOCK_PRODUCTS: SearchItem[] = [
-  { id: 'pr-001', label: 'Bo mạch Arduino Mega 2560', group: 'Sản phẩm', path: '/products/prod-001', icon: Package, keywords: 'arduino board' },
-  { id: 'pr-002', label: 'Cảm biến nhiệt độ DS18B20', group: 'Sản phẩm', path: '/products/prod-002', icon: Package, keywords: 'cảm biến sensor' },
-  { id: 'pr-003', label: 'Module WiFi ESP32-WROOM', group: 'Sản phẩm', path: '/products/prod-003', icon: Package, keywords: 'wifi module esp' },
-  { id: 'pr-004', label: 'Vải cotton 100% tự nhiên', group: 'Sản phẩm', path: '/products/prod-004', icon: Package, keywords: 'vải cotton' },
-  { id: 'pr-005', label: 'Thép hình H200x200 Q235', group: 'Sản phẩm', path: '/products/prod-005', icon: Package, keywords: 'thép hình' },
+  { id: 'pr-001', label: 'iPhone 15 Pro Max 256GB', group: 'Sản phẩm', path: '/products/prod-001', icon: Package, keywords: 'iphone apple' },
+  { id: 'pr-002', label: 'Samsung Galaxy S24 Ultra', group: 'Sản phẩm', path: '/products/prod-002', icon: Package, keywords: 'samsung galaxy' },
+  { id: 'pr-003', label: 'MacBook Air M2 13 inch', group: 'Sản phẩm', path: '/products/prod-003', icon: Package, keywords: 'macbook laptop' },
+  { id: 'pr-004', label: 'AirPods Pro 2', group: 'Sản phẩm', path: '/products/prod-004', icon: Package, keywords: 'airpods tai nghe' },
+  { id: 'pr-005', label: 'Sạc nhanh Anker 67W', group: 'Sản phẩm', path: '/products/prod-005', icon: Package, keywords: 'sạc nhanh phụ kiện' },
 ];
 
 const MOCK_SUPPLIERS: SearchItem[] = [
-  { id: 'su-001', label: 'Công ty TNHH Phương Nam Electronics', group: 'NCC', path: '/suppliers/sup-01', icon: Building2, keywords: 'phương nam electronics' },
-  { id: 'su-002', label: 'Dệt may Sài Gòn TPHCM', group: 'NCC', path: '/suppliers/sup-02', icon: Building2, keywords: 'dệt may sài gòn' },
-  { id: 'su-003', label: 'Thép Việt Nhật JSC', group: 'NCC', path: '/suppliers/sup-03', icon: Building2, keywords: 'thép việt nhật' },
-  { id: 'su-004', label: 'Bao bì Đông Á Pack', group: 'NCC', path: '/suppliers/sup-04', icon: Building2, keywords: 'bao bì đông á' },
+  { id: 'su-001', label: 'CELLPHONES Quận 1', group: 'Cửa hàng', path: '/stores/store-001', icon: Building2, keywords: 'cellphones quan 1' },
+  { id: 'su-002', label: 'CELLPHONES Cầu Giấy', group: 'Cửa hàng', path: '/stores/store-002', icon: Building2, keywords: 'cellphones cau giay' },
+  { id: 'su-003', label: 'CELLPHONES Đà Nẵng', group: 'Cửa hàng', path: '/stores/store-003', icon: Building2, keywords: 'cellphones da nang' },
+  { id: 'su-004', label: 'CELLPHONES Thủ Đức', group: 'Cửa hàng', path: '/stores/store-004', icon: Building2, keywords: 'cellphones thu duc' },
 ];
 
 const RECENT_KEY = 'cmd_palette_recent';
@@ -108,7 +104,7 @@ const groupIcons: Record<string, React.ElementType> = {
   'Trang': Home,
   'Đơn hàng': ClipboardList,
   'Sản phẩm': Package,
-  'NCC': Building2,
+  'Cửa hàng': Building2,
   'Gần đây': Clock,
 };
 
@@ -247,7 +243,7 @@ export function CommandPalette({ context }: CommandPaletteProps) {
                 value={query}
                 onChange={e => { setQuery(e.target.value); setSelectedIndex(0); }}
                 onKeyDown={handleKeyDown}
-                placeholder="Tìm trang, đơn hàng, sản phẩm, NCC..."
+                placeholder="Tìm trang, đơn hàng, sản phẩm, cửa hàng..."
                 className="flex-1 bg-transparent outline-none placeholder:text-muted-foreground"
               />
               <button onClick={() => setOpen(false)} className="text-muted-foreground hover:text-foreground">

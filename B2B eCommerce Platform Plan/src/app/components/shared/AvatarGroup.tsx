@@ -1,6 +1,6 @@
 // ============================================================
 // AvatarGroup — Hiển thị nhiều avatar chồng lên nhau
-// A4.07: Dùng cho team, NCC, participants
+// A4.07: Dùng cho team, cửa hàng, participants
 // ============================================================
 
 import { Avatar, AvatarFallback, AvatarImage } from '../ui/avatar';

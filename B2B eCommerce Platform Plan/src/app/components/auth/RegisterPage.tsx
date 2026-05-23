@@ -331,7 +331,7 @@ export function RegisterPage() {
             <Input
               value={form.companyName}
               onChange={e => updateField('companyName', e.target.value)}
-              placeholder="Công ty TNHH... (nếu mua cho doanh nghiệp)"
+              placeholder="Đơn vị nhận hàng... (không bắt buộc)"
             />
           </div>
 
@@ -384,7 +384,7 @@ export function RegisterPage() {
                 { label: 'Email', value: form.email },
                 { label: 'Họ tên', value: form.fullName },
                 { label: 'Điện thoại', value: form.phone },
-                ...(form.companyName ? [{ label: 'Công ty', value: form.companyName }] : []),
+                ...(form.companyName ? [{ label: 'Đơn vị', value: form.companyName }] : []),
                 ...(form.taxCode ? [{ label: 'Mã số thuế', value: form.taxCode }] : []),
                 ...(form.city ? [{ label: 'Thành phố', value: form.city }] : []),
               ].map(item => (

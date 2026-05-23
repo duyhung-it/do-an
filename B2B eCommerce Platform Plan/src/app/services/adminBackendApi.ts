@@ -917,3 +917,224 @@ export const adminBannerApi = {
     await request<void>(`/admin/banners/${id}`, { method: 'DELETE' });
   },
 };
+
+// -------------------------------------------------------
+// Settings: GET /api/v1/admin/settings, PATCH /api/v1/admin/settings
+// BE returns array of { key, value (JsonNode), updatedAt }
+// -------------------------------------------------------
+export const adminSettingsApi = {
+  /** Returns settings as a plain key→value record (value may be string, number, boolean). */
+  async getAll(): Promise<Record<string, unknown>> {
+    const rows = await request<{ key: string; value: unknown; updatedAt?: string }[]>('/admin/settings');
+    const result: Record<string, unknown> = {};
+    for (const row of rows) {
+      result[row.key] = row.value;
+    }
+    return result;
+  },
+
+  /** Sends a partial patch of settings. Each value is serialized as JSON. */
+  async patch(updates: Record<string, unknown>): Promise<Record<string, unknown>> {
+    // BE expects { settings: { key: JsonNode } }
+    const rows = await request<{ key: string; value: unknown; updatedAt?: string }[]>('/admin/settings', {
+      method: 'PATCH',
+      body: JSON.stringify({ settings: updates }),
+    });
+    const result: Record<string, unknown> = {};
+    for (const row of rows) {
+      result[row.key] = row.value;
+    }
+    return result;
+  },
+};
+
+// -------------------------------------------------------
+// Email Templates: GET/POST/PATCH/DELETE /api/v1/admin/email-templates
+// BE returns { id, templateKey, subject, body, isActive, updatedAt }
+// -------------------------------------------------------
+export const adminEmailTemplateApi = {
+  async getAll() {
+    return request<any[]>('/admin/email-templates');
+  },
+
+  async create(data: { templateKey: string; subject: string; body: string; isActive?: boolean }) {
+    return request<any>('/admin/email-templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async update(id: string, data: { templateKey: string; subject: string; body: string; isActive?: boolean }) {
+    return request<any>(`/admin/email-templates/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async preview(id: string, variables?: Record<string, string>) {
+    return request<{ subject: string; body: string }>(`/admin/email-templates/${id}/preview`, {
+      method: 'POST',
+      body: JSON.stringify({ variables: variables ?? {} }),
+    });
+  },
+
+  async delete(id: string) {
+    await request<void>(`/admin/email-templates/${id}`, { method: 'DELETE' });
+  },
+};
+
+// -------------------------------------------------------
+// Branches (Stores): GET/POST/PATCH/DELETE /api/v1/admin/branches
+// BA-docs: branch has district, city, lat, lng, workingHours
+// -------------------------------------------------------
+export interface BeBranch {
+  id: string;
+  name: string;
+  phone: string;
+  address: string;
+  district?: string;
+  city?: string;
+  workingHours?: string;
+  lat?: number;
+  lng?: number;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BranchFormData {
+  name: string;
+  phone?: string;
+  address?: string;
+  district?: string;
+  city?: string;
+  workingHours?: string;
+  lat?: number | null;
+  lng?: number | null;
+  isActive?: boolean;
+}
+
+export const adminBranchApi = {
+  async getAll() {
+    return request<BeBranch[]>('/admin/branches');
+  },
+
+  async create(data: BranchFormData) {
+    return request<BeBranch>('/admin/branches', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async update(id: string, data: BranchFormData) {
+    return request<BeBranch>(`/admin/branches/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async toggle(id: string) {
+    return request<BeBranch>(`/admin/branches/${id}/toggle`, { method: 'PATCH' });
+  },
+
+  async delete(id: string) {
+    await request<void>(`/admin/branches/${id}`, { method: 'DELETE' });
+  },
+};
+
+// -------------------------------------------------------
+// Staff: GET/POST/PATCH /api/v1/admin/staff + deactivate
+// BA-docs: staff has phone, branchId, branchName, joinedAt
+// -------------------------------------------------------
+export interface BeStaffMember {
+  id: string;
+  fullName: string;
+  email: string;
+  phone?: string;
+  role: string;
+  branchId?: string;
+  branchName?: string;
+  joinedAt?: string;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StaffFormData {
+  fullName: string;
+  email: string;
+  phone?: string;
+  role?: string;
+  branchId?: string;
+  joinedAt?: string;
+  isActive?: boolean;
+}
+
+export const adminStaffApi = {
+  async getAll() {
+    return request<BeStaffMember[]>('/admin/staff');
+  },
+
+  async getById(id: string) {
+    return request<BeStaffMember>(`/admin/staff/${id}`);
+  },
+
+  async create(data: StaffFormData) {
+    return request<BeStaffMember>('/admin/staff', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async update(id: string, data: StaffFormData) {
+    return request<BeStaffMember>(`/admin/staff/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deactivate(id: string) {
+    return request<BeStaffMember>(`/admin/staff/${id}/deactivate`, { method: 'PATCH' });
+  },
+};
+
+// -------------------------------------------------------
+// Activity Logs: GET /api/v1/admin/activity-logs
+// Supports filter: action, entity, userId, search
+// Stats: GET /api/v1/admin/activity-logs/stats
+//   → { todayCount, weekCount, monthCount, byAction: [{status, count}] }
+// -------------------------------------------------------
+export interface ActivityLogFilter {
+  action?: string;
+  entity?: string;
+  userId?: string;
+  search?: string;
+}
+
+export interface ActivityLogStats {
+  todayCount: number;
+  weekCount: number;
+  monthCount: number;
+  byAction: { status: string; count: number }[];
+}
+
+export const adminActivityLogApi = {
+  async getPaginated(
+    pagination: PaginationParams,
+    filter?: ActivityLogFilter
+  ): Promise<PaginatedResponse<any>> {
+    const params: Record<string, unknown> = {
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      ...(filter?.action ? { action: filter.action } : {}),
+      ...(filter?.entity ? { entity: filter.entity } : {}),
+      ...(filter?.userId ? { userId: filter.userId } : {}),
+      ...(filter?.search ? { search: filter.search } : {}),
+    };
+    return requestPage<any>(`/admin/activity-logs${toQuery(params)}`);
+  },
+
+  async stats(): Promise<ActivityLogStats> {
+    return request<ActivityLogStats>('/admin/activity-logs/stats');
+  },
+};

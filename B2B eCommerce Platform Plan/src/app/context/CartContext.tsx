@@ -15,6 +15,7 @@ interface CartContextValue {
   updateQuantity: (id: string, quantity: number) => Promise<void>;
   removeItem: (id: string) => Promise<void>;
   clearCart: () => Promise<void>;
+  validateCart: () => Promise<{ valid: boolean; issues: Array<{ message: string }> }>;
 }
 
 const CartContext = createContext<CartContextValue | undefined>(undefined);
@@ -38,7 +39,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
 
   const addItem = useCallback(async (item: Omit<CartItem, 'id' | 'totalPrice'>) => {
     const existing = items.find(
-      i => i.productId === item.productId && i.variantName === item.variantName,
+      i => i.productId === item.productId && i.variantId === item.variantId,
     );
     if (existing) {
       const updated = await cartApi.updateQuantity(existing.id, existing.quantity + item.quantity);
@@ -65,6 +66,12 @@ export function CartProvider({ children }: { children: ReactNode }) {
     setItems([]);
   }, []);
 
+  const validateCart = useCallback(async () => {
+    return (cartApi as typeof cartApi & {
+      validate: () => Promise<{ valid: boolean; issues: Array<{ message: string }> }>;
+    }).validate();
+  }, []);
+
   return (
     <CartContext.Provider
       value={{
@@ -76,6 +83,7 @@ export function CartProvider({ children }: { children: ReactNode }) {
         updateQuantity,
         removeItem,
         clearCart,
+        validateCart,
       }}
     >
       {children}

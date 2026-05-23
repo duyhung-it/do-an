@@ -100,7 +100,7 @@ const adminSections: SidebarSection[] = [
     items: [
       { path: '/admin/stores', label: 'Cửa hàng', icon: Building2 },
       { path: '/admin/staff', label: 'Nhân viên', icon: Users },
-      { path: '/admin/suppliers', label: 'Nhà cung cấp', icon: Building2 },
+      { path: '/admin/suppliers', label: 'Nguồn hàng', icon: Building2 },
     ],
   },
   {

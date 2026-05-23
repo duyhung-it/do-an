@@ -118,7 +118,7 @@ Query:
 | `sortBy` | string | `createdAt` | Supported fields depend on backend entity fields |
 | `sortDir` | string | `desc` | `asc` or `desc` |
 | `search` | string | | Search name, description, brand |
-| `categoryId` | uuid string | | |
+| `categoryId` | uuid string | | Includes selected category and all descendant categories |
 | `categorySlug` | string | | |
 | `brand` | string | | Exact brand filter |
 | `status` | string | `ACTIVE` | `ACTIVE`, `INACTIVE`, `OUT_OF_STOCK`, `DISCONTINUED` |
@@ -352,6 +352,48 @@ Request:
 `DELETE /admin/products/{productId}/images/{id}`
 
 Response: `204 No Content`.
+
+## Buyer Product Combos
+
+`GET /combos`
+
+Returns active buyer-facing combos.
+
+`GET /combos/{id}`
+
+Returns one active combo.
+
+`GET /products/{productId}/combos`
+
+Returns active combos containing the selected product.
+
+`ProductComboDto`:
+
+```json
+{
+  "id": "ee000000-0017-4000-8000-000000000001",
+  "name": "Combo iPhone 15 Pro Max + AirPods Pro",
+  "description": "Bo doi Apple cho nhu cau lam viec, giai tri va nghe goi chat luong cao.",
+  "products": [
+    {
+      "productId": "b1b2c3d4-0001-0001-0001-000000000001",
+      "productName": "iPhone 15 Pro Max 256GB",
+      "productImage": "https://cdn.cellphones.vn/products/iphone15promax-1.jpg",
+      "originalPrice": 33990000,
+      "comboPrice": 33990000,
+      "quantity": 1
+    }
+  ],
+  "totalOriginalPrice": 41980000,
+  "comboPrice": 38990000,
+  "savings": 2990000,
+  "savingsPercent": 7,
+  "isActive": true,
+  "image": "https://cdn.cellphones.vn/products/iphone15promax-1.jpg",
+  "createdAt": "2026-05-23T21:46:01+07:00",
+  "updatedAt": "2026-05-23T21:46:01+07:00"
+}
+```
 
 ## Enum Values
 

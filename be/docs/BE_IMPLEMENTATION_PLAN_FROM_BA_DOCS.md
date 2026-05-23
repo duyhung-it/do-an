@@ -19,10 +19,15 @@ Nguon phan tich:
 
 ## 1. Ket luan chinh
 
-Cap nhat 2026-05-17:
+Cap nhat 2026-05-20:
 
-- Core B2C flow, cac gap FE admin trong `be/docs/FE_ADMIN_BACKEND_GAPS.md`, customer after-sales flow trong `07-api-after-sales.md`, loyalty flow trong `08-api-loyalty-notifications.md`, va admin BA completion da duoc implement den Flyway target version `18`.
-- Admin BA completion trong `09-api-admin.md` da duoc bo sung den Flyway target version `18`: admin users, notifications send/broadcast, suppliers, installment plans, warranty master, invoice manual ops, combos, blog, review reply/status, settings path aliases, shipment tracking alias.
+- Core B2C flow, cac gap FE admin trong `be/docs/FE_ADMIN_BACKEND_GAPS.md`, customer after-sales flow trong `07-api-after-sales.md`, loyalty/notifications flow trong `08-api-loyalty-notifications.md`, admin BA completion, va local payment gateway bridge da duoc implement den Flyway target version `22`.
+- Customer notifications da bo sung: inbox, unread count, mark read/read-all, delete, notification preferences.
+- Payment gateway bridge da bo sung cho `MOMO`/`VNPAY`: tao session, local return URL, callback idempotent, dong bo payment/order/invoice paid side effects.
+- Automatic notification side effects da bo sung cho order/payment/loyalty/return/warranty/trade-in core events.
+- Automatic warranty item creation da bo sung khi order delivered, tao warranty item theo tung purchased unit.
+- Loyalty reverse points da bo sung cho payment refund va return refunded, dung transaction `EXPIRE` am diem va idempotent theo order.
+- Admin BA completion trong `09-api-admin.md` da duoc bo sung: admin users, notifications send/broadcast, suppliers, installment plans, warranty master, invoice manual ops, combos, blog, review reply/status, settings path aliases, shipment tracking alias.
 - FE nen ghep admin theo:
   - `be/docs/FE_ADMIN_BACKEND_GAPS.md`
   - `be/docs/FE_ADMIN_GAPS_COMPLETION_CONTRACT.md`
@@ -31,7 +36,9 @@ Cap nhat 2026-05-17:
   - `be/docs/FE_AFTER_SALES_CUSTOMER_CONTRACT.md`
 - FE nen ghep loyalty theo:
   - `be/docs/FE_LOYALTY_CONTRACT.md`
-- Con deferred that su: Security/RBAC, payment gateway callback that, customer notification inbox/preferences, automatic warranty item creation for every delivered transition, loyalty reverse points on refunded return.
+- FE nen ghep payment/invoice/gateway theo:
+  - `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+- Con deferred that su: Security/RBAC, real MOMO/VNPAY credentials/signature hardening.
 
 Backend can refactor theo huong **CELLPHONES B2C phone-store**, khong tiep tuc B2B marketplace/supplier portal. He thong co 3 vai tro chinh: `CUSTOMER`, `ADMIN`, `STAFF`.
 

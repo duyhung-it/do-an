@@ -15,7 +15,7 @@ import { ImageWithFallback } from '../figma/ImageWithFallback';
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
 
-const trendingKeywords = ['Arduino', 'Thép cuộn', 'Gạo ST25', 'Vải cotton', 'Xi măng', 'Bo mạch'];
+const trendingKeywords = ['iPhone 15', 'Galaxy S24', 'MacBook Air', 'AirPods Pro', 'Sạc nhanh', 'Ốp lưng'];
 
 /** Highlight matching text in a string */
 function HighlightText({ text, query }: { text: string; query: string }) {
@@ -72,7 +72,7 @@ export function SearchSuggestions({ className = '' }: SearchSuggestionsProps) {
       items.push({ id: p.id, type: 'product', path: `/products/${p.id}`, label: p.name }),
     );
     suppliers.forEach(s =>
-      items.push({ id: s.id, type: 'supplier', path: `/suppliers/${s.id}`, label: s.companyName }),
+      items.push({ id: s.id, type: 'supplier', path: `/stores/${s.id}`, label: s.companyName }),
     );
     return items;
   }, [categories, products, suppliers]);
@@ -207,7 +207,7 @@ export function SearchSuggestions({ className = '' }: SearchSuggestionsProps) {
           <Input
             ref={inputRef}
             className="pl-9 pr-9"
-            placeholder="Tìm sản phẩm, nhà cung cấp, danh mục..."
+            placeholder="Tìm sản phẩm, cửa hàng, danh mục..."
             value={query}
             onChange={e => { setQuery(e.target.value); setOpen(true); }}
             onFocus={() => setOpen(true)}
@@ -349,11 +349,11 @@ export function SearchSuggestions({ className = '' }: SearchSuggestionsProps) {
                 </div>
               )}
 
-              {/* Nhà cung cấp */}
+              {/* Cửa hàng */}
               {suppliers.length > 0 && (
                 <div className="p-2">
                   <p className="px-2 py-1 text-muted-foreground text-xs flex items-center gap-1">
-                    <Building2 className="h-3 w-3" /> Nhà cung cấp
+                    <Building2 className="h-3 w-3" /> Cửa hàng
                   </p>
                   {suppliers.map(sup => {
                     itemIdx++;
@@ -366,7 +366,7 @@ export function SearchSuggestions({ className = '' }: SearchSuggestionsProps) {
                         className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center gap-3 ${
                           activeIndex === idx ? 'bg-muted' : 'hover:bg-muted/50'
                         }`}
-                        onClick={() => handleNavigate(`/suppliers/${sup.id}`)}
+                        onClick={() => handleNavigate(`/stores/${sup.id}`)}
                         onMouseEnter={() => setActiveIndex(idx)}
                       >
                         <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />

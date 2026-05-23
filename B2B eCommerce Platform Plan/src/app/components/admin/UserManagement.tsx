@@ -36,6 +36,7 @@ import {
 } from 'recharts';
 
 const PIE_COLORS = ['#3b82f6', '#22c55e', '#f59e0b'];
+const getRoleDisplayName = (role: string) => role === 'Nhà cung cấp' ? 'Đối tác' : role;
 
 const columns: ColumnConfig[] = [
   { key: 'fullName', label: 'Họ tên', visible: true, sortable: true, editable: true, type: 'text' },
@@ -43,14 +44,14 @@ const columns: ColumnConfig[] = [
   { key: 'phone', label: 'Điện thoại', visible: true, sortable: false },
   { key: 'role', label: 'Vai trò', visible: true, sortable: true, editable: true, type: 'select', options: ['Người mua', 'Nhà cung cấp', 'Quản trị viên'] },
   { key: 'status', label: 'Trạng thái', visible: true, sortable: true, editable: true, type: 'select', options: ['Hoạt động', 'Bị khoá', 'Chờ xác minh'] },
-  { key: 'companyName', label: 'Công ty', visible: true, sortable: true },
+  { key: 'companyName', label: 'Đơn vị', visible: true, sortable: true },
   { key: 'createdAt', label: 'Ngày tạo', visible: true, sortable: true },
 ];
 
 const filterConfigs: FilterConfig[] = [
   { key: 'role', label: 'Vai trò', type: 'select', options: [
     { label: 'Người mua', value: 'Người mua' },
-    { label: 'Nhà cung cấp', value: 'Nhà cung cấp' },
+    { label: 'Đối tác', value: 'Nhà cung cấp' },
     { label: 'Quản trị viên', value: 'Quản trị viên' },
   ]},
   { key: 'status', label: 'Trạng thái', type: 'select', options: [
@@ -148,7 +149,7 @@ export function UserManagement() {
       const month = u.createdAt.slice(0, 7);
       byMonth[month] = (byMonth[month] || 0) + 1;
     }
-    const roleChart = Object.entries(byRole).map(([name, value]) => ({ name, value }));
+    const roleChart = Object.entries(byRole).map(([name, value]) => ({ name: getRoleDisplayName(name), value }));
     const monthChart = Object.entries(byMonth)
       .map(([month, count]) => ({ month, count }))
       .sort((a, b) => a.month.localeCompare(b.month))
@@ -225,7 +226,7 @@ export function UserManagement() {
 
   // --- CSV Export ---
   const handleExportCSV = () => {
-    const headers = ['Họ tên', 'Email', 'SĐT', 'Vai trò', 'Trạng thái', 'Công ty', 'Ngày tạo'];
+    const headers = ['Họ tên', 'Email', 'SĐT', 'Vai trò', 'Trạng thái', 'Đơn vị', 'Ngày tạo'];
     const rows = allUsers.map(u => [u.fullName, u.email, u.phone, u.role, u.status, u.companyName || '', u.createdAt]);
     const csvContent = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -254,7 +255,7 @@ export function UserManagement() {
           <p className="font-medium truncate">{user.fullName}</p>
           <p className="text-muted-foreground truncate">{user.email}</p>
           <div className="flex items-center gap-2 mt-1">
-            <Badge variant="secondary">{user.role}</Badge>
+            <Badge variant="secondary">{getRoleDisplayName(user.role)}</Badge>
             <StatusBadge status={user.status} />
           </div>
         </div>
@@ -352,7 +353,7 @@ export function UserManagement() {
         <TabsList>
           <TabsTrigger value="all">Tất cả</TabsTrigger>
           <TabsTrigger value="buyer">Người mua</TabsTrigger>
-          <TabsTrigger value="seller">Nhà cung cấp</TabsTrigger>
+          <TabsTrigger value="seller">Đối tác</TabsTrigger>
         </TabsList>
       </Tabs>
 
@@ -414,13 +415,13 @@ export function UserManagement() {
             <SelectTrigger><SelectValue /></SelectTrigger>
             <SelectContent>
               <SelectItem value="Người mua">Người mua</SelectItem>
-              <SelectItem value="Nhà cung cấp">Nhà cung cấp</SelectItem>
+              <SelectItem value="Nhà cung cấp">Đối tác</SelectItem>
               <SelectItem value="Quản trị viên">Quản trị viên</SelectItem>
             </SelectContent>
           </Select>
         </div>
         <div className="grid gap-2">
-          <Label>Công ty</Label>
+          <Label>Đơn vị</Label>
           <Input value={newUser.companyName} onChange={e => setNewUser(p => ({ ...p, companyName: e.target.value }))} />
         </div>
       </FormDialog>
@@ -444,7 +445,7 @@ export function UserManagement() {
                   <p className="text-muted-foreground">{selectedUser.email}</p>
                 </div>
                 <div className="flex items-center gap-2">
-                  <Badge variant="secondary">{selectedUser.role}</Badge>
+                  <Badge variant="secondary">{getRoleDisplayName(selectedUser.role)}</Badge>
                   <StatusBadge status={selectedUser.status} />
                 </div>
               </div>
@@ -489,8 +490,8 @@ export function UserManagement() {
                     <div><p className="text-muted-foreground">Họ tên</p><p>{selectedUser.fullName}</p></div>
                     <div><p className="text-muted-foreground">Email</p><p>{selectedUser.email}</p></div>
                     <div><p className="text-muted-foreground">SĐT</p><p>{selectedUser.phone || '—'}</p></div>
-                    <div><p className="text-muted-foreground">Vai trò</p><Badge variant="secondary">{selectedUser.role}</Badge></div>
-                    <div><p className="text-muted-foreground">Công ty</p><p>{selectedUser.companyName || '—'}</p></div>
+                    <div><p className="text-muted-foreground">Vai trò</p><Badge variant="secondary">{getRoleDisplayName(selectedUser.role)}</Badge></div>
+                    <div><p className="text-muted-foreground">Đơn vị</p><p>{selectedUser.companyName || '—'}</p></div>
                     <div><p className="text-muted-foreground">Địa chỉ</p><p>{selectedUser.address || '—'}</p></div>
                     <div><p className="text-muted-foreground">Ngày tạo</p><p>{selectedUser.createdAt}</p></div>
                     <div><p className="text-muted-foreground">Cập nhật</p><p>{selectedUser.updatedAt}</p></div>

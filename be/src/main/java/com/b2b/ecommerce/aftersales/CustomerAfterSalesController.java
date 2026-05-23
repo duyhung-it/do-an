@@ -15,6 +15,7 @@ import com.b2b.ecommerce.common.ApiResponse;
 import com.b2b.ecommerce.common.AppException;
 import com.b2b.ecommerce.common.ErrorCode;
 import com.b2b.ecommerce.common.PageRequestParams;
+import com.b2b.ecommerce.notification.NotificationEventService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -191,7 +192,11 @@ public class CustomerAfterSalesController {
 
 	public record ReturnDto(String id, String returnNumber, String orderId, String customerId, String customerName,
 			String customerPhone, String reason, String status, long refundAmount, String disputeResolution, String createdAt,
-			String updatedAt) {
+			String updatedAt, String orderNumber, String refundMethod, List<ReturnItemDto> items) {
+	}
+
+	public record ReturnItemDto(String orderItemId, String productId, String variantId, String productName,
+			String productImage, String variantName, String sku, int quantity, long unitPrice, long totalPrice) {
 	}
 
 	public record WarrantyItemDto(String id, String orderId, String orderItemId, String productId, String customerId,
@@ -201,7 +206,8 @@ public class CustomerAfterSalesController {
 
 	public record WarrantyClaimDto(String id, String claimNumber, String warrantyId, String orderId, String productId,
 			String customerId, String customerName, String customerPhone, String issueDescription, String status,
-			String resolutionNote, String createdAt, String updatedAt) {
+			String resolutionNote, String createdAt, String updatedAt, String productName, String productImage, String brand,
+			String serialNumber, String warrantyStatus) {
 	}
 
 	public record TradeInEstimateDto(String brand, String model, String condition, long estimatedValue, String currency) {
@@ -216,9 +222,11 @@ public class CustomerAfterSalesController {
 @Service
 class CustomerAfterSalesService {
 	private final JdbcTemplate jdbc;
+	private final NotificationEventService notifications;
 
-	CustomerAfterSalesService(JdbcTemplate jdbc) {
+	CustomerAfterSalesService(JdbcTemplate jdbc, NotificationEventService notifications) {
 		this.jdbc = jdbc;
+		this.notifications = notifications;
 	}
 
 	@Transactional
@@ -241,6 +249,9 @@ class CustomerAfterSalesService {
 				VALUES (?, ?, ?, ?, ?, ?, ?, 'PENDING', ?)
 				""", id, number("RTN"), order.id(), userId, order.customerName(), order.customerPhone(), request.reason(),
 				refundAmount);
+		notifications.send(userId, "SYSTEM", "Yeu cau tra hang da duoc tao",
+				"Yeu cau tra hang cho don hang cua ban dang cho xu ly.", "MEDIUM", "returns", "RETURN", id,
+				"/returns/" + id, "Xem yeu cau");
 		return returnDetail(userId, id.toString());
 	}
 
@@ -325,6 +336,9 @@ class CustomerAfterSalesService {
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'NEW')
 				""", id, number("WRN"), uuid(warranty.orderId()), uuid(warranty.productId()), userId,
 				customerName(userId), customerPhone(userId), request.issueDescription());
+		notifications.send(userId, "SYSTEM", "Yeu cau bao hanh da duoc tao",
+				"Yeu cau bao hanh cua ban da duoc tiep nhan.", "MEDIUM", "warranty", "WARRANTY_CLAIM", id,
+				"/warranty-claims/" + id, "Xem yeu cau");
 		return warrantyClaim(userId, id.toString());
 	}
 
@@ -339,7 +353,9 @@ class CustomerAfterSalesService {
 				WHERE customer_id = ? AND (? = '' OR status::text = ?)
 				""", Long.class, userId, normalizedStatus, normalizedStatus);
 		List<CustomerAfterSalesController.WarrantyClaimDto> content = jdbc.query("""
-				SELECT wc.*, wi.id AS warranty_id
+				SELECT wc.*, wi.id AS warranty_id, wi.product_name AS warranty_product_name,
+				       wi.product_image AS warranty_product_image, wi.brand AS warranty_brand,
+				       wi.serial_number AS warranty_serial_number, wi.status::text AS warranty_status
 				FROM warranty_claims wc
 				LEFT JOIN warranty_items wi ON wi.order_id = wc.order_id AND wi.product_id = wc.product_id AND wi.customer_id = wc.customer_id
 				WHERE wc.customer_id = ? AND (? = '' OR wc.status::text = ?)
@@ -353,7 +369,9 @@ class CustomerAfterSalesService {
 	public CustomerAfterSalesController.WarrantyClaimDto warrantyClaim(UUID userId, String id) {
 		try {
 			return jdbc.queryForObject("""
-					SELECT wc.*, wi.id AS warranty_id
+					SELECT wc.*, wi.id AS warranty_id, wi.product_name AS warranty_product_name,
+					       wi.product_image AS warranty_product_image, wi.brand AS warranty_brand,
+					       wi.serial_number AS warranty_serial_number, wi.status::text AS warranty_status
 					FROM warranty_claims wc
 					LEFT JOIN warranty_items wi ON wi.order_id = wc.order_id AND wi.product_id = wc.product_id AND wi.customer_id = wc.customer_id
 					WHERE wc.id = ? AND wc.customer_id = ?
@@ -462,6 +480,9 @@ class CustomerAfterSalesService {
 		}
 		jdbc.update("UPDATE trade_in_requests SET status = ?::trade_in_status, updated_at = NOW() WHERE id = ?",
 				next, uuid(id));
+		notifications.send(userId, "SYSTEM", "Cap nhat thu cu doi moi",
+				"Yeu cau thu cu doi moi cua ban da duoc cap nhat: " + next + ".", "MEDIUM", "trade_in", "TRADE_IN",
+				uuid(id), "/trade-in/" + id, "Xem yeu cau");
 		return tradeIn(userId, id);
 	}
 
@@ -494,11 +515,13 @@ class CustomerAfterSalesService {
 	}
 
 	private CustomerAfterSalesController.ReturnDto returnRow(ResultSet rs, int rowNum) throws SQLException {
+		String orderId = object(rs, "order_id");
 		return new CustomerAfterSalesController.ReturnDto(rs.getObject("id").toString(), rs.getString("return_number"),
-				object(rs, "order_id"), object(rs, "customer_id"), rs.getString("customer_name"), rs.getString("customer_phone"),
+				orderId, object(rs, "customer_id"), rs.getString("customer_name"), rs.getString("customer_phone"),
 				rs.getString("reason"), rs.getString("status"), rs.getLong("refund_amount"),
 				rs.getString("dispute_resolution"), iso(rs.getObject("created_at", OffsetDateTime.class)),
-				iso(rs.getObject("updated_at", OffsetDateTime.class)));
+				iso(rs.getObject("updated_at", OffsetDateTime.class)), returnOrderNumber(orderId), "ORIGINAL_PAYMENT",
+				returnItems(orderId));
 	}
 
 	private CustomerAfterSalesController.WarrantyItemDto warrantyItemRow(ResultSet rs, int rowNum) throws SQLException {
@@ -511,11 +534,83 @@ class CustomerAfterSalesService {
 	}
 
 	private CustomerAfterSalesController.WarrantyClaimDto warrantyClaimRow(ResultSet rs, int rowNum) throws SQLException {
+		String productId = object(rs, "product_id");
 		return new CustomerAfterSalesController.WarrantyClaimDto(rs.getObject("id").toString(), rs.getString("claim_number"),
-				object(rs, "warranty_id"), object(rs, "order_id"), object(rs, "product_id"), object(rs, "customer_id"),
+				object(rs, "warranty_id"), object(rs, "order_id"), productId, object(rs, "customer_id"),
 				rs.getString("customer_name"), rs.getString("customer_phone"), rs.getString("issue_description"),
 				rs.getString("status"), rs.getString("resolution_note"), iso(rs.getObject("created_at", OffsetDateTime.class)),
-				iso(rs.getObject("updated_at", OffsetDateTime.class)));
+				iso(rs.getObject("updated_at", OffsetDateTime.class)), coalesce(rs.getString("warranty_product_name"), productName(productId)),
+				coalesce(rs.getString("warranty_product_image"), productImage(productId)), rs.getString("warranty_brand"),
+				rs.getString("warranty_serial_number"), rs.getString("warranty_status"));
+	}
+
+	private List<CustomerAfterSalesController.ReturnItemDto> returnItems(String orderId) {
+		if (orderId == null || orderId.isBlank()) {
+			return List.of();
+		}
+		return jdbc.query("""
+				SELECT id, product_id, variant_id, product_name, product_image, variant_name, sku,
+				       quantity, unit_price, total_price
+				FROM order_items
+				WHERE order_id = ?
+				ORDER BY id
+				""", (rs, rowNum) -> new CustomerAfterSalesController.ReturnItemDto(
+				object(rs, "id"),
+				object(rs, "product_id"),
+				object(rs, "variant_id"),
+				rs.getString("product_name"),
+				rs.getString("product_image"),
+				rs.getString("variant_name"),
+				rs.getString("sku"),
+				rs.getInt("quantity"),
+				rs.getLong("unit_price"),
+				rs.getLong("total_price")), uuid(orderId));
+	}
+
+	private String returnOrderNumber(String orderId) {
+		if (orderId == null || orderId.isBlank()) {
+			return null;
+		}
+		try {
+			return jdbc.queryForObject("SELECT order_number FROM orders WHERE id = ?", String.class, uuid(orderId));
+		}
+		catch (EmptyResultDataAccessException exception) {
+			return null;
+		}
+	}
+
+	private String productName(String productId) {
+		if (productId == null || productId.isBlank()) {
+			return null;
+		}
+		try {
+			return jdbc.queryForObject("SELECT name FROM products WHERE id = ?", String.class, uuid(productId));
+		}
+		catch (EmptyResultDataAccessException exception) {
+			return null;
+		}
+	}
+
+	private String productImage(String productId) {
+		if (productId == null || productId.isBlank()) {
+			return null;
+		}
+		try {
+			return jdbc.queryForObject("""
+					SELECT url
+					FROM product_images
+					WHERE product_id = ?
+					ORDER BY is_primary DESC, sort_order ASC
+					LIMIT 1
+					""", String.class, uuid(productId));
+		}
+		catch (EmptyResultDataAccessException exception) {
+			return null;
+		}
+	}
+
+	private String coalesce(String value, String fallback) {
+		return value == null || value.isBlank() ? fallback : value;
 	}
 
 	private CustomerAfterSalesController.TradeInDto tradeInRow(ResultSet rs, int rowNum) throws SQLException {

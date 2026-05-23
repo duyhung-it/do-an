@@ -10,6 +10,8 @@ Source of truth:
 
 This document lists only the backend gaps blocking real FE admin screens. Do not add FE-only mock APIs for these items.
 
+Latest review: 2026-05-20. No open P0/P1 admin backend blockers remain in this file. Buyer/default demo data gaps were handled separately in `be/docs/FE_BUYER_BACKEND_GAPS.md` by Flyway `V23__buyer_demo_gap_data.sql`.
+
 ## Already wired by FE
 
 The FE admin now consumes these implemented backend contracts through `adminBackendApi.ts`:
@@ -538,11 +540,16 @@ FE wired `/admin/reports` on 2026-05-17:
   - `/admin/reports`: HTTP 200.
   - `npm.cmd run build`: passed.
 
-Open BE QA-data note:
+Resolved / non-blocking BE QA-data note:
 
-- Revenue report currently has only 1 date point because local paid order seed data is concentrated on one date. Add multi-day paid order seed data if FE QA needs a meaningful line chart over a date range.
-- Activity logs are implemented but local `GET /api/v1/admin/activity-logs?page=1&pageSize=100` currently returns `pagination.total = 0`. Add at least 10 `admin_activity_logs` rows before FE marks `/admin/activity-logs` complete.
-- Banners are wired by FE on 2026-05-17. Running localhost currently returns 1 banner, but BE migration `V18__admin_banner_qa_data.sql` adds 10 QA banner rows; restart/apply Flyway migration before QA data verification.
+- Revenue report can use the additional buyer demo orders from Flyway `V23__buyer_demo_gap_data.sql` after migration. If FE needs a larger chart, add a dedicated report seed later; this is no longer a blocker for admin screen wiring.
+- Activity logs are wired by FE and local `GET /api/v1/admin/activity-logs?page=1&pageSize=100` now returns `pagination.total = 15`.
+- Banners are wired by FE and local `GET /api/v1/admin/banners` now returns 11 rows after QA seed migration.
+- Email templates are wired by FE and local `GET /api/v1/admin/email-templates` now returns 12 rows.
+- Branches/stores are wired by FE and local `GET /api/v1/admin/branches` now returns 12 rows.
+- Staff is wired by FE and local `GET /api/v1/admin/staff` now returns 13 rows.
+- FE admin terminology cleanup is display-only: orders/payments/analytics/users/internal suppliers now show retail labels such as `Cửa hàng`, `Thanh toán`, `Đối tác`, and `Nguồn hàng`. BE can keep current DTO fields like `supplierName`, role value `Nhà cung cấp`, and `/api/v1/admin/suppliers` until a formal API rename is scheduled.
+- FE shared procurement copy cleanup is display-only: visible labels now map `RFQ` to `Báo giá`, `Hợp đồng` to `Thỏa thuận`/`Tài liệu mua hàng`, and `Công nợ` to `Thanh toán`. BE can keep current enum/entity keys until a formal migration is scheduled.
 
 Required reports from BA:
 
@@ -607,3 +614,26 @@ Admin endpoints may continue using dev headers until security/RBAC is implemente
 - `X-Admin-Id`
 - `X-Admin-Name`
 - `X-User-Id` only for customer-scoped endpoints
+
+## FE fallback cleanup note - 2026-05-23
+
+FE completed a visible-copy cleanup for runtime fallback/mock data used when BE data is unavailable:
+
+- Document center fallback documents now use retail purchase, invoice, warranty, quote, shipment, and guide examples.
+- Admin mock email templates, banners, SEO config, certificates, activity logs, invoices, and tax configs now use phone/accessory retail examples instead of B2B marketplace, RFQ, NCC, công nợ, steel/textile/industrial examples.
+- No BE endpoint change is required for this step.
+
+Current BE-compatible constraint:
+
+- FE still preserves legacy field/API names where they are part of the existing contract, for example `supplierName` and `emailOnNewRFQ`.
+- If BE decides to formally rename supplier/RFQ concepts to store/quote concepts, BE should provide a DTO migration plan and mark the breaking fields/endpoints clearly.
+
+## FE runtime surface cleanup note - 2026-05-23
+
+FE also cleaned visible runtime copy in auth, command/search suggestions, report builder, analytics fallback data, and admin payment labels.
+
+No BE blocker was found in this step. Remaining legacy keys are compatibility constraints:
+
+- `ReportDataSource` still contains `NCC`, `RFQ`, and `Công nợ`.
+- FE maps those to visible `Cửa hàng`, `Báo giá`, and `Thanh toán`.
+- A formal BE/type migration can be planned later, but current FE behavior does not require BE changes.

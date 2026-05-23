@@ -1,5 +1,5 @@
 // ============================================================
-// Quản lý công nợ & thanh toán Admin — Giám sát toàn bộ
+// Quản lý thanh toán Admin — Giám sát toàn bộ
 // Stats, Filter, DataTable, Chi tiết, Ghi nhận thanh toán
 // ============================================================
 
@@ -41,7 +41,7 @@ const columns: ColumnConfig[] = [
   { key: 'invoiceNumber', label: 'Hoá đơn', visible: true, sortable: true },
   { key: 'orderNumber', label: 'Đơn hàng', visible: true, sortable: true },
   { key: 'buyerName', label: 'Người mua', visible: true, sortable: true },
-  { key: 'supplierName', label: 'NCC', visible: true, sortable: true },
+  { key: 'supplierName', label: 'Cửa hàng', visible: true, sortable: true },
   { key: 'amount', label: 'Tổng tiền', visible: true, sortable: true },
   { key: 'paidAmount', label: 'Đã TT', visible: true, sortable: true },
   { key: 'remainingAmount', label: 'Còn lại', visible: true, sortable: true },
@@ -188,7 +188,7 @@ export function AdminPaymentPage() {
       return;
     }
     if (amount > selectedPayment.remainingAmount) {
-      toast.error('Số tiền vượt quá công nợ còn lại');
+      toast.error('Số tiền vượt quá khoản còn lại');
       return;
     }
 
@@ -266,7 +266,7 @@ export function AdminPaymentPage() {
 
   // --- Export CSV ---
   const handleExportCSV = () => {
-    const headers = ['Hoá đơn', 'Đơn hàng', 'Người mua', 'NCC', 'Tổng tiền', 'Đã TT', 'Còn lại', 'Phương thức', 'Trạng thái', 'Hạn TT', 'Ngày tạo'];
+    const headers = ['Hoá đơn', 'Đơn hàng', 'Người mua', 'Cửa hàng', 'Tổng tiền', 'Đã TT', 'Còn lại', 'Phương thức', 'Trạng thái', 'Hạn TT', 'Ngày tạo'];
     const rows = allPayments.map(p => [
       p.invoiceNumber, p.orderNumber, p.buyerName, p.supplierName,
       p.amount.toString(), p.paidAmount.toString(), p.remainingAmount.toString(),
@@ -277,7 +277,7 @@ export function AdminPaymentPage() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `cong-no-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.download = `thanh-toan-${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
     toast.success('Đã xuất file CSV');
@@ -320,12 +320,12 @@ export function AdminPaymentPage() {
 
   return (
     <div className="space-y-4">
-      <AppBreadcrumb items={[{ label: 'Quản trị', href: '/admin' }, { label: 'Công nợ & Thanh toán' }]} />
+      <AppBreadcrumb items={[{ label: 'Quản trị', href: '/admin' }, { label: 'Thanh toán' }]} />
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1>Quản lý công nợ & thanh toán</h1>
-          <p className="text-muted-foreground">Giám sát toàn bộ công nợ trên hệ thống</p>
+          <h1>Quản lý thanh toán</h1>
+          <p className="text-muted-foreground">Giám sát toàn bộ khoản thanh toán trên hệ thống</p>
         </div>
         <Button variant="outline" size="sm" onClick={handleExportCSV}>
           <Download className="mr-1 h-4 w-4" /> Xuất CSV
@@ -337,7 +337,7 @@ export function AdminPaymentPage() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-between mb-1">
-              <span className="text-muted-foreground">Tổng công nợ</span>
+              <span className="text-muted-foreground">Tổng cần thu</span>
               <DollarSign className="h-4 w-4 text-blue-500" />
             </div>
             <p className="text-xl">{formatCompact(stats.totalAmount)} ₫</p>
@@ -383,7 +383,7 @@ export function AdminPaymentPage() {
         onFilterChange={f => { setFilters(f); setPagination(p => ({ ...p, page: 1 })); }}
         searchValue={search}
         onSearchChange={v => { setSearch(v); setPagination(p => ({ ...p, page: 1 })); }}
-        searchPlaceholder="Tìm hoá đơn, đơn hàng, người mua, NCC..."
+        searchPlaceholder="Tìm hoá đơn, đơn hàng, người mua, cửa hàng..."
       />
 
       <DataTable
@@ -418,13 +418,13 @@ export function AdminPaymentPage() {
         )}
       />
 
-      {/* --- Chi tiết công nợ --- */}
+      {/* --- Chi tiết thanh toán --- */}
       <Dialog open={!!selectedPayment} onOpenChange={() => setSelectedPayment(null)}>
         <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Receipt className="h-5 w-5" />
-              Công nợ {selectedPayment?.invoiceNumber}
+              Thanh toán {selectedPayment?.invoiceNumber}
             </DialogTitle>
           </DialogHeader>
           {selectedPayment && (
@@ -488,7 +488,7 @@ export function AdminPaymentPage() {
                   <p>{selectedPayment.buyerName}</p>
                 </div>
                 <div>
-                  <p className="text-muted-foreground">Nhà cung cấp</p>
+                  <p className="text-muted-foreground">Cửa hàng</p>
                   <p>{selectedPayment.supplierName}</p>
                 </div>
                 <div>

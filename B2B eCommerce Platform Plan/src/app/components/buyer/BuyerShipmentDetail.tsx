@@ -189,7 +189,7 @@ export function BuyerShipmentDetail() {
               </div>
               <div className="flex-1 pb-4">
                 <p className="text-xs text-muted-foreground uppercase tracking-wide">Điểm gửi</p>
-                <p className="font-medium">{shipment.supplierName || 'Kho hàng'}</p>
+                <p className="font-medium">{shipment.supplierName || 'CELLPHONES'}</p>
                 <p className="text-muted-foreground text-sm">{shipment.fromAddress}</p>
               </div>
             </div>

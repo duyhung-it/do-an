@@ -38,6 +38,22 @@ import { ImageWithFallback } from '../figma/ImageWithFallback';
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
 
+const getProductRetailMeta = (product: Product) => {
+  const legacy = product as Product & {
+    supplierId?: string;
+    supplierName?: string;
+    minOrderQty?: number;
+    unit?: string;
+  };
+
+  return {
+    storeId: legacy.supplierId ?? 'cellphones',
+    storeName: legacy.supplierName ?? 'CELLPHONES',
+    minQty: legacy.minOrderQty ?? 1,
+    unit: legacy.unit ?? 'sp',
+  };
+};
+
 // E17.06: Image Gallery component
 function ProductGallery({ images, name }: { images: string[]; name: string }) {
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -229,11 +245,12 @@ export function ProductDetailPage() {
     if (!id) return;
     productApi.getById(id).then(p => {
       if (p) {
+        const retailMeta = getProductRetailMeta(p);
         setProduct(p);
-        setQuantity(p.minOrderQty);
+        setQuantity(retailMeta.minQty);
         // Save to recently viewed
         addRecentItem({ id: p.id, name: p.name, image: p.images[0], price: p.price, brand: p.brand ?? '' });
-        supplierApi.getById(p.supplierId).then(s => s && setSupplier(s));
+        supplierApi.getById(retailMeta.storeId).then(s => s && setSupplier(s));
         promotionApi.getActiveForProduct(p.id).then(setPromotions);
         comboApi.getForProduct(p.id).then(setCombos);
         reviewApi.getStarDistribution(p.id).then(dist => {
@@ -275,12 +292,13 @@ export function ProductDetailPage() {
       navigate('/login', { state: { from: `/products/${product.id}` } });
       return;
     }
+    const retailMeta = getProductRetailMeta(product);
     await addItem({
       productId: product.id,
       productName: product.name,
       productImage: product.images[0],
-      supplierId: product.supplierId,
-      supplierName: product.supplierName,
+      supplierId: retailMeta.storeId,
+      supplierName: retailMeta.storeName,
       quantity,
       unitPrice: product.variants[selectedVariant]?.price ?? product.price,
       variantName: product.variants[selectedVariant]?.name,
@@ -293,9 +311,10 @@ export function ProductDetailPage() {
       toast.error('Vui lòng đăng nhập để nhắn tin');
       return;
     }
+    const retailMeta = getProductRetailMeta(product);
     const conv = await chatApi.createConversation(
       user.id, user.fullName,
-      product.supplierId, product.supplierName,
+      retailMeta.storeId, retailMeta.storeName,
       product.id, product.name,
     );
     navigate(`/chat?conv=${conv.id}`);
@@ -354,6 +373,7 @@ export function ProductDetailPage() {
 
   const currentPrice = product.variants[selectedVariant]?.price ?? product.price;
   const wishlisted = isInWishlist(product.id);
+  const retailMeta = getProductRetailMeta(product);
 
   return (
     <div className="container mx-auto px-4 sm:px-6 py-6">
@@ -398,7 +418,7 @@ export function ProductDetailPage() {
               {formatPrice(currentPrice)}
             </p>
             <p className="text-muted-foreground text-sm mt-1">
-              Đặt hàng tối thiểu: <span className="font-semibold text-foreground">{product.minOrderQty} {product.unit}</span>
+              Có thể mua từ: <span className="font-semibold text-foreground">{retailMeta.minQty} {retailMeta.unit}</span>
             </p>
           </div>
 
@@ -455,21 +475,21 @@ export function ProductDetailPage() {
             <p className="text-sm mb-2" style={{ fontWeight: 500 }}>Số lượng:</p>
             <div className="flex items-center gap-2">
               <div className="flex items-center border rounded-lg overflow-hidden">
-                <Button variant="ghost" className="h-10 w-10 rounded-none" onClick={() => setQuantity(Math.max(product.minOrderQty, quantity - 1))}>
+                <Button variant="ghost" className="h-10 w-10 rounded-none" onClick={() => setQuantity(Math.max(retailMeta.minQty, quantity - 1))}>
                   <Minus className="h-4 w-4" />
                 </Button>
                 <Input
                   type="number"
                   className="w-20 text-center border-0 border-x rounded-none h-10"
                   value={quantity}
-                  onChange={e => setQuantity(Math.max(product.minOrderQty, Number(e.target.value)))}
-                  min={product.minOrderQty}
+                  onChange={e => setQuantity(Math.max(retailMeta.minQty, Number(e.target.value)))}
+                  min={retailMeta.minQty}
                 />
                 <Button variant="ghost" className="h-10 w-10 rounded-none" onClick={() => setQuantity(quantity + 1)}>
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
-              <span className="text-muted-foreground text-sm">{product.unit}</span>
+              <span className="text-muted-foreground text-sm">{retailMeta.unit}</span>
             </div>
             <p className="text-sm text-muted-foreground mt-1.5">
               Tổng: <span className="text-primary" style={{ fontWeight: 600 }}>{formatPrice(currentPrice * quantity)}</span>
@@ -523,7 +543,7 @@ export function ProductDetailPage() {
             ))}
           </div>
 
-          {/* E17.10: Supplier info card */}
+          {/* E17.10: Store info card */}
           {supplier && (
             <Card className="border-0 shadow-sm overflow-hidden">
               <div className="h-16 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 relative">
@@ -559,7 +579,7 @@ export function ProductDetailPage() {
                   </div>
                 </div>
                 <div className="flex gap-2 mt-3">
-                  <Link to={`/suppliers/${supplier.id}`} className="flex-1">
+                  <Link to="/stores" className="flex-1">
                     <Button variant="outline" size="sm" className="w-full">Xem cửa hàng</Button>
                   </Link>
                   <Button variant="outline" size="sm" className="flex-1" onClick={handleContactSupplier}>

@@ -758,6 +758,24 @@ public class StoreDataService {
 						"Camera chup dep, pin tot, hieu nang manh.", "status", "Hien thi", "isVerifiedPurchase", true,
 						"helpfulCount", 48, "images", List.of(iphone), "tags", List.of("Chat luong", "Camera"), "createdAt",
 						"2025-03-16T10:00:00Z")));
+		for (int i = 1; i <= 10; i++) {
+			Map<String, Object> product = products.get((i - 1) % products.size());
+			reviews.add(map("id", "rev-demo-" + i, "productId", product.get("id"), "productName", product.get("name"),
+					"userId", "00000000-0000-4000-8000-000000000199", "userName", "Demo Buyer", "rating", 3 + (i % 3),
+					"title", "Danh gia demo " + i, "comment", "San pham dung tot, phu hop nhu cau do an demo.",
+					"status", "Hien thi", "isVerifiedPurchase", true, "helpfulCount", i * 2, "images",
+					List.of(((List<?>) product.get("images")).get(0)), "tags", List.of("Chat luong", "Gia tot"), "orderId",
+					"ord-demo-" + i, "orderNumber", "CP-DEMO-" + String.format("%04d", i), "createdAt",
+					"2025-04-" + String.format("%02d", i) + "T09:00:00Z"));
+		}
+		for (int i = 1; i <= 10; i++) {
+			reviews.add(map("id", "rev-prod-001-demo-" + i, "productId", "prod-001", "productName",
+					"iPhone 16 Pro Max 256GB", "userId", "reviewer-demo-" + i, "userName", "Khach hang demo " + i,
+					"rating", 4 + (i % 2), "title", "Trai nghiem iPhone demo " + i, "comment",
+					"Man hinh dep, hieu nang on dinh, phu hop de test man chi tiet san pham.", "status", "Hien thi",
+					"isVerifiedPurchase", true, "helpfulCount", i, "images", List.of(iphone), "tags",
+					List.of("Hieu nang", "Camera"), "createdAt", "2025-05-" + String.format("%02d", i) + "T10:00:00Z"));
+		}
 
 		promotions.addAll(List.of(
 				map("id", "promo-001", "code", "NEWPHONE", "name", "Giam 1.5 trieu dien thoai moi", "description",
@@ -777,6 +795,15 @@ public class StoreDataService {
 				"Samsung Galaxy S25 Ultra 256GB", "productImage", samsung, "brand", "Samsung", "categoryName", "Dien thoai",
 				"price", 31_990_000, "originalPrice", 35_990_000, "stock", 20, "addedAt", "2025-03-01T00:00:00Z",
 				"priceAlert", 29_000_000));
+		for (int i = 1; i <= 10; i++) {
+			Map<String, Object> product = products.get((i - 1) % products.size());
+			wishlistItems.add(map("id", "wl-demo-" + i, "userId", "00000000-0000-4000-8000-000000000199",
+					"productId", product.get("id"), "productName", product.get("name"), "productImage",
+					((List<?>) product.get("images")).get(0), "brand", product.get("brand"), "categoryName",
+					product.get("categoryName"), "price", product.get("price"), "originalPrice", product.get("originalPrice"),
+					"stock", 10 + i, "addedAt", "2025-04-" + String.format("%02d", i) + "T08:00:00Z", "priceAlert",
+					number(product, "price").longValue() - 500_000));
+		}
 
 		notifications.addAll(List.of(
 				map("id", "n1", "type", "order", "title", "Don hang dang giao", "message",
@@ -790,6 +817,16 @@ public class StoreDataService {
 						"coverImage", iphone, "category", "So sanh", "tags", List.of("iPhone", "Samsung"), "author",
 						"Bien tap CELLPHONES", "publishedAt", "2025-03-15T08:00:00Z", "viewCount", 45200, "isPublished",
 						true, "relatedProducts", List.of("prod-001", "prod-002"))));
+		for (int i = 2; i <= 10; i++) {
+			Map<String, Object> product = products.get((i - 1) % products.size());
+			String slug = "kinh-nghiem-mua-sam-demo-" + i;
+			blogPosts.add(map("id", "blog-demo-" + i, "title", "Kinh nghiem mua sam cong nghe demo " + i,
+					"slug", slug, "excerpt", "Goi y chon san pham va phu kien phu hop cho nguoi dung pho thong.",
+					"content", "Noi dung demo cho bai viet " + i, "coverImage", ((List<?>) product.get("images")).get(0),
+					"category", i % 2 == 0 ? "Tin tuc" : "Meo su dung", "tags", List.of("Demo", String.valueOf(product.get("brand"))),
+					"author", "Bien tap CELLPHONES", "publishedAt", "2025-04-" + String.format("%02d", i) + "T08:00:00Z",
+					"viewCount", 1000 * i, "isPublished", true, "relatedProducts", List.of(product.get("id"))));
+		}
 
 		stores.addAll(List.of(
 				map("id", "store-001", "name", "CELLPHONES Nguyen Dinh Chieu", "address", "200 Nguyen Dinh Chieu",
@@ -798,6 +835,11 @@ public class StoreDataService {
 				map("id", "store-002", "name", "CELLPHONES Cau Giay", "address", "79 Cau Giay", "district", "Cau Giay",
 						"city", "Ha Noi", "phone", "1800.2097", "workingHours", "8:00 - 21:30", "isActive", true,
 						"mapUrl", "https://maps.google.com")));
+		for (int i = 3; i <= 10; i++) {
+			stores.add(map("id", "store-demo-" + i, "name", "CELLPHONES Demo " + i, "address",
+					i + " Demo Street", "district", "Quan " + i, "city", i % 2 == 0 ? "TP.HCM" : "Ha Noi", "phone",
+					"1800.2097", "workingHours", "8:00 - 21:30", "isActive", true, "mapUrl", "https://maps.google.com"));
+		}
 	}
 
 	private Map<String, Object> productSeed(String id, String name, String slug, String categoryId, String categoryName,

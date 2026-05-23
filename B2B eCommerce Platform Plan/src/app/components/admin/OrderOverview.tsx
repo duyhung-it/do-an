@@ -43,7 +43,7 @@ const ORDER_STEPS = ['PENDING', 'CONFIRMED', 'SHIPPING', 'DELIVERED'];
 const columns: ColumnConfig[] = [
   { key: 'orderNumber', label: 'Mã đơn hàng', visible: true, sortable: true },
   { key: 'buyerName', label: 'Người mua', visible: true, sortable: true },
-  { key: 'supplierName', label: 'Nhà cung cấp', visible: true, sortable: true },
+  { key: 'supplierName', label: 'Cửa hàng', visible: true, sortable: true },
   { key: 'totalAmount', label: 'Tổng tiền', visible: true, sortable: true },
   { key: 'status', label: 'Trạng thái', visible: true, sortable: true, editable: true, type: 'select',
     options: ORDER_STATUS_OPTIONS },
@@ -189,7 +189,7 @@ export function OrderOverview() {
 
   // CSV Export
   const handleExportCSV = () => {
-    const headers = ['Mã đơn', 'Người mua', 'Nhà cung cấp', 'Tổng tiền', 'Trạng thái', 'Thanh toán', 'Ngày tạo'];
+    const headers = ['Mã đơn', 'Người mua', 'Cửa hàng', 'Tổng tiền', 'Trạng thái', 'Thanh toán', 'Ngày tạo'];
     const rows = allOrders.map(o => [o.orderNumber, o.buyerName, o.supplierName, o.totalAmount.toString(), o.status, o.paymentMethod, o.createdAt]);
     const csvContent = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
@@ -209,7 +209,7 @@ export function OrderOverview() {
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
           <span>Người mua: {order.buyerName}</span>
-          <span>NCC: {order.supplierName}</span>
+          <span>Cửa hàng: {order.supplierName}</span>
           <span className="text-primary">{formatPrice(order.totalAmount)}</span>
           <span>{order.createdAt}</span>
         </div>
@@ -289,7 +289,7 @@ export function OrderOverview() {
         onFilterChange={f => { setFilters(f); setPagination(p => ({ ...p, page: 1 })); }}
         searchValue={search}
         onSearchChange={v => { setSearch(v); setPagination(p => ({ ...p, page: 1 })); }}
-        searchPlaceholder="Tìm mã đơn, người mua, NCC..."
+        searchPlaceholder="Tìm mã đơn, người mua, cửa hàng..."
       />
 
       <DataTable
@@ -363,7 +363,7 @@ export function OrderOverview() {
                 <TabsContent value="overview" className="space-y-4 mt-4">
                   <div className="grid grid-cols-2 gap-3">
                     <div><p className="text-muted-foreground">Người mua</p><p>{selectedOrder.buyerName}</p></div>
-                    <div><p className="text-muted-foreground">Nhà cung cấp</p><p>{selectedOrder.supplierName}</p></div>
+                    <div><p className="text-muted-foreground">Cửa hàng</p><p>{selectedOrder.supplierName}</p></div>
                     <div><p className="text-muted-foreground">Địa chỉ</p><p>{selectedOrder.shippingAddress}</p></div>
                     <div><p className="text-muted-foreground">Thanh toán</p><p>{selectedOrder.paymentMethod}</p></div>
                   </div>

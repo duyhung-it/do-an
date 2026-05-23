@@ -1,5 +1,5 @@
 // ============================================================
-// Thanh toán & Công nợ — Buyer
+// Thanh toán — Buyer
 // DataTable + Card list + Calendar view + Stats + QR + Timeline
 // ============================================================
 
@@ -47,6 +47,8 @@ import type {
 const formatPrice = (n: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(n);
 
+const getPaymentStoreName = (payment: Pick<Payment, 'supplierName'>) => payment.supplierName || 'CELLPHONES';
+
 const fmtShort = (v: number) => {
   if (v >= 1_000_000_000) return `${(v / 1_000_000_000).toFixed(1)} tỷ`;
   if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(0)} tr`;
@@ -86,7 +88,7 @@ type PaymentViewMode = 'table' | 'list' | 'calendar';
 const columns: ColumnConfig[] = [
   { key: 'invoiceNumber', label: 'Hoá đơn', sortable: true },
   { key: 'orderNumber', label: 'Đơn hàng', sortable: true },
-  { key: 'supplierName', label: 'Nhà cung cấp', sortable: true },
+  { key: 'supplierName', label: 'Cửa hàng', sortable: true },
   {
     key: 'status', label: 'Trạng thái', sortable: true,
     render: (_, row) => <StatusBadge status={(row as Payment).status} />,
@@ -244,7 +246,7 @@ function PaymentCard({ p, onClick }: { p: Payment; onClick: () => void }) {
               {isNearDue && <Badge variant="outline" className="border-amber-500 text-amber-600 text-[10px]">{daysLeft}d</Badge>}
             </div>
             <p className="text-muted-foreground text-sm truncate mt-0.5">
-              {p.orderNumber} · {p.supplierName}
+              {p.orderNumber} · {getPaymentStoreName(p)}
             </p>
             <div className="mt-2 flex items-center gap-2">
               <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden">
@@ -327,12 +329,12 @@ export function BuyerPaymentList() {
 
   // Chart data
   const chartData = useMemo(() => {
-    const map = new Map<string, { chiTieu: number; congNo: number }>();
+    const map = new Map<string, { chiTieu: number; canThanhToan: number }>();
     for (const p of allPayments) {
       const month = p.createdAt.slice(0, 7);
-      const cur = map.get(month) ?? { chiTieu: 0, congNo: 0 };
+      const cur = map.get(month) ?? { chiTieu: 0, canThanhToan: 0 };
       cur.chiTieu += p.paidAmount;
-      cur.congNo += p.remainingAmount;
+      cur.canThanhToan += p.remainingAmount;
       map.set(month, cur);
     }
     return Array.from(map.entries())
@@ -374,7 +376,7 @@ export function BuyerPaymentList() {
     exportToCSV(data as unknown as Record<string, unknown>[], [
       { key: 'invoiceNumber', label: 'Hoá đơn' },
       { key: 'orderNumber', label: 'Đơn hàng' },
-      { key: 'supplierName', label: 'NCC' },
+      { key: 'supplierName', label: 'Cửa hàng' },
       { key: 'method', label: 'PT thanh toán' },
       { key: 'amount', label: 'Tổng tiền' },
       { key: 'paidAmount', label: 'Đã trả' },
@@ -394,9 +396,9 @@ export function BuyerPaymentList() {
         <div>
           <h1 className="flex items-center gap-2">
             <CreditCard className="h-6 w-6 text-primary" />
-            Thanh toán & Công nợ
+            Thanh toán
           </h1>
-          <p className="text-muted-foreground mt-1">Quản lý các khoản thanh toán và công nợ</p>
+          <p className="text-muted-foreground mt-1">Theo dõi các khoản thanh toán đơn hàng</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {/* View toggle */}
@@ -451,7 +453,7 @@ export function BuyerPaymentList() {
           <CardContent className="p-4 flex items-center gap-3">
             <IconWrapper icon={DollarSign} variant="danger" size="md" />
             <div>
-              <p className="text-xs text-muted-foreground">Tổng công nợ</p>
+              <p className="text-xs text-muted-foreground">Cần thanh toán</p>
               <p className="text-lg text-red-600"><AnimatedNumber value={stats.totalDebt} format={fmtShort} /></p>
             </div>
           </CardContent>
@@ -482,7 +484,7 @@ export function BuyerPaymentList() {
         onFilterChange={setFilters}
         searchValue={search}
         onSearchChange={setSearch}
-        searchPlaceholder="Tìm mã đơn, hoá đơn, NCC..."
+        searchPlaceholder="Tìm mã đơn, hoá đơn, cửa hàng..."
       />
 
       {/* Content by view mode */}
@@ -572,7 +574,7 @@ export function BuyerPaymentList() {
               <YAxis tick={{ fontSize: 12 }} tickFormatter={v => `${(v / 1000000).toFixed(0)}M`} />
               <RTooltip formatter={(v: number) => formatPrice(v)} />
               <Bar dataKey="chiTieu" name="Đã thanh toán" fill="#10b981" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="congNo" name="Công nợ" fill="#ef4444" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="canThanhToan" name="Cần thanh toán" fill="#ef4444" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
           <DialogFooter>

@@ -30,6 +30,8 @@ import type { ReturnRequest, ReturnStats, ReturnStatus, PaginationParams, SortPa
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(price);
 
+const getReturnStoreName = (returnReq: Pick<ReturnRequest, 'supplierName'>) => returnReq.supplierName || 'CELLPHONES';
+
 const ALL_STATUSES: ReturnStatus[] = ['Chờ duyệt', 'Đã duyệt', 'Từ chối', 'Đang xử lý', 'Đã hoàn tiền', 'Đã đóng'];
 
 // P3.25: Reason colors for pie chart
@@ -130,8 +132,8 @@ export function BuyerReturnListPage() {
   };
 
   const handleExportCSV = () => {
-    const headers = ['Mã', 'Đơn hàng', 'NCC', 'Lý do', 'Trạng thái', 'Số tiền', 'Ngày'];
-    const rows = returns.map(r => [r.id, r.orderNumber, r.supplierName, r.reason, r.status, r.refundAmount, r.createdAt]);
+    const headers = ['Mã', 'Đơn hàng', 'Cửa hàng', 'Lý do', 'Trạng thái', 'Số tiền', 'Ngày'];
+    const rows = returns.map(r => [r.id, r.orderNumber, getReturnStoreName(r), r.reason, r.status, r.refundAmount, r.createdAt]);
     const csv = [headers, ...rows].map(r => r.join(',')).join('\n');
     const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'tra-hang.csv'; a.click();
@@ -164,7 +166,7 @@ export function BuyerReturnListPage() {
         </div>
       ),
     },
-    { key: 'supplierName' as const, label: 'NCC', sortable: true },
+    { key: 'supplierName' as const, label: 'Cửa hàng', sortable: true },
     { key: 'reason' as const, label: 'Lý do', sortable: true },
     {
       key: 'refundAmount' as const, label: 'Hoàn tiền', sortable: true,
@@ -279,7 +281,7 @@ export function BuyerReturnListPage() {
         <div className="relative flex-1 max-w-xs">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Tìm theo mã đơn, NCC..."
+            placeholder="Tìm theo mã đơn, cửa hàng..."
             value={searchText}
             onChange={e => { setSearchText(e.target.value); setPagination(p => ({ ...p, page: 1 })); }}
             className="pl-9"
@@ -304,7 +306,7 @@ export function BuyerReturnListPage() {
                 </Link>
                 <StatusBadge status={r.status} />
               </div>
-              <p className="text-sm text-muted-foreground">{r.supplierName}</p>
+              <p className="text-sm text-muted-foreground">{getReturnStoreName(r)}</p>
               <div className="flex items-center justify-between mt-2">
                 <Badge variant="outline" className="text-xs">{r.reason}</Badge>
                 <span className="text-primary text-sm" style={{ fontFamily: 'var(--font-heading)' }}>{formatPrice(r.refundAmount)}</span>
@@ -390,7 +392,7 @@ export function BuyerReturnListPage() {
 
               <div className="grid sm:grid-cols-2 gap-3">
                 {[
-                  { label: 'Nhà cung cấp', value: selected.supplierName },
+                  { label: 'Cửa hàng', value: getReturnStoreName(selected) },
                   { label: 'Lý do', value: selected.reason },
                   { label: 'Phương thức hoàn tiền', value: selected.refundMethod },
                   { label: 'Số tiền hoàn', value: formatPrice(selected.refundAmount), highlight: true },
@@ -436,7 +438,7 @@ export function BuyerReturnListPage() {
 
               {selected.sellerNote && (
                 <div className="p-3 rounded-xl bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100/50 dark:border-blue-900/20">
-                  <p className="text-xs text-blue-600 dark:text-blue-400 mb-1" style={{ fontFamily: 'var(--font-heading)' }}>Phản hồi NCC</p>
+                  <p className="text-xs text-blue-600 dark:text-blue-400 mb-1" style={{ fontFamily: 'var(--font-heading)' }}>Phản hồi cửa hàng</p>
                   <p className="text-sm text-muted-foreground">{selected.sellerNote}</p>
                 </div>
               )}

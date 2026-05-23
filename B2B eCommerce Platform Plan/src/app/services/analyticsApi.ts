@@ -17,57 +17,57 @@ const fmtCur = (v: number) =>
 // --- Mock generators ---
 function genSpendAnalysis(period: string): SpendAnalysis {
   const categories = [
-    { name: 'Thép xây dựng', amount: 2_850_000_000, percent: 35.6, trend: 8.2 },
-    { name: 'Xi măng', amount: 1_600_000_000, percent: 20.0, trend: -3.1 },
-    { name: 'Vật liệu hoàn thiện', amount: 1_200_000_000, percent: 15.0, trend: 12.5 },
-    { name: 'Thiết bị điện', amount: 960_000_000, percent: 12.0, trend: 5.7 },
-    { name: 'Ống nước', amount: 640_000_000, percent: 8.0, trend: -1.2 },
+    { name: 'Điện thoại', amount: 2_850_000_000, percent: 35.6, trend: 8.2 },
+    { name: 'Laptop', amount: 1_600_000_000, percent: 20.0, trend: -3.1 },
+    { name: 'Máy tính bảng', amount: 1_200_000_000, percent: 15.0, trend: 12.5 },
+    { name: 'Tai nghe', amount: 960_000_000, percent: 12.0, trend: 5.7 },
+    { name: 'Thiết bị đeo', amount: 640_000_000, percent: 8.0, trend: -1.2 },
     { name: 'Phụ kiện', amount: 480_000_000, percent: 6.0, trend: 15.3 },
     { name: 'Khác', amount: 270_000_000, percent: 3.4, trend: 2.0 },
   ];
 
   const suppliers = [
-    { name: 'NCC Thép Miền Nam', amount: 2_100_000_000, percent: 26.3, orderCount: 45 },
-    { name: 'NCC Vật Liệu Bắc', amount: 1_500_000_000, percent: 18.8, orderCount: 38 },
-    { name: 'Công ty VLXD Sài Gòn', amount: 1_200_000_000, percent: 15.0, orderCount: 32 },
-    { name: 'NCC Điện Công Nghiệp', amount: 960_000_000, percent: 12.0, orderCount: 25 },
-    { name: 'Đại lý Ống Nước Tiền Phong', amount: 640_000_000, percent: 8.0, orderCount: 20 },
-    { name: 'Phụ kiện Kim Phát', amount: 480_000_000, percent: 6.0, orderCount: 18 },
-    { name: 'NCC Xi Măng Hà Tiên', amount: 420_000_000, percent: 5.3, orderCount: 15 },
-    { name: 'VLXD Phú Thọ', amount: 350_000_000, percent: 4.4, orderCount: 12 },
-    { name: 'NCC Sơn Dulux', amount: 200_000_000, percent: 2.5, orderCount: 8 },
+    { name: 'CELLPHONES Quận 1', amount: 2_100_000_000, percent: 26.3, orderCount: 45 },
+    { name: 'CELLPHONES Cầu Giấy', amount: 1_500_000_000, percent: 18.8, orderCount: 38 },
+    { name: 'CELLPHONES Đà Nẵng', amount: 1_200_000_000, percent: 15.0, orderCount: 32 },
+    { name: 'Apple Việt Nam', amount: 960_000_000, percent: 12.0, orderCount: 25 },
+    { name: 'Samsung Vina', amount: 640_000_000, percent: 8.0, orderCount: 20 },
+    { name: 'Xiaomi Việt Nam', amount: 480_000_000, percent: 6.0, orderCount: 18 },
+    { name: 'Anker Việt Nam', amount: 420_000_000, percent: 5.3, orderCount: 15 },
+    { name: 'Sony Center', amount: 350_000_000, percent: 4.4, orderCount: 12 },
+    { name: 'Garmin Việt Nam', amount: 200_000_000, percent: 2.5, orderCount: 8 },
     { name: 'Khác', amount: 150_000_000, percent: 1.9, orderCount: 10 },
   ];
 
   const departments = [
-    { name: 'Công trình A', amount: 3_200_000_000, budget: 3_500_000_000, percent: 91.4 },
-    { name: 'Công trình B', amount: 2_100_000_000, budget: 2_500_000_000, percent: 84.0 },
-    { name: 'Bảo trì', amount: 800_000_000, budget: 1_000_000_000, percent: 80.0 },
-    { name: 'Văn phòng', amount: 350_000_000, budget: 400_000_000, percent: 87.5 },
+    { name: 'Marketing', amount: 3_200_000_000, budget: 3_500_000_000, percent: 91.4 },
+    { name: 'Bán hàng online', amount: 2_100_000_000, budget: 2_500_000_000, percent: 84.0 },
+    { name: 'Bảo hành', amount: 800_000_000, budget: 1_000_000_000, percent: 80.0 },
+    { name: 'Vận hành cửa hàng', amount: 350_000_000, budget: 400_000_000, percent: 87.5 },
     { name: 'Kho / Logistics', amount: 550_000_000, budget: 600_000_000, percent: 91.7 },
   ];
 
   const topProducts = [
-    { name: 'Thép hình H200', qty: 12000, amount: 1_080_000_000, supplier: 'NCC Thép Miền Nam', trend: 12 },
-    { name: 'Xi măng PC50 Hà Tiên', qty: 8000, amount: 640_000_000, supplier: 'NCC Xi Măng Hà Tiên', trend: -5 },
-    { name: 'Thép ống D60', qty: 5000, amount: 450_000_000, supplier: 'NCC Thép Miền Nam', trend: 8 },
-    { name: 'Gạch men 60x60', qty: 15000, amount: 375_000_000, supplier: 'VLXD Phú Thọ', trend: 15 },
-    { name: 'Sơn chống rỉ 5L', qty: 3000, amount: 300_000_000, supplier: 'NCC Sơn Dulux', trend: 3 },
-    { name: 'Dây điện Cu 2.5mm', qty: 20000, amount: 280_000_000, supplier: 'NCC Điện Công Nghiệp', trend: 7 },
-    { name: 'Ống nhựa PVC D90', qty: 4000, amount: 240_000_000, supplier: 'Đại lý Ống Nước Tiền Phong', trend: -2 },
-    { name: 'Bu-lông M12x100', qty: 50000, amount: 200_000_000, supplier: 'Phụ kiện Kim Phát', trend: 20 },
-    { name: 'Thép tấm 5mm', qty: 2000, amount: 180_000_000, supplier: 'NCC Thép Miền Nam', trend: 10 },
-    { name: 'Cát xây dựng', qty: 500, amount: 150_000_000, supplier: 'NCC Vật Liệu Bắc', trend: -8 },
-    { name: 'Keo dán gạch Mapei', qty: 6000, amount: 120_000_000, supplier: 'Công ty VLXD Sài Gòn', trend: 25 },
-    { name: 'Aptomat 3P 63A', qty: 200, amount: 100_000_000, supplier: 'NCC Điện Công Nghiệp', trend: 5 },
-    { name: 'Vữa bê tông M250', qty: 300, amount: 90_000_000, supplier: 'NCC Vật Liệu Bắc', trend: 2 },
-    { name: 'Tôn mạ kẽm 0.45mm', qty: 3000, amount: 85_000_000, supplier: 'Công ty VLXD Sài Gòn', trend: -3 },
-    { name: 'Đá granite', qty: 800, amount: 80_000_000, supplier: 'VLXD Phú Thọ', trend: 18 },
-    { name: 'Thanh nhôm Profile', qty: 1500, amount: 75_000_000, supplier: 'Phụ kiện Kim Phát', trend: 10 },
-    { name: 'Bồn nước Inox 2000L', qty: 50, amount: 65_000_000, supplier: 'Công ty VLXD Sài Gòn', trend: 0 },
-    { name: 'Cáp điện CV 4mm', qty: 10000, amount: 60_000_000, supplier: 'NCC Điện Công Nghiệp', trend: 12 },
-    { name: 'Cửa nhôm kính', qty: 100, amount: 55_000_000, supplier: 'Phụ kiện Kim Phát', trend: 8 },
-    { name: 'Chống thấm Sika', qty: 2000, amount: 50_000_000, supplier: 'Công ty VLXD Sài Gòn', trend: 15 },
+    { name: 'iPhone 15 Pro Max', qty: 12000, amount: 1_080_000_000, supplier: 'CELLPHONES Quận 1', trend: 12 },
+    { name: 'Samsung Galaxy S24 Ultra', qty: 8000, amount: 640_000_000, supplier: 'Samsung Vina', trend: -5 },
+    { name: 'MacBook Air M2', qty: 5000, amount: 450_000_000, supplier: 'Apple Việt Nam', trend: 8 },
+    { name: 'iPad Air M2', qty: 15000, amount: 375_000_000, supplier: 'Apple Việt Nam', trend: 15 },
+    { name: 'AirPods Pro 2', qty: 3000, amount: 300_000_000, supplier: 'CELLPHONES Cầu Giấy', trend: 3 },
+    { name: 'Apple Watch Series 9', qty: 20000, amount: 280_000_000, supplier: 'Apple Việt Nam', trend: 7 },
+    { name: 'Sony WH-1000XM5', qty: 4000, amount: 240_000_000, supplier: 'Sony Center', trend: -2 },
+    { name: 'Sạc nhanh Anker 67W', qty: 50000, amount: 200_000_000, supplier: 'Anker Việt Nam', trend: 20 },
+    { name: 'Samsung Galaxy A55', qty: 2000, amount: 180_000_000, supplier: 'Samsung Vina', trend: 10 },
+    { name: 'Xiaomi Redmi Note 13', qty: 500, amount: 150_000_000, supplier: 'Xiaomi Việt Nam', trend: -8 },
+    { name: 'Ốp lưng MagSafe', qty: 6000, amount: 120_000_000, supplier: 'CELLPHONES Đà Nẵng', trend: 25 },
+    { name: 'Pin dự phòng Anker', qty: 200, amount: 100_000_000, supplier: 'Anker Việt Nam', trend: 5 },
+    { name: 'Garmin Venu 3', qty: 300, amount: 90_000_000, supplier: 'Garmin Việt Nam', trend: 2 },
+    { name: 'Kính cường lực iPhone', qty: 3000, amount: 85_000_000, supplier: 'CELLPHONES Quận 1', trend: -3 },
+    { name: 'Cáp USB-C', qty: 800, amount: 80_000_000, supplier: 'Anker Việt Nam', trend: 18 },
+    { name: 'Loa Bluetooth Sony', qty: 1500, amount: 75_000_000, supplier: 'Sony Center', trend: 10 },
+    { name: 'Ốp lưng Galaxy S24', qty: 50, amount: 65_000_000, supplier: 'Samsung Vina', trend: 0 },
+    { name: 'Chuột Logitech MX Master', qty: 10000, amount: 60_000_000, supplier: 'CELLPHONES Cầu Giấy', trend: 12 },
+    { name: 'Bàn phím Logitech Keys', qty: 100, amount: 55_000_000, supplier: 'CELLPHONES Thủ Đức', trend: 8 },
+    { name: 'Mi Band 8', qty: 2000, amount: 50_000_000, supplier: 'Xiaomi Việt Nam', trend: 15 },
   ];
 
   return {
@@ -87,10 +87,10 @@ function genSavingsReport(period: string): SavingsReport {
     actualSavings: 720_000_000,
     savingsByMethod: [
       { method: 'Đàm phán', amount: 280_000_000, percent: 38.9 },
-      { method: 'Đấu giá', amount: 150_000_000, percent: 20.8 },
+      { method: 'Flash sale', amount: 150_000_000, percent: 20.8 },
       { method: 'Khuyến mãi', amount: 120_000_000, percent: 16.7 },
-      { method: 'HĐ khung', amount: 100_000_000, percent: 13.9 },
-      { method: 'Mua số lượng', amount: 70_000_000, percent: 9.7 },
+      { method: 'Combo sản phẩm', amount: 100_000_000, percent: 13.9 },
+      { method: 'Mã giảm giá', amount: 70_000_000, percent: 9.7 },
     ],
   };
 }
@@ -132,16 +132,16 @@ function genMonthlySavings(): { month: string; target: number; actual: number; c
 
 function genSupplierPerformances(): SupplierPerformance[] {
   return [
-    { id: 's1', name: 'NCC Thép Miền Nam', orderCount: 45, totalAmount: 2_100_000_000, onTimeRate: 94.2, qualityScore: 91, responseTime: 1.5, overallScore: 92 },
-    { id: 's2', name: 'NCC Vật Liệu Bắc', orderCount: 38, totalAmount: 1_500_000_000, onTimeRate: 87.5, qualityScore: 88, responseTime: 2.0, overallScore: 87 },
-    { id: 's3', name: 'Công ty VLXD Sài Gòn', orderCount: 32, totalAmount: 1_200_000_000, onTimeRate: 91.0, qualityScore: 85, responseTime: 2.5, overallScore: 86 },
-    { id: 's4', name: 'NCC Điện Công Nghiệp', orderCount: 25, totalAmount: 960_000_000, onTimeRate: 96.0, qualityScore: 93, responseTime: 1.2, overallScore: 94 },
-    { id: 's5', name: 'Đại lý Ống Nước Tiền Phong', orderCount: 20, totalAmount: 640_000_000, onTimeRate: 82.0, qualityScore: 80, responseTime: 3.0, overallScore: 80 },
-    { id: 's6', name: 'Phụ kiện Kim Phát', orderCount: 18, totalAmount: 480_000_000, onTimeRate: 90.5, qualityScore: 87, responseTime: 1.8, overallScore: 88 },
-    { id: 's7', name: 'NCC Xi Măng Hà Tiên', orderCount: 15, totalAmount: 420_000_000, onTimeRate: 88.0, qualityScore: 90, responseTime: 2.2, overallScore: 89 },
-    { id: 's8', name: 'VLXD Phú Thọ', orderCount: 12, totalAmount: 350_000_000, onTimeRate: 85.0, qualityScore: 82, responseTime: 3.5, overallScore: 83 },
-    { id: 's9', name: 'NCC Sơn Dulux', orderCount: 8, totalAmount: 200_000_000, onTimeRate: 97.0, qualityScore: 95, responseTime: 1.0, overallScore: 96 },
-    { id: 's10', name: 'Vật liệu Hoà Phát', orderCount: 6, totalAmount: 150_000_000, onTimeRate: 78.0, qualityScore: 75, responseTime: 4.0, overallScore: 76 },
+    { id: 's1', name: 'CELLPHONES Quận 1', orderCount: 45, totalAmount: 2_100_000_000, onTimeRate: 94.2, qualityScore: 91, responseTime: 1.5, overallScore: 92 },
+    { id: 's2', name: 'CELLPHONES Cầu Giấy', orderCount: 38, totalAmount: 1_500_000_000, onTimeRate: 87.5, qualityScore: 88, responseTime: 2.0, overallScore: 87 },
+    { id: 's3', name: 'CELLPHONES Đà Nẵng', orderCount: 32, totalAmount: 1_200_000_000, onTimeRate: 91.0, qualityScore: 85, responseTime: 2.5, overallScore: 86 },
+    { id: 's4', name: 'Apple Việt Nam', orderCount: 25, totalAmount: 960_000_000, onTimeRate: 96.0, qualityScore: 93, responseTime: 1.2, overallScore: 94 },
+    { id: 's5', name: 'Samsung Vina', orderCount: 20, totalAmount: 640_000_000, onTimeRate: 82.0, qualityScore: 80, responseTime: 3.0, overallScore: 80 },
+    { id: 's6', name: 'Xiaomi Việt Nam', orderCount: 18, totalAmount: 480_000_000, onTimeRate: 90.5, qualityScore: 87, responseTime: 1.8, overallScore: 88 },
+    { id: 's7', name: 'Anker Việt Nam', orderCount: 15, totalAmount: 420_000_000, onTimeRate: 88.0, qualityScore: 90, responseTime: 2.2, overallScore: 89 },
+    { id: 's8', name: 'Sony Center', orderCount: 12, totalAmount: 350_000_000, onTimeRate: 85.0, qualityScore: 82, responseTime: 3.5, overallScore: 83 },
+    { id: 's9', name: 'Garmin Việt Nam', orderCount: 8, totalAmount: 200_000_000, onTimeRate: 97.0, qualityScore: 95, responseTime: 1.0, overallScore: 96 },
+    { id: 's10', name: 'CELLPHONES Thủ Đức', orderCount: 6, totalAmount: 150_000_000, onTimeRate: 78.0, qualityScore: 75, responseTime: 4.0, overallScore: 76 },
   ];
 }
 
@@ -185,7 +185,7 @@ export const analyticsApi = {
       { metric: 'Chất lượng', current: 91, previous: 88 },
       { metric: 'Giá cả', current: 78, previous: 82 },
       { metric: 'Phản hồi', current: 85, previous: 80 },
-      { metric: 'HĐ tuân thủ', current: 94, previous: 90 },
+      { metric: 'Đơn đúng SLA', current: 94, previous: 90 },
       { metric: 'Tỷ lệ hoàn', current: 72, previous: 70 },
     ];
   },

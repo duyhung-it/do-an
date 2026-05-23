@@ -12,6 +12,8 @@ import com.b2b.ecommerce.common.ApiResponse;
 import com.b2b.ecommerce.common.AppException;
 import com.b2b.ecommerce.common.ErrorCode;
 import com.b2b.ecommerce.common.PageRequestParams;
+import com.b2b.ecommerce.loyalty.LoyaltyEventService;
+import com.b2b.ecommerce.notification.NotificationEventService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import org.springframework.dao.EmptyResultDataAccessException;
@@ -145,9 +147,13 @@ public class AdminAfterSalesController {
 @Service
 class AdminAfterSalesService {
 	private final JdbcTemplate jdbc;
+	private final NotificationEventService notifications;
+	private final LoyaltyEventService loyaltyEvents;
 
-	AdminAfterSalesService(JdbcTemplate jdbc) {
+	AdminAfterSalesService(JdbcTemplate jdbc, NotificationEventService notifications, LoyaltyEventService loyaltyEvents) {
 		this.jdbc = jdbc;
+		this.notifications = notifications;
+		this.loyaltyEvents = loyaltyEvents;
 	}
 
 	@Transactional(readOnly = true)
@@ -193,6 +199,12 @@ class AdminAfterSalesService {
 		}
 		jdbc.update("UPDATE return_requests SET status = ?::return_request_status, updated_at = NOW() WHERE id = ?",
 				next, UUID.fromString(id));
+		if ("REFUNDED".equals(next) && current.orderId() != null) {
+			loyaltyEvents.reverseEarnedPoints(UUID.fromString(current.orderId()), "Hoan diem do tra hang");
+		}
+		notifications.send(UUID.fromString(current.customerId()), "SYSTEM", "Cap nhat yeu cau tra hang",
+				"Yeu cau tra hang " + current.returnNumber() + " da chuyen sang trang thai " + next + ".", "MEDIUM",
+				"returns", "RETURN", UUID.fromString(id), "/returns/" + id, "Xem yeu cau");
 		return returnRequest(id);
 	}
 
@@ -251,6 +263,9 @@ class AdminAfterSalesService {
 				SET status = ?::warranty_claim_status, resolution_note = COALESCE(?, resolution_note), updated_at = NOW()
 				WHERE id = ?
 				""", next, request.note(), UUID.fromString(id));
+		notifications.send(UUID.fromString(current.customerId()), "SYSTEM", "Cap nhat yeu cau bao hanh",
+				"Yeu cau bao hanh " + current.claimNumber() + " da chuyen sang trang thai " + next + ".", "MEDIUM",
+				"warranty", "WARRANTY_CLAIM", UUID.fromString(id), "/warranty-claims/" + id, "Xem yeu cau");
 		return warrantyClaim(id);
 	}
 

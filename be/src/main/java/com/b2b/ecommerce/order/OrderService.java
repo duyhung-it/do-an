@@ -15,6 +15,8 @@ import com.b2b.ecommerce.cart.CartService;
 import com.b2b.ecommerce.common.AppException;
 import com.b2b.ecommerce.common.ErrorCode;
 import com.b2b.ecommerce.common.PageRequestParams;
+import com.b2b.ecommerce.loyalty.LoyaltyEventService;
+import com.b2b.ecommerce.notification.NotificationEventService;
 import com.b2b.ecommerce.promotion.PromotionCartItemRequest;
 import com.b2b.ecommerce.promotion.PromotionDto;
 import com.b2b.ecommerce.promotion.PromotionService;
@@ -33,11 +35,16 @@ public class OrderService {
 	private final JdbcTemplate jdbc;
 	private final PromotionService promotions;
 	private final CartService cart;
+	private final NotificationEventService notifications;
+	private final LoyaltyEventService loyaltyEvents;
 
-	public OrderService(JdbcTemplate jdbc, PromotionService promotions, CartService cart) {
+	public OrderService(JdbcTemplate jdbc, PromotionService promotions, CartService cart,
+			NotificationEventService notifications, LoyaltyEventService loyaltyEvents) {
 		this.jdbc = jdbc;
 		this.promotions = promotions;
 		this.cart = cart;
+		this.notifications = notifications;
+		this.loyaltyEvents = loyaltyEvents;
 	}
 
 	@Transactional
@@ -45,11 +52,16 @@ public class OrderService {
 		if (request.items() == null || request.items().isEmpty()) {
 			throw new AppException(ErrorCode.ORDER_EMPTY_ITEMS);
 		}
-		if (request.shippingAddress() == null) {
+		if ((request.shippingAddressId() == null || request.shippingAddressId().isBlank()) && request.shippingAddress() == null) {
 			throw new AppException(ErrorCode.ORDER_ADDRESS_REQUIRED);
 		}
 		String paymentMethod = paymentMethod(request.paymentMethod());
-		ShippingAddressDto address = request.shippingAddress().normalized();
+		UUID shippingAddressId = request.shippingAddressId() == null || request.shippingAddressId().isBlank()
+				? null
+				: uuid(request.shippingAddressId(), "shippingAddressId");
+		ShippingAddressDto address = shippingAddressId == null
+				? request.shippingAddress().normalized()
+				: customerAddress(userId, shippingAddressId);
 		List<OrderLine> lines = request.items().stream().map(this::line).toList();
 		long subtotal = lines.stream().mapToLong(OrderLine::totalPrice).sum();
 		long discount = 0;
@@ -74,14 +86,14 @@ public class OrderService {
 				INSERT INTO orders (
 				  id, order_number, customer_id, customer_name, customer_email, customer_phone,
 				  subtotal, shipping_fee, discount, total_amount, status, shipping_address,
-				  payment_method, payment_status, promotion_code, promotion_id, discount_amount, notes
+				  payment_method, payment_status, promotion_code, promotion_id, discount_amount, notes, shipping_address_id
 				)
 				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', ?::jsonb, ?::payment_method, 'UNPAID',
-				        ?, ?, ?, ?)
+				        ?, ?, ?, ?, ?)
 				""", orderId, orderNumber, userId, customer.name(), customer.email(), customer.phone(), subtotal,
 				shippingFee, discount, totalAmount, shippingJson, paymentMethod,
 				promotion == null ? null : promotion.code(), promotion == null ? null : UUID.fromString(promotion.id()),
-				discount, request.notes());
+				discount, request.notes(), shippingAddressId);
 		for (OrderLine line : lines) {
 			jdbc.update("""
 					INSERT INTO order_items (
@@ -116,6 +128,8 @@ public class OrderService {
 				iso(now), iso(now));
 		PaymentDto payment = new PaymentDto(paymentId.toString(), orderId.toString(), orderNumber, paymentMethod, "UNPAID",
 				totalAmount, 0, null, null, null, iso(now));
+		notifyOrder(orderId, userId, "Don hang da duoc tao",
+				"Don hang " + orderNumber + " da duoc tao va dang cho xac nhan.", "MEDIUM", "order_created");
 		return new OrderCreateResponse(order, payment);
 	}
 
@@ -141,6 +155,8 @@ public class OrderService {
 				SELECT o.id, o.order_number, o.status::text AS status, o.payment_status::text AS payment_status,
 				       o.total_amount, o.created_at,
 				       COUNT(oi.id)::int AS item_count,
+				       (ARRAY_AGG(oi.product_id ORDER BY oi.id))[1] AS first_product_id,
+				       (ARRAY_AGG(oi.variant_id ORDER BY oi.id))[1] AS first_variant_id,
 				       (ARRAY_AGG(oi.product_name ORDER BY oi.id))[1] AS first_product_name,
 				       (ARRAY_AGG(oi.product_image ORDER BY oi.id))[1] AS first_product_image,
 				       (ARRAY_AGG(oi.variant_name ORDER BY oi.id))[1] AS first_variant_name
@@ -205,6 +221,8 @@ public class OrderService {
 				       o.payment_method::text AS payment_method, o.subtotal, o.discount, o.shipping_fee,
 				       o.total_amount, o.promotion_code, o.created_at, o.updated_at,
 				       COUNT(oi.id)::int AS item_count,
+				       (ARRAY_AGG(oi.product_id ORDER BY oi.id))[1] AS first_product_id,
+				       (ARRAY_AGG(oi.variant_id ORDER BY oi.id))[1] AS first_variant_id,
 				       (ARRAY_AGG(oi.product_name ORDER BY oi.id))[1] AS first_product_name,
 				       (ARRAY_AGG(oi.product_image ORDER BY oi.id))[1] AS first_product_image,
 				       (ARRAY_AGG(oi.variant_name ORDER BY oi.id))[1] AS first_variant_name
@@ -294,6 +312,8 @@ public class OrderService {
 		if (order.promotionId() != null) {
 			jdbc.update("UPDATE promotions SET used_count = GREATEST(used_count - 1, 0) WHERE id = ?", order.promotionId());
 		}
+		notifyOrder(order.id(), order.customerId(), "Don hang da huy",
+				"Don hang " + order.orderNumber() + " da duoc huy.", "MEDIUM", "order_cancelled");
 		return order(userId, id);
 	}
 
@@ -337,6 +357,7 @@ public class OrderService {
 			if ("SHIPPING".equals(order.status()) && "DELIVERED".equals(nextStatus)) {
 				markCodPaidAndInvoicePaid(order);
 				markShipmentDelivered(order.id());
+				createWarrantyItems(order);
 				awardLoyalty(order);
 			}
 			jdbc.update("""
@@ -351,6 +372,9 @@ public class OrderService {
 				INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by, changed_by_name, note)
 				VALUES (?, ?, ?::order_status, ?::order_status, ?, ?, ?)
 				""", UUID.randomUUID(), orderId, order.status(), nextStatus, adminId, adminName, note);
+		notifyOrder(order.id(), order.customerId(), "Cap nhat don hang " + order.orderNumber(),
+				orderStatusMessage(order.orderNumber(), nextStatus), "DELIVERED".equals(nextStatus) ? "HIGH" : "MEDIUM",
+				"order_status");
 		return adminOrder(id);
 	}
 
@@ -405,6 +429,48 @@ public class OrderService {
 			throw new AppException(ErrorCode.PAYMENT_ACCESS_DENIED);
 		}
 		return customerPaymentDto(payment);
+	}
+
+	@Transactional(readOnly = true)
+	public List<PaymentProofDto> customerPaymentProofs(UUID userId, String id) {
+		PaymentRecord payment = paymentRecord(uuid(id, "id"));
+		if (!payment.customerId().equals(userId)) {
+			throw new AppException(ErrorCode.PAYMENT_ACCESS_DENIED);
+		}
+		return paymentProofs(payment.id());
+	}
+
+	@Transactional
+	public PaymentProofDto submitPaymentProof(UUID userId, String id, PaymentProofRequest request) {
+		PaymentRecord payment = paymentRecord(uuid(id, "id"));
+		if (!payment.customerId().equals(userId)) {
+			throw new AppException(ErrorCode.PAYMENT_ACCESS_DENIED);
+		}
+		if ("PAID".equals(payment.status())) {
+			throw new AppException(ErrorCode.PAYMENT_ALREADY_PAID);
+		}
+		if ("REFUNDED".equals(payment.status()) || "PARTIALLY_REFUNDED".equals(payment.status())) {
+			throw new AppException(ErrorCode.PAYMENT_REFUNDED);
+		}
+		long amount = request.amount() == null || request.amount() <= 0 ? payment.remainingAmount() : request.amount();
+		String method = proofMethod(request.method(), payment.method());
+		UUID proofId = UUID.randomUUID();
+		try {
+			jdbc.update("""
+					INSERT INTO payment_proofs (
+					  id, payment_id, order_id, customer_id, proof_url, note, amount, method, transaction_ref, status
+					)
+					VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING_REVIEW')
+					""", proofId, payment.id(), payment.orderId(), payment.customerId(), request.proofUrl().trim(),
+					blankToNull(request.note()), amount, method, blankToNull(request.transactionRef()));
+		}
+		catch (org.springframework.dao.DataIntegrityViolationException exception) {
+			throw new AppException(ErrorCode.CONFLICT, "Ma giao dich/chung tu da ton tai",
+					Map.of("transactionRef", request.transactionRef()));
+		}
+		notifyPayment(payment.orderId(), payment.customerId(), "Da gui chung tu thanh toan",
+				"Chung tu thanh toan cho don hang " + payment.orderNumber() + " dang cho xac nhan.", "MEDIUM");
+		return paymentProof(proofId);
 	}
 
 	@Transactional(readOnly = true)
@@ -745,11 +811,14 @@ public class OrderService {
 						    updated_at = NOW()
 						WHERE id = ?
 						""", order.id());
+				createWarrantyItems(order);
 				awardLoyalty(order);
 				jdbc.update("""
 						INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by, changed_by_name, note)
 						VALUES (?, ?, 'SHIPPING', 'DELIVERED', NULL, ?, ?)
 						""", UUID.randomUUID(), order.id(), "Admin Shipment", "Shipment marked delivered");
+				notifyOrder(order.id(), order.customerId(), "Don hang da giao thanh cong",
+						"Don hang " + order.orderNumber() + " da duoc giao thanh cong.", "HIGH", "order_delivered");
 			}
 		}
 		return adminShipment(id);
@@ -850,8 +919,68 @@ public class OrderService {
 					    paid_at = COALESCE(paid_at, NOW())
 					WHERE order_id = ? AND status = 'PENDING'
 					""", payment.orderId());
+			notifyPayment(payment.orderId(), payment.customerId(), "Thanh toan thanh cong",
+					"Thanh toan cho don hang " + payment.orderNumber() + " da duoc ghi nhan.", "HIGH");
 		}
 		return payment(paymentId);
+	}
+
+	@Transactional
+	public PaymentGatewaySessionDto createGatewaySession(UUID userId, String id, CreatePaymentSessionRequest request) {
+		UUID paymentId = uuid(id, "id");
+		PaymentRecord payment = paymentRecord(paymentId);
+		if (!payment.customerId().equals(userId)) {
+			throw new AppException(ErrorCode.PAYMENT_ACCESS_DENIED);
+		}
+		if ("PAID".equals(payment.status())) {
+			throw new AppException(ErrorCode.PAYMENT_ALREADY_PAID);
+		}
+		if ("REFUNDED".equals(payment.status()) || "PARTIALLY_REFUNDED".equals(payment.status())) {
+			throw new AppException(ErrorCode.PAYMENT_REFUNDED);
+		}
+		String provider = gatewayProvider(request == null ? null : request.provider());
+		if (!provider.equals(payment.method())) {
+			throw new AppException(ErrorCode.VALIDATION_ERROR, "Du lieu dau vao khong hop le",
+					Map.of("provider", "Provider phai khop voi payment.method MOMO hoac VNPAY"));
+		}
+		if (payment.remainingAmount() <= 0) {
+			throw new AppException(ErrorCode.PAYMENT_ALREADY_PAID);
+		}
+		PaymentGatewaySession existing = pendingGatewaySession(paymentId, provider);
+		if (existing != null) {
+			return gatewaySessionDto(existing);
+		}
+		String requestId = provider + "-" + DateTimeFormatter.BASIC_ISO_DATE.format(LocalDate.now()) + "-"
+				+ UUID.randomUUID();
+		String paymentUrl = "/api/v1/payments/gateway/return?provider=" + provider + "&requestId=" + requestId
+				+ "&status=SUCCESS";
+		jdbc.update("""
+				INSERT INTO payment_gateway_sessions (
+				  id, payment_id, order_id, provider, request_id, amount, status, payment_url, return_url, callback_url,
+				  raw_payload
+				)
+				VALUES (?, ?, ?, ?, ?, ?, 'PENDING', ?, ?, ?, ?::jsonb)
+				""", UUID.randomUUID(), payment.id(), payment.orderId(), provider, requestId, payment.remainingAmount(),
+				paymentUrl, blankToNull(request == null ? null : request.returnUrl()),
+				blankToNull(request == null ? null : request.callbackUrl()),
+				gatewayPayload(provider, requestId, null, "PENDING", payment.remainingAmount()));
+		return gatewaySessionDto(gatewaySession(requestId));
+	}
+
+	@Transactional
+	public PaymentGatewayResultDto gatewayCallback(PaymentGatewayCallbackRequest request) {
+		if (request == null || request.requestId() == null || request.requestId().isBlank()) {
+			throw new AppException(ErrorCode.VALIDATION_ERROR, "Du lieu dau vao khong hop le",
+					Map.of("requestId", "requestId la bat buoc"));
+		}
+		return applyGatewayResult(request.provider(), request.requestId(), request.transactionRef(), request.status(),
+				request.amount());
+	}
+
+	@Transactional
+	public PaymentGatewayResultDto gatewayReturn(String provider, String requestId, String transactionRef, String status,
+			Long amount) {
+		return applyGatewayResult(provider, requestId, transactionRef, status, amount);
 	}
 
 	@Transactional
@@ -896,7 +1025,127 @@ public class OrderService {
 				WHERE id = ?
 				""", request.refundAmount(), request.normalizedReason(), method, paymentId);
 		jdbc.update("UPDATE orders SET payment_status = 'REFUNDED' WHERE id = ?", payment.orderId());
+		loyaltyEvents.reverseEarnedPoints(payment.orderId(), "Hoan tien thanh toan");
+		notifyPayment(payment.orderId(), payment.customerId(), "Thanh toan da hoan tien",
+				"Don hang " + payment.orderNumber() + " da duoc ghi nhan hoan tien.", "HIGH");
 		return payment(paymentId);
+	}
+
+	private PaymentGatewayResultDto applyGatewayResult(String providerValue, String requestIdValue, String transactionRefValue,
+			String statusValue, Long amountValue) {
+		String requestId = requestIdValue == null ? "" : requestIdValue.trim();
+		PaymentGatewaySession session = gatewaySession(requestId);
+		String provider = providerValue == null || providerValue.isBlank() ? session.provider() : gatewayProvider(providerValue);
+		if (!session.provider().equals(provider)) {
+			throw new AppException(ErrorCode.VALIDATION_ERROR, "Du lieu dau vao khong hop le",
+					Map.of("provider", "Provider khong khop voi phien thanh toan"));
+		}
+		String gatewayStatus = gatewayStatus(statusValue);
+		String transactionRef = blankToNull(transactionRefValue);
+		long amount = amountValue == null ? session.amount() : amountValue;
+		if (amount != session.amount()) {
+			throw new AppException(ErrorCode.VALIDATION_ERROR, "Du lieu dau vao khong hop le",
+					Map.of("amount", "So tien callback khong khop voi phien thanh toan"));
+		}
+		PaymentRecord payment = paymentRecord(session.paymentId());
+		if ("PAID".equals(session.status()) || "PAID".equals(payment.status())) {
+			if ("PAID".equals(payment.status()) && !"PAID".equals(session.status())) {
+				markGatewaySessionPaid(session, transactionRef == null ? payment.transactionRef() : transactionRef,
+						gatewayPayload(provider, requestId, transactionRef, gatewayStatus, amount));
+			}
+			return gatewayResult(gatewaySession(requestId));
+		}
+		if ("SUCCESS".equals(gatewayStatus) || "PAID".equals(gatewayStatus)) {
+			String finalTransactionRef = transactionRef == null ? provider + "-" + requestId : transactionRef;
+			jdbc.update("""
+					UPDATE payments
+					SET paid_amount = amount,
+					    remaining_amount = 0,
+					    status = 'PAID',
+					    method = ?,
+					    transaction_ref = ?,
+					    paid_at = COALESCE(paid_at, NOW())
+					WHERE id = ? AND status <> 'PAID'
+					""", provider, finalTransactionRef, payment.id());
+			jdbc.update("UPDATE orders SET payment_status = 'PAID' WHERE id = ?", payment.orderId());
+			jdbc.update("""
+					UPDATE invoices
+					SET status = 'PAID',
+					    paid_at = COALESCE(paid_at, NOW())
+					WHERE order_id = ? AND status IN ('PENDING', 'OVERDUE')
+					""", payment.orderId());
+			markGatewaySessionPaid(session, finalTransactionRef,
+					gatewayPayload(provider, requestId, finalTransactionRef, gatewayStatus, amount));
+			notifyPayment(payment.orderId(), payment.customerId(), "Thanh toan " + provider + " thanh cong",
+					"Don hang " + payment.orderNumber() + " da thanh toan thanh cong qua " + provider + ".", "HIGH");
+			return gatewayResult(gatewaySession(requestId));
+		}
+		String finalStatus = "CANCELLED".equals(gatewayStatus) ? "CANCELLED" : "FAILED";
+		jdbc.update("""
+				UPDATE payment_gateway_sessions
+				SET status = ?,
+				    transaction_ref = COALESCE(?, transaction_ref),
+				    raw_payload = ?::jsonb,
+				    updated_at = NOW()
+				WHERE request_id = ? AND status = 'PENDING'
+				""", finalStatus, transactionRef, gatewayPayload(provider, requestId, transactionRef, gatewayStatus, amount),
+				requestId);
+		notifyPayment(payment.orderId(), payment.customerId(), "Thanh toan khong thanh cong",
+				"Giao dich " + provider + " cho don hang " + payment.orderNumber() + " co trang thai " + finalStatus + ".",
+				"MEDIUM");
+		return gatewayResult(gatewaySession(requestId));
+	}
+
+	private void markGatewaySessionPaid(PaymentGatewaySession session, String transactionRef, String payload) {
+		jdbc.update("""
+				UPDATE payment_gateway_sessions
+				SET status = 'PAID',
+				    transaction_ref = COALESCE(?, transaction_ref),
+				    raw_payload = ?::jsonb,
+				    paid_at = COALESCE(paid_at, NOW()),
+				    updated_at = NOW()
+				WHERE id = ?
+				""", transactionRef, payload, session.id());
+	}
+
+	private PaymentGatewaySession pendingGatewaySession(UUID paymentId, String provider) {
+		List<PaymentGatewaySession> sessions = jdbc.query("""
+				SELECT id, payment_id, order_id, provider, request_id, transaction_ref, amount, status, payment_url,
+				       return_url, callback_url, paid_at, created_at
+				FROM payment_gateway_sessions
+				WHERE payment_id = ? AND provider = ? AND status = 'PENDING'
+				ORDER BY created_at DESC
+				LIMIT 1
+				""", this::gatewaySessionRecord, paymentId, provider);
+		return sessions.isEmpty() ? null : sessions.get(0);
+	}
+
+	private PaymentGatewaySession gatewaySession(String requestId) {
+		try {
+			return jdbc.queryForObject("""
+					SELECT id, payment_id, order_id, provider, request_id, transaction_ref, amount, status, payment_url,
+					       return_url, callback_url, paid_at, created_at
+					FROM payment_gateway_sessions
+					WHERE request_id = ?
+					""", this::gatewaySessionRecord, requestId);
+		}
+		catch (EmptyResultDataAccessException exception) {
+			throw new AppException(ErrorCode.PAYMENT_GATEWAY_SESSION_NOT_FOUND);
+		}
+	}
+
+	private PaymentGatewayResultDto gatewayResult(PaymentGatewaySession session) {
+		PaymentRecord payment = paymentRecord(session.paymentId());
+		return new PaymentGatewayResultDto(session.requestId(), session.provider(), session.status(),
+				session.transactionRef(), session.amount(), session.paymentId().toString(), session.orderId().toString(),
+				customerPaymentDto(payment));
+	}
+
+	private PaymentGatewaySessionDto gatewaySessionDto(PaymentGatewaySession session) {
+		return new PaymentGatewaySessionDto(session.id().toString(), session.paymentId().toString(),
+				session.orderId().toString(), session.provider(), session.requestId(), session.transactionRef(),
+				session.amount(), session.status(), session.paymentUrl(), session.returnUrl(), session.callbackUrl(),
+				session.paidAt() == null ? null : iso(session.paidAt()), iso(session.createdAt()));
 	}
 
 	private void reserveStock(UUID orderId) {
@@ -1036,6 +1285,40 @@ public class OrderService {
 				VALUES (?, ?, ?, 'EARN', ?, ?, ?, ?)
 				""", UUID.randomUUID(), loyalty.id(), order.customerId(), earned, newBalance,
 				"Tich diem tu don hang " + order.orderNumber(), order.id());
+		notifications.send(order.customerId(), "LOYALTY", "Da cong diem thanh vien",
+				"Ban nhan duoc " + earned + " diem tu don hang " + order.orderNumber() + ".", "MEDIUM", "loyalty",
+				"ORDER", order.id(), "/loyalty", "Xem diem");
+	}
+
+	private void createWarrantyItems(OrderRecord order) {
+		List<WarrantySeedLine> lines = jdbc.query("""
+				SELECT oi.id AS order_item_id, oi.product_id, oi.product_name, oi.product_image, oi.brand,
+				       oi.sku, oi.quantity, COALESCE(p.warranty, 12) AS warranty_months
+				FROM order_items oi
+				LEFT JOIN products p ON p.id = oi.product_id
+				WHERE oi.order_id = ?
+				ORDER BY oi.id
+				""", this::warrantySeedLine, order.id());
+		for (WarrantySeedLine line : lines) {
+			Integer existing = jdbc.queryForObject("""
+					SELECT COUNT(*) FROM warranty_items
+					WHERE order_id = ? AND order_item_id = ? AND customer_id = ?
+					""", Integer.class, order.id(), line.orderItemId(), order.customerId());
+			int missing = line.quantity() - (existing == null ? 0 : existing);
+			for (int unit = 1; unit <= missing; unit++) {
+				String serial = warrantySerial(order.orderNumber(), line, (existing == null ? 0 : existing) + unit);
+				jdbc.update("""
+						INSERT INTO warranty_items (
+						  id, order_id, order_item_id, product_id, customer_id, customer_name, customer_phone,
+						  product_name, product_image, brand, serial_number, warranty_months, warranty_start, warranty_expiry, status
+						)
+						VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_DATE,
+						        (CURRENT_DATE + (? || ' months')::interval)::date, 'ACTIVE')
+						""", UUID.randomUUID(), order.id(), line.orderItemId(), line.productId(), order.customerId(),
+						order.customerName(), order.customerPhone(), line.productName(), line.productImage(), line.brand(),
+						serial, line.warrantyMonths(), line.warrantyMonths());
+			}
+		}
 	}
 
 	private int loyaltyPoints(long amount, String tier) {
@@ -1083,6 +1366,36 @@ public class OrderService {
 				    paid_at = NOW()
 				WHERE order_id = ? AND status = 'PENDING'
 				""", order.id());
+		notifyPayment(order.id(), order.customerId(), "Thanh toan COD thanh cong",
+				"Don hang " + order.orderNumber() + " da duoc ghi nhan thanh toan COD.", "HIGH");
+	}
+
+	private void notifyOrder(UUID orderId, UUID customerId, String title, String message, String priority, String category) {
+		notifications.send(customerId, "ORDER", title, message, priority, category, "ORDER", orderId,
+				"/orders/" + orderId, "Xem don hang");
+	}
+
+	private void notifyPayment(UUID orderId, UUID customerId, String title, String message, String priority) {
+		notifications.send(customerId, "PAYMENT", title, message, priority, "payment", "ORDER", orderId,
+				"/orders/" + orderId, "Xem don hang");
+	}
+
+	private String orderStatusMessage(String orderNumber, String status) {
+		return switch (status) {
+			case "CONFIRMED" -> "Don hang " + orderNumber + " da duoc xac nhan.";
+			case "SHIPPING" -> "Don hang " + orderNumber + " dang duoc giao.";
+			case "DELIVERED" -> "Don hang " + orderNumber + " da giao thanh cong.";
+			case "CANCELLED" -> "Don hang " + orderNumber + " da bi huy.";
+			case "RETURNED" -> "Don hang " + orderNumber + " da cap nhat tra hang.";
+			default -> "Don hang " + orderNumber + " da duoc cap nhat.";
+		};
+	}
+
+	private String warrantySerial(String orderNumber, WarrantySeedLine line, int unit) {
+		String sku = line.sku() == null || line.sku().isBlank()
+				? line.productId().toString().substring(0, 8).toUpperCase()
+				: line.sku().trim().replaceAll("[^A-Za-z0-9-]", "").toUpperCase();
+		return "WR-" + orderNumber + "-" + sku + "-" + String.format("%02d", unit);
 	}
 
 	private void cancelInvoice(UUID orderId) {
@@ -1160,6 +1473,26 @@ public class OrderService {
 		}
 		catch (EmptyResultDataAccessException exception) {
 			throw new AppException(ErrorCode.PRODUCT_NOT_FOUND);
+		}
+	}
+
+	private ShippingAddressDto customerAddress(UUID userId, UUID addressId) {
+		try {
+			return jdbc.queryForObject("""
+					SELECT full_name, phone, address, ward, district, city
+					FROM customer_addresses
+					WHERE id = ? AND user_id = ?
+					""", (rs, rowNum) -> new ShippingAddressDto(
+					rs.getString("full_name"),
+					rs.getString("phone"),
+					rs.getString("city"),
+					rs.getString("district"),
+					rs.getString("ward"),
+					rs.getString("address"),
+					null).normalized(), addressId, userId);
+		}
+		catch (EmptyResultDataAccessException exception) {
+			throw new AppException(ErrorCode.ORDER_ADDRESS_REQUIRED, "Khong tim thay dia chi giao hang");
 		}
 	}
 
@@ -1264,6 +1597,17 @@ public class OrderService {
 		};
 	}
 
+	private String proofMethod(String value, String fallback) {
+		if (value == null || value.isBlank()) {
+			return fallback == null || fallback.isBlank() ? "BANK_TRANSFER" : fallback.trim().toUpperCase();
+		}
+		String normalized = value.trim().toUpperCase();
+		if (normalized.contains("KHO") || normalized.contains("TRANSFER")) {
+			return "BANK_TRANSFER";
+		}
+		return paymentRecordMethod(value);
+	}
+
 	private String paymentFilterMethod(String value) {
 		String normalized = value == null ? "" : value.trim().toUpperCase();
 		return switch (normalized) {
@@ -1279,6 +1623,25 @@ public class OrderService {
 			case "UNPAID", "PAID", "OVERDUE", "FAILED", "REFUNDED", "PARTIALLY_REFUNDED" -> normalized;
 			default -> throw new AppException(ErrorCode.VALIDATION_ERROR, "Du lieu dau vao khong hop le",
 					Map.of("status", "Trang thai thanh toan khong hop le"));
+		};
+	}
+
+	private String gatewayProvider(String value) {
+		String normalized = value == null ? "" : value.trim().toUpperCase();
+		return switch (normalized) {
+			case "MOMO", "VNPAY" -> normalized;
+			default -> throw new AppException(ErrorCode.VALIDATION_ERROR, "Du lieu dau vao khong hop le",
+					Map.of("provider", "Provider thanh toan khong hop le"));
+		};
+	}
+
+	private String gatewayStatus(String value) {
+		String normalized = value == null ? "SUCCESS" : value.trim().toUpperCase();
+		return switch (normalized) {
+			case "SUCCESS", "PAID", "FAILED", "CANCELLED", "CANCELED" ->
+					"CANCELED".equals(normalized) ? "CANCELLED" : normalized;
+			default -> throw new AppException(ErrorCode.VALIDATION_ERROR, "Du lieu dau vao khong hop le",
+					Map.of("status", "Trang thai gateway khong hop le"));
 		};
 	}
 
@@ -1369,6 +1732,17 @@ public class OrderService {
 		return value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r");
 	}
 
+	private String blankToNull(String value) {
+		return value == null || value.isBlank() ? null : value.trim();
+	}
+
+	private String gatewayPayload(String provider, String requestId, String transactionRef, String status, long amount) {
+		return """
+				{"provider":"%s","requestId":"%s","transactionRef":%s,"status":"%s","amount":%d}
+				""".formatted(escape(provider), escape(requestId),
+				transactionRef == null ? "null" : "\"" + escape(transactionRef) + "\"", escape(status), amount);
+	}
+
 	private byte[] simplePdf(String text) {
 		String[] lines = text.lines().map(this::pdfText).toArray(String[]::new);
 		StringBuilder content = new StringBuilder("BT\n/F1 12 Tf\n50 780 Td\n");
@@ -1421,7 +1795,8 @@ public class OrderService {
 	}
 
 	private OrderSummaryDto summaryDto(ResultSet rs, int rowNum) throws SQLException {
-		OrderFirstItemDto firstItem = new OrderFirstItemDto(rs.getString("first_product_name"),
+		OrderFirstItemDto firstItem = new OrderFirstItemDto(uuidString(rs, "first_product_id"),
+				uuidString(rs, "first_variant_id"), rs.getString("first_product_name"),
 				rs.getString("first_product_image"), rs.getString("first_variant_name"));
 		return new OrderSummaryDto(rs.getObject("id", UUID.class).toString(), rs.getString("order_number"),
 				rs.getString("status"), rs.getString("payment_status"), rs.getLong("total_amount"),
@@ -1429,7 +1804,8 @@ public class OrderService {
 	}
 
 	private AdminOrderSummaryDto adminSummaryDto(ResultSet rs, int rowNum) throws SQLException {
-		OrderFirstItemDto firstItem = new OrderFirstItemDto(rs.getString("first_product_name"),
+		OrderFirstItemDto firstItem = new OrderFirstItemDto(uuidString(rs, "first_product_id"),
+				uuidString(rs, "first_variant_id"), rs.getString("first_product_name"),
 				rs.getString("first_product_image"), rs.getString("first_variant_name"));
 		return new AdminOrderSummaryDto(rs.getObject("id", UUID.class).toString(), rs.getString("order_number"),
 				rs.getObject("customer_id", UUID.class).toString(), rs.getString("customer_name"),
@@ -1533,38 +1909,99 @@ public class OrderService {
 	}
 
 	private InvoiceDto invoiceRowDto(ResultSet rs, int rowNum) throws SQLException {
+		UUID orderId = rs.getObject("order_id", UUID.class);
+		OrderRecord order = orderRecord(orderId);
 		OffsetDateTime paidAt = rs.getObject("paid_at", OffsetDateTime.class);
 		return new InvoiceDto(rs.getObject("id", UUID.class).toString(), rs.getString("invoice_number"),
-				rs.getObject("order_id", UUID.class).toString(), rs.getString("order_number"),
+				orderId.toString(), rs.getString("order_number"),
 				rs.getObject("customer_id", UUID.class).toString(), rs.getString("customer_name"),
 				rs.getLong("total_amount"), rs.getLong("tax_amount"), rs.getString("status"),
 				rs.getObject("issue_date", LocalDate.class).toString(), rs.getObject("due_date", LocalDate.class).toString(),
-				paidAt == null ? null : iso(paidAt), iso(rs.getObject("created_at", OffsetDateTime.class)));
+				paidAt == null ? null : iso(paidAt), iso(rs.getObject("created_at", OffsetDateTime.class)),
+				order.customerEmail(), order.customerPhone(), "ORDER", "CELLPHONES",
+				"0310000000", "350-352 Vo Van Kiet, Quan 1, TP. Ho Chi Minh", order.notes(),
+				invoiceLines(orderId));
 	}
 
 	private InvoiceDto invoiceDto(InvoiceRecord invoice) {
+		OrderRecord order = orderRecord(invoice.orderId());
 		return new InvoiceDto(invoice.id().toString(), invoice.invoiceNumber(), invoice.orderId().toString(),
 				invoice.orderNumber(), invoice.customerId().toString(), invoice.customerName(), invoice.totalAmount(),
 				invoice.taxAmount(), invoice.status(), invoice.issueDate().toString(), invoice.dueDate().toString(),
-				invoice.paidAt() == null ? null : iso(invoice.paidAt()), iso(invoice.createdAt()));
+				invoice.paidAt() == null ? null : iso(invoice.paidAt()), iso(invoice.createdAt()),
+				order.customerEmail(), order.customerPhone(), "ORDER", "CELLPHONES",
+				"0310000000", "350-352 Vo Van Kiet, Quan 1, TP. Ho Chi Minh", order.notes(),
+				invoiceLines(invoice.orderId()));
 	}
 
 	private ShipmentDto shipmentRowDto(ResultSet rs, int rowNum) throws SQLException {
+		UUID orderId = rs.getObject("order_id", UUID.class);
+		OrderRecord order = orderRecord(orderId);
 		OffsetDateTime actualDelivery = rs.getObject("actual_delivery", OffsetDateTime.class);
+		OffsetDateTime createdAt = rs.getObject("created_at", OffsetDateTime.class);
+		OffsetDateTime updatedAt = rs.getObject("updated_at", OffsetDateTime.class);
+		String shipmentStatus = rs.getString("status");
 		return new ShipmentDto(rs.getObject("id", UUID.class).toString(),
-				rs.getObject("order_id", UUID.class).toString(), rs.getString("order_number"),
-				rs.getString("tracking_number"), rs.getString("carrier_name"), rs.getString("status"),
+				orderId.toString(), rs.getString("order_number"),
+				rs.getString("tracking_number"), rs.getString("carrier_name"), shipmentStatus,
 				rs.getObject("estimated_delivery", LocalDate.class).toString(),
-				actualDelivery == null ? null : iso(actualDelivery), iso(rs.getObject("created_at", OffsetDateTime.class)),
-				iso(rs.getObject("updated_at", OffsetDateTime.class)));
+				actualDelivery == null ? null : iso(actualDelivery), iso(createdAt), iso(updatedAt),
+				order.customerName(), order.customerPhone(), order.shippingFee(),
+				"CELLPHONES Warehouse, TP. Ho Chi Minh", order.shippingAddress().fullAddress(), null, null,
+				shipmentTrackingHistory(shipmentStatus, rs.getString("order_number"), createdAt, updatedAt, actualDelivery));
 	}
 
 	private ShipmentDto shipmentDto(ShipmentRecord shipment) {
+		OrderRecord order = orderRecord(shipment.orderId());
 		return new ShipmentDto(shipment.id().toString(), shipment.orderId().toString(), shipment.orderNumber(),
 				shipment.trackingNumber(), shipment.carrierName(), shipment.status(),
 				shipment.estimatedDelivery().toString(),
 				shipment.actualDelivery() == null ? null : iso(shipment.actualDelivery()), iso(shipment.createdAt()),
-				iso(shipment.updatedAt()));
+				iso(shipment.updatedAt()), order.customerName(), order.customerPhone(), order.shippingFee(),
+				"CELLPHONES Warehouse, TP. Ho Chi Minh", order.shippingAddress().fullAddress(), null, null,
+				shipmentTrackingHistory(shipment.status(), shipment.orderNumber(), shipment.createdAt(), shipment.updatedAt(),
+						shipment.actualDelivery()));
+	}
+
+	private List<InvoiceLineDto> invoiceLines(UUID orderId) {
+		return jdbc.query("""
+				SELECT product_id, variant_id, product_name, product_image, variant_name, sku,
+				       quantity, unit_price, original_price, discount, total_price
+				FROM order_items
+				WHERE order_id = ?
+				ORDER BY id
+				""", (rs, rowNum) -> new InvoiceLineDto(
+				rs.getObject("product_id", UUID.class).toString(),
+				uuidString(rs, "variant_id"),
+				rs.getString("product_name"),
+				rs.getString("product_image"),
+				rs.getString("variant_name"),
+				rs.getString("sku"),
+				rs.getInt("quantity"),
+				rs.getLong("unit_price"),
+				rs.getObject("original_price") == null ? null : rs.getLong("original_price"),
+				rs.getLong("discount"),
+				rs.getLong("total_price")), orderId);
+	}
+
+	private List<ShipmentTrackingEventDto> shipmentTrackingHistory(String status, String orderNumber,
+			OffsetDateTime createdAt, OffsetDateTime updatedAt, OffsetDateTime actualDelivery) {
+		List<ShipmentTrackingEventDto> events = new ArrayList<>();
+		events.add(new ShipmentTrackingEventDto("AWAITING_PICKUP", "Dang cho lay hang",
+				"Don hang " + orderNumber + " da tao thong tin van chuyen.", iso(createdAt)));
+		if (List.of("IN_TRANSIT", "DELIVERED", "FAILED").contains(status)) {
+			events.add(new ShipmentTrackingEventDto("IN_TRANSIT", "Dang van chuyen",
+					"Don vi van chuyen da nhan hang.", iso(updatedAt)));
+		}
+		if ("DELIVERED".equals(status) && actualDelivery != null) {
+			events.add(new ShipmentTrackingEventDto("DELIVERED", "Da giao hang",
+					"Don hang da duoc giao thanh cong.", iso(actualDelivery)));
+		}
+		if ("FAILED".equals(status)) {
+			events.add(new ShipmentTrackingEventDto("FAILED", "Giao hang that bai",
+					"Don hang giao khong thanh cong, vui long lien he ho tro.", iso(updatedAt)));
+		}
+		return events;
 	}
 
 	private PaymentRecord paymentRecord(ResultSet rs, int rowNum) throws SQLException {
@@ -1625,6 +2062,45 @@ public class OrderService {
 				payment.paidAt() == null ? null : iso(payment.paidAt()), iso(payment.createdAt()));
 	}
 
+	private List<PaymentProofDto> paymentProofs(UUID paymentId) {
+		return jdbc.query("""
+				SELECT id, payment_id, order_id, customer_id, proof_url, note, amount, method, transaction_ref, status, created_at
+				FROM payment_proofs
+				WHERE payment_id = ?
+				ORDER BY created_at DESC
+				""", this::paymentProofRow, paymentId);
+	}
+
+	private PaymentProofDto paymentProof(UUID proofId) {
+		return jdbc.queryForObject("""
+				SELECT id, payment_id, order_id, customer_id, proof_url, note, amount, method, transaction_ref, status, created_at
+				FROM payment_proofs
+				WHERE id = ?
+				""", this::paymentProofRow, proofId);
+	}
+
+	private PaymentProofDto paymentProofRow(ResultSet rs, int rowNum) throws SQLException {
+		return new PaymentProofDto(rs.getObject("id", UUID.class).toString(),
+				rs.getObject("payment_id", UUID.class).toString(), rs.getObject("order_id", UUID.class).toString(),
+				rs.getObject("customer_id", UUID.class).toString(), rs.getString("proof_url"), rs.getString("note"),
+				rs.getLong("amount"), rs.getString("method"), rs.getString("transaction_ref"), rs.getString("status"),
+				iso(rs.getObject("created_at", OffsetDateTime.class)));
+	}
+
+	private WarrantySeedLine warrantySeedLine(ResultSet rs, int rowNum) throws SQLException {
+		return new WarrantySeedLine(rs.getObject("order_item_id", UUID.class), rs.getObject("product_id", UUID.class),
+				rs.getString("product_name"), rs.getString("product_image"), rs.getString("brand"), rs.getString("sku"),
+				rs.getInt("quantity"), rs.getInt("warranty_months"));
+	}
+
+	private PaymentGatewaySession gatewaySessionRecord(ResultSet rs, int rowNum) throws SQLException {
+		return new PaymentGatewaySession(rs.getObject("id", UUID.class), rs.getObject("payment_id", UUID.class),
+				rs.getObject("order_id", UUID.class), rs.getString("provider"), rs.getString("request_id"),
+				rs.getString("transaction_ref"), rs.getLong("amount"), rs.getString("status"), rs.getString("payment_url"),
+				rs.getString("return_url"), rs.getString("callback_url"), rs.getObject("paid_at", OffsetDateTime.class),
+				rs.getObject("created_at", OffsetDateTime.class));
+	}
+
 	private UUID uuid(String value, String field) {
 		try {
 			return UUID.fromString(value);
@@ -1650,6 +2126,11 @@ public class OrderService {
 
 	private String iso(OffsetDateTime value) {
 		return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(value);
+	}
+
+	private String uuidString(ResultSet rs, String column) throws SQLException {
+		UUID value = rs.getObject(column, UUID.class);
+		return value == null ? null : value.toString();
 	}
 
 	public record CustomerSnapshot(String name, String email, String phone) {
@@ -1688,10 +2169,19 @@ public class OrderService {
 	private record LoyaltySnapshot(UUID id, int points, int totalEarnedPoints, String tier) {
 	}
 
+	private record WarrantySeedLine(UUID orderItemId, UUID productId, String productName, String productImage, String brand,
+			String sku, int quantity, int warrantyMonths) {
+	}
+
 	private record PaymentRecord(UUID id, UUID orderId, String orderNumber, UUID customerId, String customerName,
 			String customerPhone, long amount, long paidAmount, long remainingAmount, LocalDate dueDate, String status,
 			String method, String transactionRef, OffsetDateTime paidAt, Long refundAmount, String refundReason,
 			String refundMethod, OffsetDateTime refundedAt, OffsetDateTime createdAt) {
+	}
+
+	private record PaymentGatewaySession(UUID id, UUID paymentId, UUID orderId, String provider, String requestId,
+			String transactionRef, long amount, String status, String paymentUrl, String returnUrl, String callbackUrl,
+			OffsetDateTime paidAt, OffsetDateTime createdAt) {
 	}
 
 	private record InvoiceRecord(UUID id, String invoiceNumber, UUID orderId, String orderNumber, UUID customerId,

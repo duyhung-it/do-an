@@ -44,13 +44,13 @@ const CHART_COLORS = ['#2563eb', '#7c3aed', '#db2777', '#ea580c', '#16a34a', '#0
 const DATA_SOURCES: { key: ReportDataSource; label: string; desc: string; icon: React.ReactNode }[] = [
   { key: 'Đơn hàng', label: 'Đơn hàng', desc: 'Phân tích đơn hàng', icon: <ShoppingCart className="h-6 w-6" /> },
   { key: 'Sản phẩm', label: 'Sản phẩm', desc: 'Danh mục & giá', icon: <Package className="h-6 w-6" /> },
-  { key: 'NCC', label: 'Nhà cung cấp', desc: 'Doanh thu & đánh giá', icon: <Users className="h-6 w-6" /> },
+  { key: 'NCC', label: 'Cửa hàng', desc: 'Doanh thu & đánh giá', icon: <Users className="h-6 w-6" /> },
   { key: 'Tồn kho', label: 'Tồn kho', desc: 'Số lượng & giá trị', icon: <WarehouseIcon className="h-6 w-6" /> },
   { key: 'Doanh thu', label: 'Doanh thu', desc: 'Theo kỳ & tăng trưởng', icon: <DollarSign className="h-6 w-6" /> },
-  { key: 'Công nợ', label: 'Công nợ', desc: 'Thanh toán & quá hạn', icon: <CreditCard className="h-6 w-6" /> },
+  { key: 'Công nợ', label: 'Thanh toán', desc: 'Thanh toán & quá hạn', icon: <CreditCard className="h-6 w-6" /> },
   { key: 'Hoá đơn', label: 'Hoá đơn', desc: 'Xuất & trạng thái', icon: <FileText className="h-6 w-6" /> },
   { key: 'Trả hàng', label: 'Trả hàng', desc: 'Lý do & hoàn tiền', icon: <RotateCcw className="h-6 w-6" /> },
-  { key: 'RFQ', label: 'RFQ', desc: 'Yêu cầu báo giá', icon: <ClipboardList className="h-6 w-6" /> },
+  { key: 'RFQ', label: 'Báo giá', desc: 'Yêu cầu báo giá', icon: <ClipboardList className="h-6 w-6" /> },
   { key: 'Ngân sách', label: 'Ngân sách', desc: 'Phân bổ & sử dụng', icon: <Wallet className="h-6 w-6" /> },
 ];
 

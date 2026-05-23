@@ -22,7 +22,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Badge } from '../ui/badge';
 import { Switch } from '../ui/switch';
 import { Avatar, AvatarFallback } from '../ui/avatar';
-import { activityApi } from '../../services/adminApi';
+import { adminActivityLogApi, ActivityLogFilter, ActivityLogStats } from '../../services/adminBackendApi';
 import { toast } from 'sonner';
 import type {
   ActivityLog, ActivityAction, PaginationParams, SortParams,
@@ -116,15 +116,15 @@ const filterConfigs: FilterConfig[] = [
   ]},
   { key: 'userRole', label: 'Vai trò', type: 'select', options: [
     { label: 'Admin', value: 'admin' },
-    { label: 'Nhà cung cấp', value: 'seller' },
+    { label: 'Đối tác', value: 'seller' },
     { label: 'Người mua', value: 'buyer' },
   ]},
   { key: 'entity', label: 'Đối tượng', type: 'select', options: [
     { label: 'Sản phẩm', value: 'Sản phẩm' },
     { label: 'Đơn hàng', value: 'Đơn hàng' },
     { label: 'Người dùng', value: 'Người dùng' },
-    { label: 'RFQ', value: 'RFQ' },
-    { label: 'Hợp đồng', value: 'Hợp đồng' },
+    { label: 'Báo giá', value: 'RFQ' },
+    { label: 'Thỏa thuận', value: 'Hợp đồng' },
     { label: 'Khuyến mãi', value: 'Khuyến mãi' },
     { label: 'Cấu hình', value: 'Cấu hình' },
   ]},
@@ -146,31 +146,52 @@ export function AdminActivityLog() {
   // --- Timeline state ---
   const [timelineVisible, setTimelineVisible] = useState(20);
 
-  // --- Stats ---
-  const [stats, setStats] = useState<{
-    byAction: Record<string, number>;
-    byDay: { date: string; count: number }[];
-    byUser: { userName: string; count: number }[];
-    todayCount: number;
-    weekCount: number;
-    monthCount: number;
-  } | null>(null);
+  const [stats, setStats] = useState<ActivityLogStats | null>(null);
 
   const autoRefreshRef = useRef(autoRefresh);
   autoRefreshRef.current = autoRefresh;
 
+  // Map BE ActivityLogDto → UI ActivityLog shape
+  function mapBeLog(raw: any): ActivityLog {
+    return {
+      id: raw.id,
+      userId: raw.actorId ?? '',
+      userName: raw.actorName ?? 'Admin',
+      userRole: 'admin',
+      action: raw.action ?? '',
+      entity: raw.entityType ?? '',
+      entityId: raw.entityId ?? '',
+      entityName: raw.entityId ?? '',
+      details: raw.note ?? '',
+      ipAddress: '',
+      userAgent: '',
+      createdAt: raw.createdAt ?? '',
+    } as unknown as ActivityLog;
+  }
+
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
-      const [allRes, pageRes, statsRes] = await Promise.all([
-        activityApi.getPaginated({ page: 1, pageSize: 5000 }),
-        activityApi.getPaginated(pagination, sort.field ? sort : undefined, filters, search || undefined),
-        activityApi.getStats(),
+      // Build BE filter from local filter state
+      const actionFilter = filters.find(f => f.key === 'action')?.value as string | undefined;
+      const entityFilter = filters.find(f => f.key === 'entity')?.value as string | undefined;
+      const beFilter: ActivityLogFilter = {
+        action: actionFilter,
+        entity: entityFilter,
+        search: search || undefined,
+      };
+
+      const [pageRes, statsRes] = await Promise.all([
+        adminActivityLogApi.getPaginated(pagination, beFilter),
+        adminActivityLogApi.stats(),
       ]);
-      setAllLogs(allRes.data);
-      setLogs(pageRes.data);
+      const pageMapped = (pageRes.data ?? []).map(mapBeLog);
+      setAllLogs(pageMapped); // use page data for timeline too
+      setLogs(pageMapped);
       setTotal(pageRes.total);
       setStats(statsRes);
+    } catch {
+      // show empty state on error
     } finally {
       setLoading(false);
     }
@@ -208,7 +229,7 @@ export function AdminActivityLog() {
   // --- Biểu đồ hành động hôm nay ---
   const actionChartData = useMemo(() => {
     if (!stats) return [];
-    return Object.entries(stats.byAction).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+    return (stats.byAction ?? []).map(r => ({ name: r.status, count: Number(r.count) })).sort((a, b) => b.count - a.count);
   }, [stats]);
 
   // --- Top 10 người dùng hoạt động ---

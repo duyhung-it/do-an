@@ -5,9 +5,12 @@ import java.util.UUID;
 
 import com.b2b.ecommerce.common.ApiResponse;
 import com.b2b.ecommerce.common.PageRequestParams;
+import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -41,6 +44,44 @@ public class PaymentController {
 			@RequestHeader(name = "X-User-Id", required = false) String userId,
 			@PathVariable String id) {
 		return ApiResponse.ok(orders.customerPayment(userId(userId), id));
+	}
+
+	@GetMapping("/{id}/proofs")
+	public ApiResponse<List<PaymentProofDto>> paymentProofs(
+			@RequestHeader(name = "X-User-Id", required = false) String userId,
+			@PathVariable String id) {
+		return ApiResponse.ok(orders.customerPaymentProofs(userId(userId), id));
+	}
+
+	@PostMapping("/{id}/proof")
+	public ApiResponse<PaymentProofDto> submitPaymentProof(
+			@RequestHeader(name = "X-User-Id", required = false) String userId,
+			@PathVariable String id,
+			@Valid @RequestBody PaymentProofRequest request) {
+		return ApiResponse.ok(orders.submitPaymentProof(userId(userId), id, request));
+	}
+
+	@PostMapping("/{id}/gateway-session")
+	public ApiResponse<PaymentGatewaySessionDto> createGatewaySession(
+			@RequestHeader(name = "X-User-Id", required = false) String userId,
+			@PathVariable String id,
+			@RequestBody CreatePaymentSessionRequest request) {
+		return ApiResponse.ok(orders.createGatewaySession(userId(userId), id, request));
+	}
+
+	@PostMapping("/gateway/callback")
+	public ApiResponse<PaymentGatewayResultDto> gatewayCallback(@RequestBody PaymentGatewayCallbackRequest request) {
+		return ApiResponse.ok(orders.gatewayCallback(request));
+	}
+
+	@GetMapping("/gateway/return")
+	public ApiResponse<PaymentGatewayResultDto> gatewayReturn(
+			@RequestParam String requestId,
+			@RequestParam(required = false) String provider,
+			@RequestParam(required = false) String transactionRef,
+			@RequestParam(defaultValue = "SUCCESS") String status,
+			@RequestParam(required = false) Long amount) {
+		return ApiResponse.ok(orders.gatewayReturn(provider, requestId, transactionRef, status, amount));
 	}
 
 	private UUID userId(String value) {

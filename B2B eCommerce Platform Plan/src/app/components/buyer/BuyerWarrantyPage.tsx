@@ -35,10 +35,12 @@ import type {
 
 type WarrantyRow = Warranty & { daysRemaining: number };
 
+const getWarrantyStoreName = (item: { sellerCompany?: string }) => item.sellerCompany || 'CELLPHONES';
+
 const warrantyColumns: ColumnConfig[] = [
   { key: 'warrantyNumber', label: 'Mã BH', visible: true, sortable: true },
   { key: 'productName', label: 'Sản phẩm', visible: true, sortable: true },
-  { key: 'sellerCompany', label: 'NCC', visible: true, sortable: true },
+  { key: 'sellerCompany', label: 'Cửa hàng', visible: true, sortable: true },
   { key: 'endDate', label: 'Hết hạn', visible: true, sortable: true },
   { key: 'daysRemaining', label: 'Còn lại', visible: true, sortable: true,
     render: (item: WarrantyRow) => {
@@ -114,7 +116,7 @@ function WarrantyCard({ warranty, onClick }: { warranty: WarrantyRow; onClick: (
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm truncate" style={{ fontFamily: 'var(--font-heading)' }}>{warranty.productName}</p>
-            <p className="text-xs text-muted-foreground truncate">{warranty.sellerCompany}</p>
+            <p className="text-xs text-muted-foreground truncate">{getWarrantyStoreName(warranty)}</p>
             <div className="flex items-center gap-2 mt-1">
               <Badge variant="outline" className="text-[10px]">{warranty.warrantyNumber}</Badge>
               <span className="text-[10px] text-muted-foreground">{warranty.orderNumber}</span>
@@ -291,7 +293,7 @@ function MultiStepClaimDialog({ open, onOpenChange, warranties, onCreated }: {
                         <div className="flex items-center gap-2 text-xs text-muted-foreground mt-0.5">
                           <span>{w.warrantyNumber}</span>
                           <span>·</span>
-                          <span>{w.sellerCompany}</span>
+                          <span>{getWarrantyStoreName(w)}</span>
                           <span>·</span>
                           <span className={w.daysRemaining <= 30 ? 'text-amber-500' : 'text-emerald-500'}>
                             {w.daysRemaining} ngày
@@ -349,7 +351,7 @@ function MultiStepClaimDialog({ open, onOpenChange, warranties, onCreated }: {
               {[
                 { label: 'Sản phẩm', value: selectedW.productName },
                 { label: 'Loại', value: claimType },
-                { label: 'NCC', value: selectedW.sellerCompany },
+                { label: 'Cửa hàng', value: getWarrantyStoreName(selectedW) },
                 { label: 'Mô tả', value: description.slice(0, 100) + (description.length > 100 ? '...' : '') },
                 { label: 'Ảnh', value: imageUrl ? '1 ảnh đính kèm' : 'Không có ảnh' },
               ].map(item => (
@@ -407,7 +409,7 @@ function WarrantyDetailDialog({ warranty, claims, open, onOpenChange }: {
           <div className="grid grid-cols-2 gap-3">
             {[
               { label: 'Sản phẩm', value: warranty.productName },
-              { label: 'NCC', value: warranty.sellerCompany },
+              { label: 'Cửa hàng', value: getWarrantyStoreName(warranty) },
               { label: 'Đơn hàng', value: warranty.orderNumber },
               { label: 'Trạng thái', value: warranty.status, badge: true },
               { label: 'Bắt đầu', value: warranty.startDate },
@@ -485,7 +487,7 @@ function ClaimDetailDialog({ claim, open, onOpenChange }: {
           <div className="grid grid-cols-2 gap-3">
             {[
               { label: 'Sản phẩm', value: claim.productName },
-              { label: 'NCC', value: claim.sellerCompany },
+              { label: 'Cửa hàng', value: getWarrantyStoreName(claim) },
               { label: 'Loại', value: claim.claimType },
               { label: 'Ngày gửi', value: new Date(claim.createdAt).toLocaleDateString('vi-VN') },
             ].map(item => (
@@ -501,7 +503,7 @@ function ClaimDetailDialog({ claim, open, onOpenChange }: {
           </div>
           {claim.resolution && (
             <div className="p-3 rounded-xl bg-blue-50/50 dark:bg-blue-950/10 border border-blue-100/50 dark:border-blue-900/20">
-              <span className="text-xs text-blue-600 dark:text-blue-400" style={{ fontFamily: 'var(--font-heading)' }}>Phản hồi NCC</span>
+              <span className="text-xs text-blue-600 dark:text-blue-400" style={{ fontFamily: 'var(--font-heading)' }}>Phản hồi trung tâm bảo hành</span>
               <p className="text-sm text-muted-foreground mt-1">{claim.resolution}</p>
             </div>
           )}

@@ -4,6 +4,294 @@ Source of truth: `B2B eCommerce Platform Plan/ba-docs`
 
 Focus hien tai: B2C core flow, uu tien storefront -> cart -> checkout -> order operations.
 
+## 2026-05-23 Buyer Profile DB Bridge
+
+Hoan thanh current-user profile bridge theo BA trong luc security/JWT van deferred:
+
+- Them Flyway `V27__customer_profiles.sql`.
+- Them bang PostgreSQL `customer_profiles`.
+- Seed profile cho demo customer `00000000-0000-4000-8000-000000000199`.
+- Them endpoint:
+  - `GET /api/v1/users/me`
+  - `PATCH /api/v1/users/me`
+  - `POST /api/v1/users/me/avatar`
+  - `GET /api/v1/users/me/stats`
+- Stats tinh tu `orders` va `loyalty_programs`.
+- `X-User-Id` van la identity bridge tam thoi cho toi khi bat security.
+
+Docs da cap nhat:
+
+- `be/docs/FE_BUYER_PROFILE_CONTRACT.md`
+- `be/docs/FE_BUYER_BACKEND_GAPS.md`
+- `be/docs/BA_TO_BE_FE_MAPPING.md`
+
+Verify:
+
+- `mvn test`: passed, 24 tests, 0 failures, 0 errors.
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+
+## 2026-05-23 Buyer Review Helpful Idempotency
+
+Hoan thanh gap review helpful cho FE buyer:
+
+- `PATCH /api/v1/reviews/{id}/helpful` idempotent theo `X-User-Id + reviewId`.
+- Lan dau cua user tang `helpfulCount` va tra `helpful=true`.
+- Retry/double-click cung user khong tang count lan nua, van tra `helpful=true`.
+
+Docs da cap nhat:
+
+- `be/docs/FE_BUYER_BACKEND_GAPS.md`
+
+Verify:
+
+- `mvn test`: passed, 23 tests, 0 failures, 0 errors.
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+
+## 2026-05-23 Buyer Public Installments
+
+Hoan thanh public installment endpoints theo BA cho product detail/checkout:
+
+- Them `InstallmentPlanController`.
+- Them `GET /api/v1/installment-plans` doc BA section 5.1.
+- Them `POST /api/v1/installment-plans/calculate` doc BA section 5.2.
+- Tinh monthly payment theo cong thuc amortization va round up den 1,000 VND.
+- Them error codes:
+  - `INSTALLMENT_PLAN_NOT_FOUND`
+  - `INSTALLMENT_AMOUNT_TOO_LOW`
+  - `INSTALLMENT_AMOUNT_TOO_HIGH`
+  - `INSTALLMENT_MONTHS_INVALID`
+- Current DB luu 1 `months` value per plan row, public response tra `months: number[]` de FE/BA compatible.
+
+Docs da cap nhat:
+
+- `be/docs/FE_INSTALLMENT_CONTRACT.md`
+- `be/docs/FE_BUYER_BACKEND_GAPS.md`
+- `be/docs/BA_TO_BE_FE_MAPPING.md`
+
+Verify:
+
+- `mvn test`: passed, 22 tests, 0 failures, 0 errors.
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+
+## 2026-05-23 Buyer Saved Addresses Checkout
+
+Hoan thanh saved address production bridge theo BA cho checkout:
+
+- Them Flyway `V26__customer_addresses.sql`.
+- Them bang PostgreSQL `customer_addresses` va seed 10 dia chi cho demo customer `00000000-0000-4000-8000-000000000199`.
+- Chuyen `GET/POST/PATCH/DELETE /api/v1/users/me/addresses` sang DB-backed thay vi in-memory.
+- Giu rule moi user chi co 1 default address.
+- `POST /api/v1/orders` bay gio nhan `shippingAddressId`, validate ownership bang `X-User-Id`, snapshot dia chi vao `orders.shipping_address`, va luu `orders.shipping_address_id`.
+- Inline `shippingAddress` van duoc giu de FE tuong thich.
+
+Docs da cap nhat:
+
+- `be/docs/FE_BUYER_PROFILE_CONTRACT.md`
+- `be/docs/FE_ORDER_CONTRACT.md`
+- `be/docs/FE_BUYER_BACKEND_GAPS.md`
+- `be/docs/BA_TO_BE_FE_MAPPING.md`
+
+Verify:
+
+- `mvn test`: passed, 21 tests, 0 failures, 0 errors.
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+
+## Current Status - 2026-05-20
+
+FE buyer/admin gap review da duoc xu ly de FE ghep demo data day du hon.
+
+Da implement:
+
+- Flyway migration `V23__buyer_demo_gap_data.sql`.
+- Default buyer demo user `00000000-0000-4000-8000-000000000199` co them:
+  - 10 orders `QA-BUYER-0001..0010` phu cac status `PENDING`, `CONFIRMED`, `SHIPPING`, `DELIVERED`, `CANCELLED`, `RETURNED`.
+  - 10 payments phu `UNPAID`, `PAID`, `OVERDUE`, `FAILED`, `REFUNDED`, `PARTIALLY_REFUNDED`.
+  - 10 invoices phu `PENDING`, `PAID`, `OVERDUE`, `CANCELLED`.
+  - 10 shipments phu `AWAITING_PICKUP`, `IN_TRANSIT`, `DELIVERED`, `FAILED`.
+  - 10 returns, 10 warranty items, 10 warranty claims, 10 trade-in requests.
+  - 10 notifications phu `ORDER`, `PAYMENT`, `PROMOTION`, `LOYALTY`, `SYSTEM`, `REVIEW`.
+  - Loyalty program co diem de FE test redeem va 10 transactions phu `EARN`, `REDEEM`, `EXPIRE`, `BONUS`.
+- Gap docs da cap nhat:
+  - `be/docs/FE_BUYER_BACKEND_GAPS.md`
+  - `be/docs/FE_ADMIN_BACKEND_GAPS.md`
+
+Verify:
+
+- `mvn package -DskipTests`: passed.
+- `mvn test`: blocked by local Windows native memory/paging crash trong forked JVM sau khi them V23, khong phai compile error. Can chay lai khi may giai phong RAM/paging file hoac tren CI.
+
+### In Progress / Next
+
+Nen lam tiep theo theo BA:
+
+1. Security/RBAC/ownership that khi khong con defer.
+2. Real external MOMO/VNPAY credentials/signature hardening neu can production gateway.
+
+## Current Status - 2026-05-20
+
+Loyalty reverse points on refund/return theo BA da xong.
+
+Da implement:
+
+- Them `LoyaltyEventService.reverseEarnedPoints(orderId, reason)`.
+- Admin payment refund `POST /api/v1/admin/payments/{id}/refund` se dao diem da earn tu order neu co.
+- Admin return status `PROCESSING -> REFUNDED` se dao diem da earn tu order neu co.
+- Idempotent theo order: neu da co transaction `EXPIRE` mo ta `Dao diem...` thi khong tao trung.
+- Khong lam balance am: so diem dao = `min(currentPoints, earnedPointsFromOrder)`.
+- Giu `totalEarnedPoints` de khong ha hang thanh vien; tru `totalSpend` voi floor `0`.
+- Tao notification `LOYALTY` khi diem bi dao.
+- FE contracts cap nhat:
+  - `be/docs/FE_LOYALTY_CONTRACT.md`
+  - `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+  - `be/docs/FE_AFTER_SALES_CUSTOMER_CONTRACT.md`
+- Mapping BA -> BE/FE cap nhat: `be/docs/BA_TO_BE_FE_MAPPING.md`.
+
+Verify:
+
+- `mvn test`: passed.
+- Test suite: 20 tests, 0 failures, 0 errors.
+
+### In Progress / Next
+
+Nen lam tiep theo theo BA:
+
+1. Security/RBAC/ownership that khi khong con defer.
+2. Real external MOMO/VNPAY credentials/signature hardening neu can production gateway.
+
+## Current Status - 2026-05-20
+
+Automatic warranty item creation theo BA delivered side effect da xong.
+
+Da implement:
+
+- Tu dong tao `warranty_items` khi order chuyen `SHIPPING -> DELIVERED`.
+- Ho tro ca 2 duong delivered:
+  - `PATCH /api/v1/admin/orders/{id}/status`
+  - `PATCH /api/v1/admin/shipments/{id}/status` khi shipment delivered dong thoi close order.
+- Tao 1 warranty item cho moi purchased unit.
+- Lay `warrantyMonths` tu `products.warranty`, fallback `12`.
+- Sinh `serialNumber` local dang `WR-{orderNumber}-{sku-or-productId}-{unit}`.
+- Idempotent theo `order_item_id`: side effect lap lai khong tao trung.
+- FE contract cap nhat: `be/docs/FE_AFTER_SALES_CUSTOMER_CONTRACT.md`.
+- Mapping BA -> BE/FE cap nhat: `be/docs/BA_TO_BE_FE_MAPPING.md`.
+
+Verify:
+
+- `mvn test`: passed.
+- Test suite: 20 tests, 0 failures, 0 errors.
+
+### In Progress / Next
+
+Nen lam tiep theo theo BA:
+
+1. Security/RBAC/ownership that khi khong con defer.
+
+## Current Status - 2026-05-20
+
+Automatic notification side effects theo BA da xong cho cac flow B2C chinh.
+
+Da implement:
+
+- Them public `NotificationEventService` de cac module order/after-sales phat sinh notification transaction-safe.
+- Tu dong tao notification cho:
+  - Order created/cancelled/status updated/delivered.
+  - Payment paid by COD/admin/gateway, payment failed/cancelled, payment refunded.
+  - Loyalty points awarded on delivered order.
+  - Customer return created va admin return status update.
+  - Customer warranty claim created va admin warranty status update.
+  - Customer trade-in accept/reject valuation.
+- Notification ton trong in-app preference cho cac type co the tat; `ORDER`, `PAYMENT`, `SYSTEM` van mandatory theo rule da co.
+- FE contract cap nhat: `be/docs/FE_NOTIFICATION_CONTRACT.md`.
+- Mapping BA -> BE/FE cap nhat: `be/docs/BA_TO_BE_FE_MAPPING.md`.
+
+Verify:
+
+- `mvn test`: passed.
+- Test suite: 20 tests, 0 failures, 0 errors.
+
+### In Progress / Next
+
+Nen lam tiep theo theo BA:
+
+1. Security/RBAC/ownership that khi khong con defer.
+
+## Current Status - 2026-05-20
+
+Payment gateway bridge theo BA checkout/payment side effects da xong cho FE ghep local.
+
+Da implement:
+
+- Flyway migration `V22__payment_gateway_sessions.sql`.
+- Bang `payment_gateway_sessions` cho request id, provider, transaction ref, amount, status, return/callback URL va raw payload.
+- Customer online payment session:
+  - `POST /api/v1/payments/{id}/gateway-session`
+- Gateway callback/return:
+  - `POST /api/v1/payments/gateway/callback`
+  - `GET /api/v1/payments/gateway/return`
+- Provider supported: `MOMO`, `VNPAY`.
+- Callback idempotent, cap nhat cung transaction:
+  - `payments.status = PAID`
+  - `payments.paid_amount = amount`
+  - `payments.remaining_amount = 0`
+  - `payments.transaction_ref`
+  - `orders.payment_status = PAID`
+  - invoice `PENDING/OVERDUE -> PAID` neu invoice da duoc tao
+- FE contract cap nhat: `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`.
+- Mapping BA -> BE/FE cap nhat: `be/docs/BA_TO_BE_FE_MAPPING.md`.
+
+Verify:
+
+- `mvn test`: passed.
+- Test suite: 20 tests, 0 failures, 0 errors.
+- Flyway da apply version `22 - payment gateway sessions`.
+
+### In Progress / Next
+
+Nen lam tiep theo theo BA:
+
+1. Security/RBAC/ownership that khi khong con defer.
+2. Loyalty reverse points on refund/return.
+
+## Current Status - 2026-05-17
+
+Customer notifications theo `ba-docs/08-api-loyalty-notifications.md` da xong cho FE ghep.
+
+Da implement:
+
+- Flyway migration `V21__customer_notifications.sql`.
+- Them `app_notifications.read_at`.
+- Them bang `notification_preferences`.
+- Customer notification endpoints:
+  - `GET /api/v1/notifications`
+  - `GET /api/v1/notifications/unread-count`
+  - `PATCH /api/v1/notifications/{id}/read`
+  - `PATCH /api/v1/notifications/read-all`
+  - `DELETE /api/v1/notifications/{id}`
+  - `DELETE /api/v1/notifications`
+- Notification preferences:
+  - `GET /api/v1/notifications/preferences`
+  - `PATCH /api/v1/notifications/preferences`
+- Rule theo BA:
+  - `ORDER`, `PAYMENT`, `SYSTEM` khong the tat qua kenh `inApp`.
+  - List notifications tra `meta.unreadCount`.
+  - Delete bulk chi xoa notifications da doc.
+- FE contract moi: `be/docs/FE_NOTIFICATION_CONTRACT.md`.
+- Mapping BA -> BE/FE da cap nhat: `be/docs/BA_TO_BE_FE_MAPPING.md`.
+
+Verify:
+
+- `mvn test`: passed.
+- Test suite: 19 tests, 0 failures, 0 errors.
+- Flyway da apply version `21 - customer notifications`.
+
+### In Progress / Next
+
+Nen lam tiep theo theo BA:
+
+1. Payment gateway callback cho MOMO/VNPAY.
+2. Security/RBAC/ownership that khi khong con defer.
+3. Automatic notification side effects theo order/payment/return/warranty.
+
 ## Current Status - 2026-05-17
 
 Admin BA completion theo `ba-docs/09-api-admin.md` da xong cho FE ghep.
@@ -58,9 +346,9 @@ Verify:
 
 Nen lam tiep theo theo BA:
 
-1. Customer notification inbox/preferences trong `08-api-loyalty-notifications.md`.
-2. Payment gateway callback cho MOMO/VNPAY.
-3. Security/RBAC/ownership that khi khong con defer.
+1. Payment gateway callback cho MOMO/VNPAY.
+2. Security/RBAC/ownership that khi khong con defer.
+3. Automatic notification side effects theo order/payment/return/warranty.
 
 ## Current Status - 2026-05-17
 
@@ -908,3 +1196,101 @@ Sau moi lan xong mot module:
 - Cap nhat contract FE tuong ung trong `be/docs`.
 - Cap nhat plan tong trong `be/docs/BE_IMPLEMENTATION_PLAN_FROM_BA_DOCS.md`.
 - Chi ghi endpoint backend da implement that, khong ghi mock endpoint thanh contract moi.
+
+## 2026-05-23 Buyer FE Gap Follow-up
+
+Hoan thanh them 2 gap FE buyer dang can de ghep luong B2C chinh:
+
+- Catalog `GET /api/v1/products?categoryId=...` bay gio match category duoc chon va toan bo category con, dung hon flow BA khi FE bam vao category cha.
+- Buyer/admin order summary `items.firstItem` bay gio co them `productId` va `variantId`, giup FE dieu huong tu order card ve product detail khong can fallback.
+
+Docs da cap nhat:
+
+- `be/docs/FE_BUYER_BACKEND_GAPS.md`
+- `be/docs/FE_CATALOG_CONTRACT.md`
+- `be/docs/FE_ORDER_CONTRACT.md`
+- `be/docs/FE_ADMIN_ORDER_CONTRACT.md`
+- `be/docs/BA_TO_BE_FE_MAPPING.md`
+
+Verify:
+
+- `mvn test`: passed, 20 tests, 0 failures, 0 errors.
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+
+## 2026-05-23 Buyer Product Combos
+
+Hoan thanh product combo public contract cho FE product detail:
+
+- Them Flyway `V25__buyer_public_combos.sql` seed 2 active combos tu UUID catalog products.
+- Them typed controller `BuyerComboController`.
+- Them endpoint:
+  - `GET /api/v1/combos`
+  - `GET /api/v1/combos/{id}`
+  - `GET /api/v1/products/{productId}/combos`
+- Response gom `products[]`, `totalOriginalPrice`, `comboPrice`, `savings`, `savingsPercent`, `image`.
+
+Docs da cap nhat:
+
+- `be/docs/FE_CATALOG_CONTRACT.md`
+- `be/docs/FE_BUYER_BACKEND_GAPS.md`
+- `be/docs/BA_TO_BE_FE_MAPPING.md`
+
+Verify:
+
+- `mvn test`: passed, 20 tests, 0 failures, 0 errors.
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+
+## 2026-05-23 Buyer Payment Proof
+
+Hoan thanh gap customer payment proof/manual `recordTransaction` cho FE buyer:
+
+- Them Flyway `V24__customer_payment_proofs.sql`.
+- Them bang `payment_proofs` de luu chung tu/chuyen khoan cua customer.
+- Them endpoint:
+  - `POST /api/v1/payments/{id}/proof`
+  - `GET /api/v1/payments/{id}/proofs`
+- Proof co status `PENDING_REVIEW`; khong tu mark payment paid. Admin van xac nhan bang `PATCH /api/v1/admin/payments/{id}/mark-paid`.
+- Ownership theo `X-User-Id`, chan user khac gui proof vao payment khong phai cua minh.
+
+Docs da cap nhat:
+
+- `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+- `be/docs/FE_BUYER_BACKEND_GAPS.md`
+- `be/docs/BA_TO_BE_FE_MAPPING.md`
+
+Verify:
+
+- `mvn test`: passed, 20 tests, 0 failures, 0 errors.
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+
+## 2026-05-23 Buyer After-Sales Detail Cleanup
+
+Giam fallback cho FE buyer sau mua hang:
+
+- `ReturnDto` them `orderNumber`, `refundMethod`, va `items[]` tu `order_items` gom product/variant/image/price snapshot.
+- `WarrantyClaimDto` them `productName`, `productImage`, `brand`, `serialNumber`, va `warrantyStatus` tu `warranty_items`.
+- Cap nhat docs:
+  - `be/docs/FE_AFTER_SALES_CUSTOMER_CONTRACT.md`
+  - `be/docs/FE_BUYER_BACKEND_GAPS.md`
+  - `be/docs/BA_TO_BE_FE_MAPPING.md`
+
+Verify:
+
+- `mvn test`: passed, 20 tests, 0 failures, 0 errors.
+- `mvn package -DskipTests`: compile/testCompile passed, failed only at Spring Boot repackage because `target/b2b-ecommerce-api-0.0.1-SNAPSHOT.jar` was locked by another running process.
+
+## 2026-05-23 Buyer Invoice/Shipment Detail Cleanup
+
+Giam fallback cho FE buyer sau mua hang:
+
+- `InvoiceDto` them `customerEmail`, `customerPhone`, `invoiceType`, seller metadata, `notes`, va `lines[]` lay tu `order_items`.
+- `ShipmentDto` them `customerName`, `customerPhone`, `shippingFee`, `fromAddress`, `toAddress`, `weight`, `dimensions`, va `trackingHistory[]`.
+- Cap nhat docs FE tuong ung:
+  - `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+  - `be/docs/FE_SHIPMENT_CONTRACT.md`
+  - `be/docs/FE_BUYER_BACKEND_GAPS.md`
+
+Verify:
+
+- `mvn test`: passed, 20 tests, 0 failures, 0 errors.
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.

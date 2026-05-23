@@ -2,7 +2,7 @@
 
 Source: `B2B eCommerce Platform Plan/ba-docs/08-api-loyalty-notifications.md`
 
-Status: DONE on 2026-05-17. All endpoints use standard `ApiResponse`. During security-deferred phase, customer ownership is scoped by `X-User-Id`; customer name/email can be passed with `X-User-Name`, `X-User-Email`.
+Status: DONE on 2026-05-20. All endpoints use standard `ApiResponse`. During security-deferred phase, customer ownership is scoped by `X-User-Id`; customer name/email can be passed with `X-User-Name`, `X-User-Email`.
 
 ## Customer Loyalty
 
@@ -29,6 +29,11 @@ Rules:
 - `totalEarnedPoints` is historical earned/bonus total for tier calculation and is not reduced by redeem.
 - Redeem is transactional: subtract points, decrement finite stock, create transaction, create redemption code.
 - Delivered orders award `EARN` points once per order.
+- Payment refund or return refund reverses previously earned order points once per order.
+- Reverse uses transaction `type = EXPIRE`, negative `points`, and description prefix `Dao diem tu don hang ...`.
+- Reverse subtracts at most the customer's current point balance, so `points` never becomes negative.
+- `totalEarnedPoints` is not reduced by reverse; tier is not downgraded.
+- `totalSpend` is reduced by the refunded order amount with floor `0`.
 
 Tier thresholds:
 
@@ -78,3 +83,7 @@ Admin detail returns: `program`, `recentTransactions`, `redemptions`.
 - Customer with loyalty data: `X-User-Id = bc000000-0001-4000-8000-000000000003`.
 - Reward for redeem QA: `dd000000-0003-4000-8000-000000000001`.
 - Admin reward list includes hidden reward `dd000000-0003-4000-8000-000000000004`; customer reward list does not show hidden rewards.
+
+## Notifications
+
+Customer notification inbox and preferences are now split into `be/docs/FE_NOTIFICATION_CONTRACT.md`.

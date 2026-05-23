@@ -12,7 +12,7 @@ import { Button } from '../ui/button';
 import { Separator } from '../ui/separator';
 import { Alert, AlertDescription } from '../ui/alert';
 import { AppBreadcrumb } from '../shared/AppBreadcrumb';
-import { configApi } from '../../services/api';
+import { adminSettingsApi } from '../../services/adminBackendApi';
 import type { SystemConfig } from '../../types';
 import { toast } from 'sonner';
 import {
@@ -23,16 +23,16 @@ import {
 type ConfigErrors = Partial<Record<keyof SystemConfig, string>>;
 
 const DEFAULT_CONFIG: SystemConfig = {
-  siteName: 'B2B Marketplace',
-  siteDescription: 'Sàn thương mại điện tử B2B hàng đầu Việt Nam',
+  siteName: 'CELLPHONES',
+  siteDescription: 'Hệ thống bán lẻ điện thoại và phụ kiện hàng đầu Việt Nam',
   currency: 'VND',
   taxRate: 10,
-  minOrderValue: 100000,
-  defaultPageSize: 10,
+  minOrderValue: 0,
+  defaultPageSize: 20,
   maintenanceMode: false,
   emailNotifications: true,
   autoApproveProducts: false,
-  maxUploadSize: 10,
+  maxUploadSize: 20,
 };
 
 function validateConfig(config: SystemConfig): ConfigErrors {
@@ -63,9 +63,28 @@ export function SystemSettings() {
   const [showResetDialog, setShowResetDialog] = useState(false);
 
   useEffect(() => {
-    configApi.get().then(c => {
+    adminSettingsApi.getAll().then(raw => {
+      // BE returns snake_case keys per BA-docs (after V20 migration)
+      // Also handle camelCase fallback for backward compat
+      const g = (snakeKey: string, camelKey: string, def: unknown) =>
+        raw[snakeKey] ?? raw[camelKey] ?? def;
+      const c: SystemConfig = {
+        siteName:           String(g('site_name',            'siteName',           DEFAULT_CONFIG.siteName)),
+        siteDescription:    String(g('site_description',     'siteDescription',    DEFAULT_CONFIG.siteDescription)),
+        currency:           String(g('currency',             'currency',           DEFAULT_CONFIG.currency)),
+        taxRate:            Number(g('tax_rate',             'taxRate',            DEFAULT_CONFIG.taxRate)),
+        minOrderValue:      Number(g('min_order_value',      'minOrderValue',      DEFAULT_CONFIG.minOrderValue)),
+        defaultPageSize:    Number(g('default_page_size',    'defaultPageSize',    DEFAULT_CONFIG.defaultPageSize)),
+        maintenanceMode:    (v => v === true || v === 'true')(g('maintenance_mode',   'maintenanceMode',   DEFAULT_CONFIG.maintenanceMode)),
+        emailNotifications: (v => v !== false && v !== 'false')(g('email_notifications_enabled', 'emailNotifications', DEFAULT_CONFIG.emailNotifications)),
+        autoApproveProducts:(v => v === true || v === 'true')(g('auto_approve_products','autoApproveProducts', DEFAULT_CONFIG.autoApproveProducts)),
+        maxUploadSize:      Number(g('max_upload_size_mb',   'maxUploadSize',      DEFAULT_CONFIG.maxUploadSize)),
+      };
       setConfig(c);
       setOriginal(c);
+    }).catch(() => {
+      setConfig({ ...DEFAULT_CONFIG });
+      setOriginal({ ...DEFAULT_CONFIG });
     });
   }, []);
 
@@ -89,9 +108,23 @@ export function SystemSettings() {
     }
     setSaving(true);
     try {
-      await configApi.update(config);
+      // Send snake_case keys per BA-docs spec
+      const updates: Record<string, unknown> = {
+        site_name:                   config.siteName,
+        site_description:            config.siteDescription,
+        currency:                    config.currency,
+        tax_rate:                    config.taxRate,
+        default_page_size:           config.defaultPageSize,
+        maintenance_mode:            config.maintenanceMode,
+        email_notifications_enabled: config.emailNotifications,
+        auto_approve_products:       config.autoApproveProducts,
+        max_upload_size_mb:          config.maxUploadSize,
+      };
+      await adminSettingsApi.patch(updates);
       setOriginal(config);
       toast.success('Đã lưu cấu hình');
+    } catch {
+      toast.error('Lưu cấu hình thất bại');
     } finally {
       setSaving(false);
     }

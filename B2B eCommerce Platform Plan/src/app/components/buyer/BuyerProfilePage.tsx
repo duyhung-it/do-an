@@ -53,8 +53,8 @@ function calcProfileCompletion(form: ProfileForm, twoFa: boolean, addressCount: 
     { label: 'Họ tên', done: !!form.fullName.trim() },
     { label: 'Email', done: !!form.email.trim() },
     { label: 'Số điện thoại', done: !!form.phone.trim() },
-    { label: 'Công ty', done: !!form.company.trim() },
-    { label: 'Chức vụ', done: !!form.position.trim() },
+    { label: 'Đơn vị', done: !!form.company.trim() },
+    { label: 'Vai trò', done: !!form.position.trim() },
     { label: 'Mã số thuế', done: !!form.taxId.trim() },
     { label: 'Giới thiệu', done: !!form.bio.trim() },
     { label: 'Xác thực 2FA', done: twoFa },
@@ -71,7 +71,7 @@ function VerificationSteps() {
     { label: 'Email', icon: Mail, verified: true, description: 'Đã xác minh' },
     { label: 'Số điện thoại', icon: Phone, verified: true, description: 'Đã xác minh' },
     { label: 'CCCD/CMND', icon: CreditCard, verified: false, description: 'Chưa xác minh' },
-    { label: 'Công ty', icon: Building2, verified: false, description: 'Chưa xác minh' },
+    { label: 'Hồ sơ', icon: Building2, verified: false, description: 'Chưa xác minh' },
   ];
 
   return (
@@ -240,7 +240,7 @@ export function BuyerProfilePage() {
     phone: '0901234567', company: user?.companyName ?? '',
     position: 'Trưởng phòng thu mua', taxId: '0312345678',
     address: '123 Nguyễn Huệ, Quận 1', city: 'TP. Hồ Chí Minh',
-    district: 'Quận 1', bio: 'Doanh nghiệp nhỏ chuyên nhập khẩu linh kiện điện tử.',
+    district: 'Quận 1', bio: 'Khách hàng thường xuyên quan tâm sản phẩm công nghệ và phụ kiện.',
     avatarUrl: '',
   });
   const [originalForm] = useState<ProfileForm>({ ...form });
@@ -330,7 +330,7 @@ export function BuyerProfilePage() {
   const stats = [
     { label: 'Tổng đơn hàng', value: 12, icon: ShoppingBag, color: 'text-blue-500' },
     { label: 'SP đã mua', value: 45, icon: Package, color: 'text-purple-500' },
-    { label: 'NCC đã mua', value: 6, icon: Building2, color: 'text-teal-500' },
+    { label: 'Cửa hàng đã mua', value: 6, icon: Building2, color: 'text-teal-500' },
     { label: 'Đánh giá', value: 8, icon: Star, color: 'text-yellow-500' },
   ];
   const monthlySpend = useMemo(() =>
@@ -427,7 +427,7 @@ export function BuyerProfilePage() {
         <TabsContent value="info" className="space-y-4">
           {hasChanges && <Alert><AlertCircle className="h-4 w-4" /><AlertDescription>Bạn có thay đổi chưa lưu.</AlertDescription></Alert>}
           <Card>
-            <CardHeader><CardTitle>Thông tin cá nhân</CardTitle><CardDescription>Cập nhật thông tin cá nhân và doanh nghiệp</CardDescription></CardHeader>
+            <CardHeader><CardTitle>Thông tin cá nhân</CardTitle><CardDescription>Cập nhật thông tin cá nhân và liên hệ</CardDescription></CardHeader>
             <CardContent className="space-y-4">
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="grid gap-2">
@@ -448,14 +448,14 @@ export function BuyerProfilePage() {
                   {errors.phone && <p className="text-destructive text-xs">{errors.phone}</p>}
                 </div>
                 <div className="grid gap-2">
-                  <Label>Công ty</Label>
+                  <Label>Đơn vị</Label>
                   <Input value={form.company} onChange={e => updateField('company', e.target.value)} />
                 </div>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <div className="grid gap-2">
-                  <Label>Chức vụ</Label>
-                  <Input value={form.position} onChange={e => updateField('position', e.target.value)} placeholder="VD: Trưởng phòng thu mua" />
+                  <Label>Vai trò</Label>
+                  <Input value={form.position} onChange={e => updateField('position', e.target.value)} placeholder="VD: Khách hàng thân thiết" />
                 </div>
                 <div className="grid gap-2">
                   <Label>Mã số thuế</Label>
@@ -591,7 +591,7 @@ export function BuyerProfilePage() {
                 { label: 'Cập nhật đơn hàng', desc: 'Khi đơn hàng thay đổi trạng thái', key: 'order' },
                 { label: 'Sản phẩm mới', desc: 'Khi có sản phẩm phù hợp', key: 'product' },
                 { label: 'Khuyến mãi', desc: 'Chương trình khuyến mãi', key: 'promo' },
-                { label: 'Tin nhắn', desc: 'Tin nhắn từ NCC', key: 'message' },
+                { label: 'Tin nhắn', desc: 'Tin nhắn từ cửa hàng', key: 'message' },
               ].map((item, i) => (
                 <NotificationPrefItem key={item.key} item={item} isLast={i === 3} />
               ))}
@@ -615,7 +615,7 @@ export function BuyerProfilePage() {
           <div className="grid sm:grid-cols-3 gap-4">
             <Card><CardContent className="p-4 text-center"><p className="text-2xl text-blue-500">{fmtShort(totalSpend * 1000000)} ₫</p><p className="text-muted-foreground">Tổng chi tiêu</p></CardContent></Card>
             <Card><CardContent className="p-4 text-center"><p className="text-2xl text-green-500">{fmtShort(avgOrder)} ₫</p><p className="text-muted-foreground">TB/đơn hàng</p></CardContent></Card>
-            <Card><CardContent className="p-4 text-center"><p className="text-2xl text-purple-500">{stats[2].value}</p><p className="text-muted-foreground">NCC đã giao dịch</p></CardContent></Card>
+            <Card><CardContent className="p-4 text-center"><p className="text-2xl text-purple-500">{stats[2].value}</p><p className="text-muted-foreground">Cửa hàng đã mua</p></CardContent></Card>
           </div>
 
           <Card>

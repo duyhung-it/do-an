@@ -43,7 +43,12 @@ public enum ErrorCode {
 	PAYMENT_ALREADY_PAID(HttpStatus.BAD_REQUEST, "Thanh toan da duoc ghi nhan day du"),
 	PAYMENT_REFUNDED(HttpStatus.BAD_REQUEST, "Thanh toan da hoan tien"),
 	PAYMENT_NOT_PAID(HttpStatus.BAD_REQUEST, "Chi co the hoan tien cho thanh toan da thanh toan"),
+	PAYMENT_GATEWAY_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay phien thanh toan gateway"),
 	REFUND_AMOUNT_EXCEEDS_PAID(HttpStatus.UNPROCESSABLE_ENTITY, "So tien hoan vuot qua so tien da thanh toan"),
+	INSTALLMENT_PLAN_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay goi tra gop"),
+	INSTALLMENT_AMOUNT_TOO_LOW(HttpStatus.BAD_REQUEST, "Gia tri tra gop thap hon muc toi thieu"),
+	INSTALLMENT_AMOUNT_TOO_HIGH(HttpStatus.BAD_REQUEST, "Gia tri tra gop vuot qua muc toi da"),
+	INSTALLMENT_MONTHS_INVALID(HttpStatus.BAD_REQUEST, "Ky han tra gop khong hop le"),
 
 	PROMOTION_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay khuyen mai"),
 	PROMOTION_EXPIRED(HttpStatus.UNPROCESSABLE_ENTITY, "Khuyen mai da het han"),
@@ -74,6 +79,9 @@ public enum ErrorCode {
 	LOYALTY_REWARD_UNAVAILABLE(HttpStatus.UNPROCESSABLE_ENTITY, "Phan thuong khong kha dung"),
 	LOYALTY_REWARD_OUT_OF_STOCK(HttpStatus.UNPROCESSABLE_ENTITY, "Phan thuong da het"),
 	LOYALTY_REWARD_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay phan thuong"),
+	NOTIFICATION_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay thong bao"),
+	NOTIFICATION_ACCESS_DENIED(HttpStatus.FORBIDDEN, "Khong co quyen thao tac tren thong bao nay"),
+	NOTIFICATION_PREFERENCE_REQUIRED(HttpStatus.UNPROCESSABLE_ENTITY, "Khong the tat thong bao bat buoc"),
 
 	VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "Du lieu khong hop le"),
 	NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay tai nguyen"),

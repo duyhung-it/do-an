@@ -33,9 +33,6 @@ import { ImageWithFallback } from '../figma/ImageWithFallback';
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
 
-const PRODUCT_MOQ: Record<string, number> = {
-  'prod-001': 10, 'prod-002': 100, 'prod-003': 5,
-};
 const OUT_OF_STOCK_IDS = new Set<string>(['prod-999']);
 
 const estimateShipping = (supplierId: string, itemCount: number) => {
@@ -45,6 +42,8 @@ const estimateShipping = (supplierId: string, itemCount: number) => {
   };
   return (base[supplierId] ?? 250000) + (itemCount > 3 ? 50000 : 0);
 };
+
+const getCartStoreName = (item?: CartItem) => item?.supplierName || 'CELLPHONES';
 
 // E18.02: Quantity stepper component
 function QuantityStepper({ value, onChange, min = 1, disabled = false }: {
@@ -81,13 +80,13 @@ function QuantityStepper({ value, onChange, min = 1, disabled = false }: {
 export function CartPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
-  const { items, loading, updateQuantity, removeItem, clearCart } = useCart();
+  const { items, loading, updateQuantity, removeItem, clearCart, validateCart } = useCart();
   const [placingOrder, setPlacingOrder] = useState(false);
   const [shippingAddress, setShippingAddress] = useState(
     user?.companyName ? `${user.companyName}, TP. Hồ Chí Minh` : '123 Đường ABC, Quận 1, TP. Hồ Chí Minh',
   );
   const [notes, setNotes] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('Chuyển khoản');
+  const [paymentMethod, setPaymentMethod] = useState('COD');
   const [poNumber, setPoNumber] = useState('');
   const [agreedTerms, setAgreedTerms] = useState(false);
   const [showConfirmDialog, setShowConfirmDialog] = useState(false);
@@ -125,6 +124,18 @@ export function CartPage() {
   const tax = Math.floor(subtotal * 0.1);
   const total = subtotal + totalShipping + tax - discountAmount;
 
+  const buildShippingAddress = () => {
+    const parts = shippingAddress.split(',').map(part => part.trim()).filter(Boolean);
+    return {
+      recipientName: user?.fullName || 'Khach hang',
+      phone: user?.phone || '0901234567',
+      province: parts.at(-1) || 'TP. Ho Chi Minh',
+      district: parts.at(-2) || 'Quan 1',
+      ward: parts.at(-3) || 'Ben Nghe',
+      addressLine: parts.slice(0, Math.max(1, parts.length - 3)).join(', ') || shippingAddress.trim(),
+    };
+  };
+
   const handleApplyCoupon = async () => {
     if (!couponCode.trim()) { setCouponError('Vui lòng nhập mã giảm giá'); return; }
     setApplyingCoupon(true);
@@ -157,7 +168,7 @@ export function CartPage() {
   const handleRemoveSupplierItems = async (supplierId: string) => {
     const supplierItems = groupedBySupplier[supplierId] ?? [];
     for (const item of supplierItems) await removeItem(item.id);
-    toast.success('Đã xoá tất cả sản phẩm của NCC');
+    toast.success('Đã xoá tất cả sản phẩm của cửa hàng');
   };
 
   const handleRequestPlaceOrder = () => {
@@ -203,6 +214,52 @@ export function CartPage() {
     }
   };
 
+  const handlePlaceOrderWithBackend = async () => {
+    if (!user) return;
+    setShowConfirmDialog(false);
+    setPlacingOrder(true);
+    try {
+      const validation = await validateCart();
+      if (!validation.valid) {
+        toast.error(validation.issues[0]?.message ?? 'Gio hang chua hop le');
+        return;
+      }
+      const backendPaymentMethod =
+        paymentMethod === 'Chuyển khoản' || paymentMethod === 'Chuyá»ƒn khoáº£n'
+          ? 'BANK_TRANSFER'
+          : ['COD', 'BANK_TRANSFER', 'MOMO', 'VNPAY', 'INSTALLMENT'].includes(paymentMethod)
+            ? paymentMethod
+            : 'COD';
+      const order = await (orderApi as typeof orderApi & {
+        create: (data: {
+          items: Array<{ productId: string; variantId?: string; quantity: number }>;
+          shippingAddress: ReturnType<typeof buildShippingAddress>;
+          paymentMethod: string;
+          promotionCode?: string;
+          notes?: string;
+        }, user?: typeof user) => ReturnType<typeof orderApi.create>;
+      }).create({
+        items: items.map(item => ({
+          productId: item.productId,
+          variantId: item.variantId,
+          quantity: item.quantity,
+        })),
+        shippingAddress: buildShippingAddress(),
+        paymentMethod: backendPaymentMethod,
+        promotionCode: appliedPromotion?.code,
+        notes: [notes, ...Object.values(supplierNotes)].filter(Boolean).join(' | '),
+      }, user);
+      await clearCart();
+      navigate('/order-confirmation', {
+        state: { orders: [{ ...order, supplierName: 'CELLPHONES' }], poNumber, paymentMethod: backendPaymentMethod, shippingAddress, discount: discountAmount },
+      });
+    } catch {
+      toast.error('Co loi xay ra khi dat hang. Vui long thu lai.');
+    } finally {
+      setPlacingOrder(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto px-4 sm:px-6 py-6">
@@ -222,7 +279,7 @@ export function CartPage() {
             <ShoppingBag className="h-12 w-12 text-primary" />
           </div>
           <h2 className="mb-2" style={{ fontFamily: 'var(--font-heading)' }}>Giỏ hàng trống</h2>
-          <p className="text-muted-foreground mb-8">Hãy khám phá hàng nghìn sản phẩm chất lượng từ nhà cung cấp uy tín</p>
+          <p className="text-muted-foreground mb-8">Hãy khám phá các sản phẩm công nghệ chính hãng tại CELLPHONES</p>
           <Link to="/products">
             <Button size="lg">
               <Sparkles className="mr-2 h-4 w-4" /> Khám phá sản phẩm
@@ -265,7 +322,7 @@ export function CartPage() {
             <span className="px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-sm font-semibold">{items.length}</span>
           </div>
           <p className="text-muted-foreground mt-0.5 text-sm">
-            {items.length} sản phẩm từ {supplierGroups.length} nhà cung cấp
+            {items.length} sản phẩm từ {supplierGroups.length} cửa hàng
           </p>
         </div>
       </div>
@@ -280,11 +337,11 @@ export function CartPage() {
             const noteExpanded = expandedNotes[supplierId] ?? false;
             return (
               <Card key={supplierId} className="overflow-hidden border-0 shadow-sm">
-                {/* E18.03: NCC header */}
+                {/* E18.03: Store header */}
                 <div className="px-4 py-3 border-l-4 border-[#e31837] bg-gradient-to-r from-muted/60 to-muted/30 flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
                     <Building2 className="h-4 w-4 text-[#e31837]" />
-                    <span className="text-sm font-semibold">{supplierItems[0].supplierName}</span>
+                    <span className="text-sm font-semibold">{getCartStoreName(supplierItems[0])}</span>
                     <Badge variant="secondary" className="text-[10px]">{supplierItems.length} SP</Badge>
                   </div>
                   <div className="flex items-center gap-3">
@@ -297,9 +354,7 @@ export function CartPage() {
 
                 <div className="divide-y">
                   {supplierItems.map(item => {
-                    const moq = PRODUCT_MOQ[item.productId];
                     const isOOS = OUT_OF_STOCK_IDS.has(item.productId);
-                    const belowMOQ = moq && item.quantity < moq;
                     return (
                       <div key={item.id} className={`p-4 flex gap-4 ${isOOS ? 'opacity-50 bg-muted/20' : 'hover:bg-muted/10 transition-colors'}`}>
                         {/* E18.02: Larger image */}
@@ -323,11 +378,6 @@ export function CartPage() {
                             </button>
                           </div>
 
-                          {belowMOQ && (
-                            <p className="text-amber-600 flex items-center gap-1 text-xs mt-1">
-                              <AlertTriangle className="h-3 w-3" /> Đặt tối thiểu {moq}
-                            </p>
-                          )}
                           {isOOS && (
                             <p className="text-destructive flex items-center gap-1 text-xs mt-1">
                               <AlertTriangle className="h-3 w-3" /> Hết hàng
@@ -368,12 +418,12 @@ export function CartPage() {
                       onClick={() => setExpandedNotes(prev => ({ ...prev, [supplierId]: !noteExpanded }))}
                     >
                       <MessageSquare className="h-3 w-3 mr-1" />
-                      Ghi chú cho NCC
+                      Ghi chú cho cửa hàng
                       {noteExpanded ? <ChevronUp className="h-3 w-3 ml-1" /> : <ChevronDown className="h-3 w-3 ml-1" />}
                     </button>
                     {noteExpanded && (
                       <Textarea
-                        placeholder={`Ghi chú cho ${supplierItems[0].supplierName}...`}
+                        placeholder={`Ghi chú cho ${getCartStoreName(supplierItems[0])}...`}
                         value={supplierNotes[supplierId] ?? ''}
                         onChange={e => setSupplierNotes(prev => ({ ...prev, [supplierId]: e.target.value }))}
                         rows={2} className="text-sm"
@@ -405,10 +455,11 @@ export function CartPage() {
                     className="flex h-10 w-full rounded-lg border border-input bg-background px-3 py-2 text-sm"
                     value={paymentMethod} onChange={e => setPaymentMethod(e.target.value)}
                   >
-                    <option value="Chuyển khoản">Chuyển khoản ngân hàng</option>
-                    <option value="COD">COD — Thanh toán khi nhận hàng</option>
-                    <option value="L/C">Thư tín dụng (L/C)</option>
-                    <option value="Trả chậm">Trả chậm (Net 30)</option>
+                    <option value="COD">COD - Thanh toán khi nhận hàng</option>
+                    <option value="BANK_TRANSFER">Chuyển khoản ngân hàng</option>
+                    <option value="MOMO">Momo</option>
+                    <option value="VNPAY">VNPAY</option>
+                    <option value="INSTALLMENT">Trả góp</option>
                   </select>
                 </div>
                 <div className="grid gap-2">
@@ -510,7 +561,7 @@ export function CartPage() {
                   <div className="space-y-1">
                     {supplierGroups.map(([sid, sitems]) => (
                       <div key={sid} className="flex justify-between text-xs text-muted-foreground">
-                        <span className="truncate max-w-[200px]">VC: {sitems[0].supplierName}</span>
+                        <span className="truncate max-w-[200px]">Vận chuyển: {getCartStoreName(sitems[0])}</span>
                         <span>{formatPrice(shippingBySupplier[sid] ?? 0)}</span>
                       </div>
                     ))}
@@ -547,7 +598,7 @@ export function CartPage() {
               {supplierGroups.length > 1 && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 flex items-center gap-1 bg-amber-50 dark:bg-amber-950/20 p-2 rounded-lg">
                   <AlertTriangle className="h-3 w-3 shrink-0" />
-                  Sẽ tạo {supplierGroups.length} đơn riêng (theo NCC)
+                  Sẽ tạo {supplierGroups.length} đơn giao hàng riêng theo cửa hàng
                 </p>
               )}
 
@@ -660,14 +711,14 @@ export function CartPage() {
             </div>
             {supplierGroups.length > 1 && (
               <p className="text-amber-600 flex items-center gap-1 text-xs">
-                <AlertTriangle className="h-3.5 w-3.5" /> Sẽ tạo {supplierGroups.length} đơn riêng biệt
+                <AlertTriangle className="h-3.5 w-3.5" /> Sẽ tạo {supplierGroups.length} đơn giao hàng riêng
               </p>
             )}
           </div>
 
           <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setShowConfirmDialog(false)}>Quay lại</Button>
-            <Button onClick={handlePlaceOrder} disabled={placingOrder}>
+            <Button onClick={handlePlaceOrderWithBackend} disabled={placingOrder}>
               {placingOrder ? 'Đang xử lý...' : 'Xác nhận đặt hàng'}
             </Button>
           </DialogFooter>

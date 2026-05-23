@@ -34,6 +34,8 @@ import { WriteReviewDialog } from '../shared/ReviewComponents';
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
 
+const getOrderStoreName = (order: Pick<Order, 'supplierName'>) => order.supplierName || 'CELLPHONES';
+
 const RETURN_REASONS: ReturnReason[] = ['Lỗi SP', 'Sai quy cách', 'Giao sai', 'Hư hỏng vận chuyển', 'Không đúng mô tả', 'Khác'];
 const REFUND_METHODS = ['Hoàn tiền gốc', 'Tín dụng cửa hàng', 'Đổi hàng'] as const;
 
@@ -61,7 +63,7 @@ function OrderTimeline({ currentStatus }: { currentStatus: Order['status'] }) {
         </div>
         <div>
           <p className="font-bold text-destructive">Đơn hàng đã bị {currentStatus.toLowerCase()}</p>
-          <p className="text-sm text-muted-foreground mt-0.5">Liên hệ NCC để biết thêm chi tiết</p>
+          <p className="text-sm text-muted-foreground mt-0.5">Liên hệ cửa hàng để biết thêm chi tiết</p>
         </div>
       </div>
     );
@@ -169,7 +171,7 @@ export function OrderDetailPage() {
     if (!order) return;
     setCancelling(true);
     try {
-      const updated = await orderApi.updateStatus(order.id, 'Đã huỷ');
+      const updated = await orderApi.cancel(order.id, 'Khach hang huy don');
       setOrder(updated); setShowCancelConfirm(false); toast.success('Đã huỷ đơn hàng');
     } catch { toast.error('Không thể huỷ đơn hàng'); } finally { setCancelling(false); }
   };
@@ -262,10 +264,10 @@ export function OrderDetailPage() {
               </Button>
               {order.status === 'Đã giao' && (
                 <Button size="sm" variant="outline" onClick={async () => {
-                  await templateApi.create({ userId: user?.id ?? 'user-001', name: `Template từ ${order.orderNumber}`, description: `Tạo từ đơn hàng ${order.orderNumber}`, items: order.items.map(i => ({ productId: i.productId, productName: i.productName, productImage: i.productImage, quantity: i.quantity, unitPrice: i.unitPrice, unit: 'cái' })), supplierId: order.supplierId, supplierName: order.supplierName });
-                  toast.success('Đã lưu làm template');
+                  await templateApi.create({ userId: user?.id ?? 'user-001', name: `Danh sách mua từ ${order.orderNumber}`, description: `Tạo từ đơn hàng ${order.orderNumber}`, items: order.items.map(i => ({ productId: i.productId, productName: i.productName, productImage: i.productImage, quantity: i.quantity, unitPrice: i.unitPrice, unit: 'cái' })), supplierId: order.supplierId, supplierName: order.supplierName });
+                  toast.success('Đã lưu danh sách mua');
                 }}>
-                  <Save className="mr-1 h-4 w-4" /> Template
+                  <Save className="mr-1 h-4 w-4" /> Lưu danh sách
                 </Button>
               )}
             </>
@@ -356,7 +358,7 @@ export function OrderDetailPage() {
               <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2" style={{ fontFamily: 'var(--font-heading)' }}><Receipt className="h-4 w-4 text-primary" /> Hoá đơn ({relatedInvoices.length})</CardTitle></CardHeader>
               <CardContent><div className="space-y-2">{relatedInvoices.map(inv => (
                 <div key={inv.id} className="flex items-center justify-between p-3 rounded-xl border hover:bg-muted/50 cursor-pointer transition-colors" onClick={() => { setSelectedInvoice(inv); setShowInvoice(true); }}>
-                  <div><p className="text-sm" style={{ fontWeight: 500 }}>{inv.invoiceNumber}</p><p className="text-xs text-muted-foreground">{inv.supplierName} — {inv.issuedDate}</p></div>
+                  <div><p className="text-sm" style={{ fontWeight: 500 }}>{inv.invoiceNumber}</p><p className="text-xs text-muted-foreground">{inv.supplierName || 'CELLPHONES'} — {inv.issuedDate}</p></div>
                   <div className="text-right"><p className="text-sm text-primary" style={{ fontWeight: 600 }}>{formatPrice(inv.totalAmount)}</p><StatusBadge status={inv.status} /></div>
                 </div>
               ))}</div></CardContent>
@@ -382,7 +384,7 @@ export function OrderDetailPage() {
           <div className="h-1 bg-gradient-to-r from-[#e31837] to-[#c91432]" />
           <CardHeader className="pb-2"><CardTitle className="text-sm" style={{ fontFamily: 'var(--font-heading)' }}>Tóm tắt đơn hàng</CardTitle></CardHeader>
           <CardContent className="space-y-2.5 text-sm">
-            <div className="flex justify-between"><span className="text-muted-foreground">Nhà cung cấp</span><Link to={`/suppliers/${order.supplierId}`} className="text-primary hover:underline">{order.supplierName}</Link></div>
+            <div className="flex justify-between"><span className="text-muted-foreground">Cửa hàng</span><span>{getOrderStoreName(order)}</span></div>
             <Separator />
             <div className="flex justify-between"><span className="text-muted-foreground">Tạm tính</span><span>{formatPrice(order.subtotal)}</span></div>
             <div className="flex justify-between"><span className="text-muted-foreground">Vận chuyển</span><span>{formatPrice(order.shippingFee)}</span></div>

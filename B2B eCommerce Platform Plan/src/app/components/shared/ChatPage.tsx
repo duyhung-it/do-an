@@ -251,7 +251,7 @@ export function ChatPage({ breadcrumbPrefix }: ChatPageProps) {
       );
       setInput('');
 
-      // Giả lập NCC đang gõ rồi trả lời
+      // Giả lập cửa hàng đang gõ rồi trả lời
       setIsOtherTyping(true);
       const reply = await chatApi.simulateReply(activeConvId);
       setIsOtherTyping(false);

@@ -25,6 +25,22 @@ import { toast } from 'sonner';
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(price);
 
+const getProductRetailMeta = (product: Product) => {
+  const legacy = product as Product & {
+    supplierId?: string;
+    supplierName?: string;
+    minOrderQty?: number;
+    unit?: string;
+  };
+
+  return {
+    storeId: legacy.supplierId ?? 'cellphones',
+    storeName: legacy.supplierName ?? 'CELLPHONES',
+    minQty: legacy.minOrderQty ?? 1,
+    unit: legacy.unit ?? 'sp',
+  };
+};
+
 const MAX_COMPARE = 4;
 
 export function ProductComparePage() {
@@ -74,10 +90,11 @@ export function ProductComparePage() {
     if (!isAuthenticated) { toast.error('Vui lòng đăng nhập'); navigate('/login'); return; }
     setAddingToCart(product.id);
     try {
+      const retailMeta = getProductRetailMeta(product);
       await addItem({
         productId: product.id, productName: product.name, productImage: product.images[0],
-        supplierId: product.supplierId, supplierName: product.supplierName,
-        quantity: product.minOrderQty, unitPrice: product.price,
+        supplierId: retailMeta.storeId, supplierName: retailMeta.storeName,
+        quantity: retailMeta.minQty, unitPrice: product.price,
       });
       toast.success(`Đã thêm "${product.name}" vào giỏ hàng`);
     } finally { setAddingToCart(null); }
@@ -176,7 +193,7 @@ export function ProductComparePage() {
               {/* Basic info */}
               {[
                 { label: 'Danh mục', getValue: (p: Product) => <Badge variant="secondary" className="text-xs">{p.categoryName}</Badge> },
-                { label: 'Nhà cung cấp', getValue: (p: Product) => <span className="text-sm">{p.supplierName}</span> },
+                { label: 'Đơn vị bán', getValue: (p: Product) => <span className="text-sm">{getProductRetailMeta(p).storeName}</span> },
                 {
                   label: 'Giá', getValue: (p: Product) => (
                     <span className={`${
@@ -188,7 +205,10 @@ export function ProductComparePage() {
                     </span>
                   ),
                 },
-                { label: 'MOQ', getValue: (p: Product) => <span className="text-sm">{p.minOrderQty} {p.unit}</span> },
+                { label: 'Số lượng mua', getValue: (p: Product) => {
+                  const retailMeta = getProductRetailMeta(p);
+                  return <span className="text-sm">Từ {retailMeta.minQty} {retailMeta.unit}</span>;
+                } },
                 {
                   label: 'Đánh giá', getValue: (p: Product) => (
                     <div className="flex items-center gap-1">

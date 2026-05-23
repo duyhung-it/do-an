@@ -28,7 +28,7 @@ import type { Document, DocCategory, DocStatus, PaginationParams, SortParams, Co
 
 // --- Constants ---
 const DOC_CATEGORIES: { value: DocCategory; label: string; icon: React.ReactNode }[] = [
-  { value: 'Hợp đồng', label: 'Hợp đồng', icon: <FileText className="h-4 w-4" /> },
+  { value: 'Hợp đồng', label: 'Tài liệu mua hàng', icon: <FileText className="h-4 w-4" /> },
   { value: 'Hoá đơn', label: 'Hoá đơn', icon: <FileText className="h-4 w-4" /> },
   { value: 'Chứng chỉ', label: 'Chứng chỉ', icon: <FileText className="h-4 w-4" /> },
   { value: 'Báo giá', label: 'Báo giá', icon: <FileSpreadsheet className="h-4 w-4" /> },
@@ -264,7 +264,7 @@ function DocumentDetailDialog({ doc, open, onOpenChange }: {
               <span>{doc.uploadedByName}</span>
             </div>
             <div>
-              <span className="text-muted-foreground">Công ty:</span>{' '}
+              <span className="text-muted-foreground">Đơn vị:</span>{' '}
               <span>{doc.companyName}</span>
             </div>
             <div>
@@ -385,7 +385,7 @@ export function DocumentCenterPage() {
       uploadedBy: user?.id || 'user-001',
       uploadedByName: user?.fullName || 'Người dùng',
       companyId: 'buyer-001',
-      companyName: user?.companyName || 'Công ty',
+      companyName: user?.companyName || 'Khách hàng',
     });
     toast.success('Đã tải lên tài liệu thành công');
     fetchData();

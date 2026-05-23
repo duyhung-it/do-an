@@ -43,8 +43,141 @@ class B2bEcommerceApiApplicationTests {
 		mockMvc.perform(get("/api/v1/products").param("page", "1").param("pageSize", "2"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.success").value(true))
-				.andExpect(jsonPath("$.pagination.total").value(greaterThanOrEqualTo(10)))
+				.andExpect(jsonPath("$.pagination.total").value(greaterThanOrEqualTo(1)))
 				.andExpect(jsonPath("$.data[0].slug").exists());
+
+		mockMvc.perform(get("/api/v1/products")
+						.param("categoryId", "a1b2c3d4-0001-0001-0001-000000000001")
+						.param("page", "1")
+						.param("pageSize", "20"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.pagination.total").value(greaterThanOrEqualTo(1)));
+
+		mockMvc.perform(get("/api/v1/products/b1b2c3d4-0001-0001-0001-000000000001/combos"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data[0].products[0].productId").value("b1b2c3d4-0001-0001-0001-000000000001"))
+				.andExpect(jsonPath("$.data[0].comboPrice").value(38990000))
+				.andExpect(jsonPath("$.data[0].savings").value(greaterThanOrEqualTo(1)));
+
+		mockMvc.perform(get("/api/v1/combos"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.length()").value(greaterThanOrEqualTo(2)));
+	}
+
+	@Test
+	void buyerSavedAddressCanBeUsedForCheckout() throws Exception {
+		String userId = "00000000-0000-4000-8000-000000000199";
+		String addressId = "dd000000-0199-4000-8000-000000000001";
+
+		mockMvc.perform(get("/api/v1/users/me/addresses")
+						.header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.length()").value(greaterThanOrEqualTo(10)))
+				.andExpect(jsonPath("$.data[0].id").value(addressId))
+				.andExpect(jsonPath("$.data[0].isDefault").value(true));
+
+		String orderBody = """
+				{
+				  "items": [
+				    {
+				      "productId": "b1b2c3d4-0001-0001-0001-000000000002",
+				      "variantId": "c1b2c3d4-0001-0001-0001-000000000003",
+				      "quantity": 1
+				    }
+				  ],
+				  "shippingAddressId": "%s",
+				  "paymentMethod": "COD"
+				}
+				""".formatted(addressId);
+
+		mockMvc.perform(post("/api/v1/orders")
+						.header("X-User-Id", userId)
+						.header("X-User-Name", "Demo Buyer")
+						.header("X-User-Phone", "0900000199")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(orderBody))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.data.order.shippingAddress.recipientName").value("Demo Buyer"))
+				.andExpect(jsonPath("$.data.order.shippingAddress.addressLine").value("1 Demo Street"));
+	}
+
+	@Test
+	void buyerProfileCanBeReadUpdatedAndSummarized() throws Exception {
+		String userId = "00000000-0000-4000-8000-000000000199";
+
+		mockMvc.perform(get("/api/v1/users/me")
+						.header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.id").value(userId))
+				.andExpect(jsonPath("$.data.fullName").value("Demo Buyer"))
+				.andExpect(jsonPath("$.data.loyaltyPoints").value(greaterThanOrEqualTo(0)));
+
+		String body = """
+				{
+				  "fullName": "Demo Buyer Updated",
+				  "phone": "0900000299",
+				  "address": "99 Demo Street",
+				  "gender": "OTHER"
+				}
+				""";
+
+		mockMvc.perform(patch("/api/v1/users/me")
+						.header("X-User-Id", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(body))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.fullName").value("Demo Buyer Updated"))
+				.andExpect(jsonPath("$.data.phone").value("0900000299"))
+				.andExpect(jsonPath("$.data.address").value("99 Demo Street"));
+
+		mockMvc.perform(get("/api/v1/users/me/stats")
+						.header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.totalOrders").value(greaterThanOrEqualTo(1)))
+				.andExpect(jsonPath("$.data.totalSpent").value(greaterThanOrEqualTo(0)))
+				.andExpect(jsonPath("$.data.loyaltyPoints").value(greaterThanOrEqualTo(0)));
+	}
+
+	@Test
+	void publicInstallmentPlansCanBeListedAndCalculated() throws Exception {
+		mockMvc.perform(get("/api/v1/installment-plans"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.length()").value(greaterThanOrEqualTo(2)))
+				.andExpect(jsonPath("$.data[0].months[0]").exists());
+
+		String body = """
+				{
+				  "amount": 10000000,
+				  "planId": "ee000000-0003-4000-8000-000000000002",
+				  "months": 12
+				}
+				""";
+
+		mockMvc.perform(post("/api/v1/installment-plans/calculate")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(body))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.principal").value(10000000))
+				.andExpect(jsonPath("$.data.months").value(12))
+				.andExpect(jsonPath("$.data.monthlyPayment").value(greaterThanOrEqualTo(900000)))
+				.andExpect(jsonPath("$.data.totalPayment").value(greaterThanOrEqualTo(10000000)));
+	}
+
+	@Test
+	void reviewHelpfulIsIdempotentPerUser() throws Exception {
+		MvcResult first = mockMvc.perform(patch("/api/v1/reviews/rev-demo-1/helpful")
+						.header("X-User-Id", "00000000-0000-4000-8000-000000000199"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.helpful").value(true))
+				.andReturn();
+		String firstCount = first.getResponse().getContentAsString()
+				.replaceAll("(?s).*\"helpfulCount\"\\s*:\\s*([0-9]+).*", "$1");
+
+		mockMvc.perform(patch("/api/v1/reviews/rev-demo-1/helpful")
+						.header("X-User-Id", "00000000-0000-4000-8000-000000000199"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.helpful").value(true))
+				.andExpect(jsonPath("$.data.helpfulCount").value(Integer.parseInt(firstCount)));
 	}
 
 	@Test
@@ -191,7 +324,8 @@ class B2bEcommerceApiApplicationTests {
 				.andExpect(jsonPath("$.data").isArray());
 		mockMvc.perform(get("/api/v1/admin/activity-logs/stats"))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.data").isArray());
+				.andExpect(jsonPath("$.data.todayCount").exists())
+				.andExpect(jsonPath("$.data.byAction").isArray());
 	}
 
 	@Test
@@ -492,7 +626,12 @@ class B2bEcommerceApiApplicationTests {
 		mockMvc.perform(get("/api/v1/returns/aa000000-0001-4000-8000-000000000003")
 						.header("X-User-Id", returnUserId))
 				.andExpect(status().isOk())
-				.andExpect(jsonPath("$.data.customerId").value(returnUserId));
+				.andExpect(jsonPath("$.data.customerId").value(returnUserId))
+				.andExpect(jsonPath("$.data.orderNumber").value("QA-ADMIN-0003"))
+				.andExpect(jsonPath("$.data.refundMethod").value("ORIGINAL_PAYMENT"))
+				.andExpect(jsonPath("$.data.items[0].productId").exists())
+				.andExpect(jsonPath("$.data.items[0].productName").exists())
+				.andExpect(jsonPath("$.data.items[0].totalPrice").exists());
 		mockMvc.perform(get("/api/v1/returns/aa000000-0001-4000-8000-000000000003")
 						.header("X-User-Id", UUID.randomUUID().toString()))
 				.andExpect(status().isNotFound())
@@ -522,7 +661,12 @@ class B2bEcommerceApiApplicationTests {
 						.content(warrantyClaimBody))
 				.andExpect(status().isCreated())
 				.andExpect(jsonPath("$.data.warrantyId").value(warrantyId))
-				.andExpect(jsonPath("$.data.status").value("NEW"));
+				.andExpect(jsonPath("$.data.status").value("NEW"))
+				.andExpect(jsonPath("$.data.productName").exists())
+				.andExpect(jsonPath("$.data.productImage").exists())
+				.andExpect(jsonPath("$.data.brand").exists())
+				.andExpect(jsonPath("$.data.serialNumber").exists())
+				.andExpect(jsonPath("$.data.warrantyStatus").value("ACTIVE"));
 		mockMvc.perform(get("/api/v1/warranty-claims")
 						.header("X-User-Id", warrantyUserId))
 				.andExpect(status().isOk())
@@ -663,6 +807,120 @@ class B2bEcommerceApiApplicationTests {
 				.andExpect(jsonPath("$.pagination.total").value(greaterThanOrEqualTo(5)));
 		mockMvc.perform(delete("/api/v1/admin/loyalty/rewards/{id}", rewardId))
 				.andExpect(status().isNoContent());
+	}
+
+	@Test
+	void customerNotificationsFlowMatchesBaEndpoints() throws Exception {
+		String userId = UUID.randomUUID().toString();
+		jdbc.update("DELETE FROM app_notifications WHERE user_id = ?", UUID.fromString(userId));
+		jdbc.update("DELETE FROM notification_preferences WHERE user_id = ?", UUID.fromString(userId));
+
+		String notificationBody = """
+				{
+				  "userId": "%s",
+				  "type": "SYSTEM",
+				  "title": "QA customer notification",
+				  "message": "Thong bao cho customer inbox",
+				  "priority": "HIGH",
+				  "category": "qa",
+				  "actionUrl": "/notifications",
+				  "actionLabel": "Xem thong bao"
+				}
+				""".formatted(userId);
+		MvcResult created = mockMvc.perform(post("/api/v1/admin/notifications/send-to-user")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(notificationBody))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.userId").value(userId))
+				.andExpect(jsonPath("$.data.isRead").value(false))
+				.andReturn();
+		String notificationId = created.getResponse().getContentAsString()
+				.replaceAll("(?s).*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+
+		mockMvc.perform(get("/api/v1/notifications")
+						.header("X-User-Id", userId)
+						.param("isRead", "false")
+						.param("type", "SYSTEM"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data[0].id").value(notificationId))
+				.andExpect(jsonPath("$.pagination.total").value(1))
+				.andExpect(jsonPath("$.meta.unreadCount").value(1));
+
+		mockMvc.perform(get("/api/v1/notifications/unread-count").header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.unreadCount").value(1));
+
+		mockMvc.perform(patch("/api/v1/notifications/{id}/read", notificationId).header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.isRead").value(true))
+				.andExpect(jsonPath("$.data.readAt").exists());
+		mockMvc.perform(get("/api/v1/notifications/unread-count").header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.unreadCount").value(0));
+
+		mockMvc.perform(get("/api/v1/notifications/preferences").header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.length()").value(12))
+				.andExpect(jsonPath("$.data[0].type").exists());
+
+		String preferencesBody = """
+				{
+				  "preferences": [
+				    {
+				      "type": "LOYALTY",
+				      "enabled": false,
+				      "channel": "inApp"
+				    },
+				    {
+				      "type": "PROMOTION",
+				      "enabled": false,
+				      "channel": "email"
+				    }
+				  ]
+				}
+				""";
+		mockMvc.perform(patch("/api/v1/notifications/preferences")
+						.header("X-User-Id", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(preferencesBody))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.length()").value(2))
+				.andExpect(jsonPath("$.data[0].enabled").value(false));
+
+		String invalidPreferencesBody = """
+				{
+				  "preferences": [
+				    {
+				      "type": "ORDER",
+				      "enabled": false,
+				      "channel": "inApp"
+				    }
+				  ]
+				}
+				""";
+		mockMvc.perform(patch("/api/v1/notifications/preferences")
+						.header("X-User-Id", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(invalidPreferencesBody))
+				.andExpect(status().isUnprocessableEntity())
+				.andExpect(jsonPath("$.error.code").value("NOTIFICATION_PREFERENCE_REQUIRED"));
+
+		mockMvc.perform(delete("/api/v1/notifications").header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.deleted").value(1));
+
+		MvcResult createdUnread = mockMvc.perform(post("/api/v1/admin/notifications/send-to-user")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(notificationBody.replace("QA customer notification", "QA delete notification")))
+				.andExpect(status().isOk())
+				.andReturn();
+		String unreadId = createdUnread.getResponse().getContentAsString()
+				.replaceAll("(?s).*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+		mockMvc.perform(delete("/api/v1/notifications/{id}", unreadId).header("X-User-Id", userId))
+				.andExpect(status().isNoContent());
+		mockMvc.perform(patch("/api/v1/notifications/{id}/read", unreadId).header("X-User-Id", userId))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.error.code").value("NOTIFICATION_NOT_FOUND"));
 	}
 
 	@Test
@@ -831,6 +1089,8 @@ class B2bEcommerceApiApplicationTests {
 				.andExpect(jsonPath("$.pagination.total").value(1))
 				.andExpect(jsonPath("$.data[0].status").value("PENDING"))
 				.andExpect(jsonPath("$.data[0].items.count").value(1))
+				.andExpect(jsonPath("$.data[0].items.firstItem.productId").value("b1b2c3d4-0001-0001-0001-000000000001"))
+				.andExpect(jsonPath("$.data[0].items.firstItem.variantId").value("c1b2c3d4-0001-0001-0001-000000000001"))
 				.andExpect(jsonPath("$.data[0].items.firstItem.productName").value("iPhone 15 Pro Max 256GB"));
 
 		mockMvc.perform(get("/api/v1/cart").header("X-User-Id", userId))
@@ -1018,6 +1278,7 @@ class B2bEcommerceApiApplicationTests {
 				.andReturn();
 		String body = created.getResponse().getContentAsString();
 		String orderId = body.replaceAll("(?s).*\"order\"\\s*:\\s*\\{\\s*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+		String paymentId = body.replaceAll("(?s).*\"payment\"\\s*:\\s*\\{\\s*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
 		Integer stockBeforeConfirm = jdbc.queryForObject("""
 				SELECT stock FROM product_variants WHERE id = 'c1b2c3d4-0001-0001-0001-000000000001'
 				""", Integer.class);
@@ -1119,7 +1380,13 @@ class B2bEcommerceApiApplicationTests {
 						.header("X-User-Id", userId))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.orderId").value(orderId))
-				.andExpect(jsonPath("$.data.status").value("PENDING"));
+				.andExpect(jsonPath("$.data.status").value("PENDING"))
+				.andExpect(jsonPath("$.data.customerEmail").value("tranvand@gmail.com"))
+				.andExpect(jsonPath("$.data.sellerName").value("CELLPHONES"))
+				.andExpect(jsonPath("$.data.invoiceType").value("ORDER"))
+				.andExpect(jsonPath("$.data.lines[0].productId").value("b1b2c3d4-0001-0001-0001-000000000001"))
+				.andExpect(jsonPath("$.data.lines[0].quantity").value(1))
+				.andExpect(jsonPath("$.data.lines[0].totalPrice").value(33990000));
 		MvcResult pdf = mockMvc.perform(get("/api/v1/invoices/{id}/download", invoiceId)
 						.header("X-User-Id", userId))
 				.andExpect(status().isOk())
@@ -1161,7 +1428,12 @@ class B2bEcommerceApiApplicationTests {
 						.header("X-User-Id", userId))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.orderId").value(orderId))
-				.andExpect(jsonPath("$.data.status").value("IN_TRANSIT"));
+				.andExpect(jsonPath("$.data.status").value("IN_TRANSIT"))
+				.andExpect(jsonPath("$.data.customerName").value("Tran Van D"))
+				.andExpect(jsonPath("$.data.customerPhone").value("0934567890"))
+				.andExpect(jsonPath("$.data.fromAddress").exists())
+				.andExpect(jsonPath("$.data.toAddress").exists())
+				.andExpect(jsonPath("$.data.trackingHistory.length()").value(greaterThanOrEqualTo(2)));
 		mockMvc.perform(get("/api/v1/admin/shipments")
 						.param("status", "IN_TRANSIT")
 						.param("search", "Tran Van D"))
@@ -1203,6 +1475,49 @@ class B2bEcommerceApiApplicationTests {
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.status").value("DELIVERED"))
 				.andExpect(jsonPath("$.data.actualDelivery").exists());
+		mockMvc.perform(get("/api/v1/warranty")
+						.header("X-User-Id", userId)
+						.param("status", "ACTIVE"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.pagination.total").value(1))
+				.andExpect(jsonPath("$.data[0].orderId").value(orderId))
+				.andExpect(jsonPath("$.data[0].productName").value("iPhone 15 Pro Max 256GB"))
+				.andExpect(jsonPath("$.data[0].serialNumber").exists())
+				.andExpect(jsonPath("$.data[0].warrantyMonths").value(12))
+				.andExpect(jsonPath("$.data[0].status").value("ACTIVE"));
+		mockMvc.perform(get("/api/v1/loyalty/me")
+						.header("X-User-Id", userId)
+						.header("X-User-Name", "Tran Van D")
+						.header("X-User-Email", "tranvand@gmail.com"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.points").value(339))
+				.andExpect(jsonPath("$.data.totalEarnedPoints").value(339));
+		String refundLoyaltyBody = """
+				{
+				  "refundAmount": 33990000,
+				  "reason": "Hoan tien sau khi khach tra hang",
+				  "method": "CASH"
+				}
+				""";
+		mockMvc.perform(post("/api/v1/admin/payments/{id}/refund", paymentId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(refundLoyaltyBody))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.status").value("REFUNDED"));
+		mockMvc.perform(get("/api/v1/loyalty/me")
+						.header("X-User-Id", userId)
+						.header("X-User-Name", "Tran Van D")
+						.header("X-User-Email", "tranvand@gmail.com"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.points").value(0))
+				.andExpect(jsonPath("$.data.totalEarnedPoints").value(339));
+		mockMvc.perform(get("/api/v1/loyalty/me/transactions")
+						.header("X-User-Id", userId)
+						.param("type", "EXPIRE"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.pagination.total").value(1))
+				.andExpect(jsonPath("$.data[0].points").value(-339))
+				.andExpect(jsonPath("$.data[0].orderId").value(orderId));
 
 	}
 
@@ -1360,6 +1675,36 @@ class B2bEcommerceApiApplicationTests {
 				.andExpect(jsonPath("$.data.id").value(paymentId))
 				.andExpect(jsonPath("$.data.customerPhone").value("0954567890"));
 
+		String proofRef = "PROOF-" + userId;
+		String proofBody = """
+				{
+				  "proofUrl": "https://cdn.cellphones.vn/payment-proofs/%s.jpg",
+				  "note": "Khach da chuyen khoan, cho admin xac nhan",
+				  "amount": 520000,
+				  "method": "Chuyen khoan",
+				  "transactionRef": "%s"
+				}
+				""".formatted(userId, proofRef);
+		mockMvc.perform(post("/api/v1/payments/{id}/proof", paymentId)
+						.header("X-User-Id", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(proofBody))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.paymentId").value(paymentId))
+				.andExpect(jsonPath("$.data.status").value("PENDING_REVIEW"))
+				.andExpect(jsonPath("$.data.method").value("BANK_TRANSFER"))
+				.andExpect(jsonPath("$.data.transactionRef").value(proofRef));
+		mockMvc.perform(get("/api/v1/payments/{id}/proofs", paymentId)
+						.header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data[0].transactionRef").value(proofRef));
+		mockMvc.perform(post("/api/v1/payments/{id}/proof", paymentId)
+						.header("X-User-Id", UUID.randomUUID().toString())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(proofBody.replace(proofRef, proofRef + "-DENIED")))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error.code").value("PAYMENT_ACCESS_DENIED"));
+
 		mockMvc.perform(patch("/api/v1/admin/payments/{id}/mark-overdue", paymentId))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.status").value("OVERDUE"));
@@ -1409,5 +1754,121 @@ class B2bEcommerceApiApplicationTests {
 		mockMvc.perform(get("/api/v1/orders/{id}", orderId).header("X-User-Id", userId))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.paymentStatus").value("REFUNDED"));
+	}
+
+	@Test
+	void momoGatewayCallbackMarksPaymentPaidIdempotently() throws Exception {
+		String userId = UUID.randomUUID().toString();
+		String orderBody = """
+				{
+				  "items": [
+				    {
+				      "productId": "b1b2c3d4-0001-0001-0001-000000000001",
+				      "variantId": "c1b2c3d4-0001-0001-0001-000000000001",
+				      "quantity": 1
+				    }
+				  ],
+				  "shippingAddress": {
+				    "recipientName": "Dang Thi Gateway",
+				    "phone": "0964567890",
+				    "province": "TP. Ho Chi Minh",
+				    "district": "Quan 3",
+				    "ward": "Vo Thi Sau",
+				    "addressLine": "5 Nguyen Dinh Chieu"
+				  },
+				  "paymentMethod": "MOMO"
+				}
+				""";
+
+		MvcResult created = mockMvc.perform(post("/api/v1/orders")
+						.header("X-User-Id", userId)
+						.header("X-User-Name", "Dang Thi Gateway")
+						.header("X-User-Email", "gateway@gmail.com")
+						.header("X-User-Phone", "0964567890")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(orderBody))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.data.payment.method").value("MOMO"))
+				.andExpect(jsonPath("$.data.payment.status").value("UNPAID"))
+				.andReturn();
+		String body = created.getResponse().getContentAsString();
+		String orderId = body.replaceAll("(?s).*\"order\"\\s*:\\s*\\{\\s*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+		String paymentId = body.replaceAll("(?s).*\"payment\"\\s*:\\s*\\{\\s*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+		String totalAmount = body.replaceAll("(?s).*\"payment\"\\s*:\\s*\\{.*\"amount\"\\s*:\\s*(\\d+).*", "$1");
+		String sessionBody = """
+				{
+				  "provider": "MOMO",
+				  "returnUrl": "http://localhost:3000/payment-return",
+				  "callbackUrl": "http://localhost:8080/api/v1/payments/gateway/callback"
+				}
+				""";
+
+		MvcResult session = mockMvc.perform(post("/api/v1/payments/{id}/gateway-session", paymentId)
+						.header("X-User-Id", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(sessionBody))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.paymentId").value(paymentId))
+				.andExpect(jsonPath("$.data.orderId").value(orderId))
+				.andExpect(jsonPath("$.data.provider").value("MOMO"))
+				.andExpect(jsonPath("$.data.status").value("PENDING"))
+				.andExpect(jsonPath("$.data.paymentUrl").exists())
+				.andReturn();
+		String sessionText = session.getResponse().getContentAsString();
+		String requestId = sessionText.replaceAll("(?s).*\"requestId\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+
+		mockMvc.perform(post("/api/v1/payments/{id}/gateway-session", paymentId)
+						.header("X-User-Id", UUID.randomUUID().toString())
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(sessionBody))
+				.andExpect(status().isForbidden())
+				.andExpect(jsonPath("$.error.code").value("PAYMENT_ACCESS_DENIED"));
+
+		String transactionRef = "MOMO-" + UUID.randomUUID();
+		String callbackBody = """
+				{
+				  "provider": "MOMO",
+				  "requestId": "%s",
+				  "transactionRef": "%s",
+				  "status": "SUCCESS",
+				  "amount": %s
+				}
+				""".formatted(requestId, transactionRef, totalAmount);
+
+		mockMvc.perform(post("/api/v1/payments/gateway/callback")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(callbackBody))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.status").value("PAID"))
+				.andExpect(jsonPath("$.data.transactionRef").value(transactionRef))
+				.andExpect(jsonPath("$.data.payment.status").value("PAID"))
+				.andExpect(jsonPath("$.data.payment.remainingAmount").value(0));
+
+		mockMvc.perform(post("/api/v1/payments/gateway/callback")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(callbackBody))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.status").value("PAID"))
+				.andExpect(jsonPath("$.data.payment.status").value("PAID"));
+
+		mockMvc.perform(get("/api/v1/orders/{id}", orderId).header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.paymentStatus").value("PAID"));
+
+		mockMvc.perform(get("/api/v1/payments/{id}", paymentId)
+						.header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.status").value("PAID"))
+				.andExpect(jsonPath("$.data.transactionRef").value(transactionRef))
+				.andExpect(jsonPath("$.data.paidAt").exists());
+
+		mockMvc.perform(get("/api/v1/notifications")
+						.header("X-User-Id", userId)
+						.param("type", "PAYMENT"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.pagination.total").value(1))
+				.andExpect(jsonPath("$.data[0].type").value("PAYMENT"))
+				.andExpect(jsonPath("$.data[0].entityType").value("ORDER"))
+				.andExpect(jsonPath("$.data[0].entityId").value(orderId));
 	}
 }

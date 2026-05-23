@@ -31,7 +31,28 @@ Response:
     "estimatedDelivery": "2026-05-17",
     "actualDelivery": null,
     "createdAt": "2026-05-14T19:08:00+07:00",
-    "updatedAt": "2026-05-14T19:08:00+07:00"
+    "updatedAt": "2026-05-14T19:08:00+07:00",
+    "customerName": "Nguyen Van A",
+    "customerPhone": "0901234567",
+    "shippingFee": 0,
+    "fromAddress": "CELLPHONES Warehouse, TP. Ho Chi Minh",
+    "toAddress": "123 Ly Tu Trong, Ben Nghe, Quan 1, TP. Ho Chi Minh",
+    "weight": null,
+    "dimensions": null,
+    "trackingHistory": [
+      {
+        "status": "AWAITING_PICKUP",
+        "title": "Dang cho lay hang",
+        "description": "Don hang CP2026051400001 da tao thong tin van chuyen.",
+        "occurredAt": "2026-05-14T19:08:00+07:00"
+      },
+      {
+        "status": "IN_TRANSIT",
+        "title": "Dang van chuyen",
+        "description": "Don vi van chuyen da nhan hang.",
+        "occurredAt": "2026-05-14T19:08:00+07:00"
+      }
+    ]
   },
   "success": true,
   "message": "Thao tac thanh cong",
@@ -82,6 +103,14 @@ Response: paginated list of `ShipmentDto`.
 `GET /shipments/{id}`
 
 Response: `ShipmentDto`.
+
+`ShipmentDto` includes route/timeline fields for FE shipment detail:
+
+- `customerName`, `customerPhone`
+- `shippingFee`
+- `fromAddress`, `toAddress`
+- `weight`, `dimensions` are present and nullable until carrier/package integration exists
+- `trackingHistory[]`: `status`, `title`, `description`, `occurredAt`
 
 Ownership:
 
@@ -198,7 +227,7 @@ Admin status `SHIPPING -> DELIVERED`:
 ## Deferred
 
 - Carrier API integration.
-- Tracking history/timeline.
+- Real carrier package weight/dimensions integration.
 
 ## BA Mapping
 

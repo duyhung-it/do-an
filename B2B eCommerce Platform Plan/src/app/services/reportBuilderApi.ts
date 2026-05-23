@@ -29,7 +29,7 @@ const FIELD_MAP: Record<ReportDataSource, FieldDef[]> = {
   'Đơn hàng': [
     { field: 'orderNumber', label: 'Mã đơn', type: 'string' },
     { field: 'buyerName', label: 'Khách hàng', type: 'string' },
-    { field: 'supplierName', label: 'NCC', type: 'string' },
+    { field: 'supplierName', label: 'Cửa hàng', type: 'string' },
     { field: 'totalAmount', label: 'Tổng tiền', type: 'number' },
     { field: 'status', label: 'Trạng thái', type: 'enum', options: ['Chờ xác nhận', 'Đã xác nhận', 'Đang xử lý', 'Đang giao hàng', 'Đã giao', 'Đã huỷ'] },
     { field: 'createdAt', label: 'Ngày tạo', type: 'date' },
@@ -38,14 +38,14 @@ const FIELD_MAP: Record<ReportDataSource, FieldDef[]> = {
   'Sản phẩm': [
     { field: 'name', label: 'Tên SP', type: 'string' },
     { field: 'categoryName', label: 'Danh mục', type: 'string' },
-    { field: 'supplierName', label: 'NCC', type: 'string' },
+    { field: 'supplierName', label: 'Cửa hàng', type: 'string' },
     { field: 'price', label: 'Giá', type: 'number' },
     { field: 'stock', label: 'Tồn kho', type: 'number' },
     { field: 'rating', label: 'Đánh giá', type: 'number' },
     { field: 'status', label: 'Trạng thái', type: 'enum', options: ['Chờ duyệt', 'Đã duyệt', 'Từ chối', 'Hết hàng', 'Ẩn'] },
   ],
   'NCC': [
-    { field: 'companyName', label: 'Tên NCC', type: 'string' },
+    { field: 'companyName', label: 'Tên cửa hàng', type: 'string' },
     { field: 'city', label: 'Thành phố', type: 'string' },
     { field: 'rating', label: 'Đánh giá', type: 'number' },
     { field: 'productCount', label: 'Số SP', type: 'number' },
@@ -90,8 +90,8 @@ const FIELD_MAP: Record<ReportDataSource, FieldDef[]> = {
     { field: 'createdAt', label: 'Ngày tạo', type: 'date' },
   ],
   'RFQ': [
-    { field: 'rfqNumber', label: 'Mã RFQ', type: 'string' },
-    { field: 'buyerCompany', label: 'Công ty', type: 'string' },
+    { field: 'rfqNumber', label: 'Mã báo giá', type: 'string' },
+    { field: 'buyerCompany', label: 'Khách hàng', type: 'string' },
     { field: 'itemCount', label: 'Số SP', type: 'number' },
     { field: 'status', label: 'Trạng thái', type: 'string' },
     { field: 'createdAt', label: 'Ngày tạo', type: 'date' },
@@ -121,10 +121,10 @@ let mockReports: ReportDefinition[] = [
     isTemplate: true, createdBy: 'admin', createdAt: '2026-01-01', updatedAt: '2026-03-01',
   },
   {
-    id: 'rpt-002', name: 'Top NCC theo doanh thu', description: 'Phân bổ doanh thu theo nhà cung cấp',
+    id: 'rpt-002', name: 'Top cửa hàng theo doanh thu', description: 'Phân bổ doanh thu theo cửa hàng',
     dataSource: 'NCC',
     columns: [
-      { field: 'companyName', label: 'NCC', visible: true },
+      { field: 'companyName', label: 'Cửa hàng', visible: true },
       { field: 'totalRevenue', label: 'Doanh thu', visible: true, format: 'currency' },
       { field: 'orderCount', label: 'Đơn hàng', visible: true, format: 'number' },
     ],
@@ -146,7 +146,7 @@ let mockReports: ReportDefinition[] = [
     isTemplate: true, createdBy: 'admin', createdAt: '2026-01-10', updatedAt: '2026-03-01',
   },
   {
-    id: 'rpt-004', name: 'Công nợ quá hạn', description: 'Các khoản thanh toán quá hạn cần xử lý',
+    id: 'rpt-004', name: 'Thanh toán quá hạn', description: 'Các khoản thanh toán quá hạn cần xử lý',
     dataSource: 'Công nợ',
     columns: [
       { field: 'buyerName', label: 'Khách hàng', visible: true },
@@ -193,28 +193,28 @@ function generateExecuteData(report: ReportDefinition): ExecuteResult {
       break;
     case 'NCC':
       rows = [
-        { companyName: 'NCC Thép Miền Nam', totalRevenue: 3_200_000_000, orderCount: 120, rating: 4.5 },
-        { companyName: 'NCC Điện CN', totalRevenue: 2_100_000_000, orderCount: 85, rating: 4.2 },
-        { companyName: 'NCC Sơn Dulux', totalRevenue: 980_000_000, orderCount: 42, rating: 4.8 },
-        { companyName: 'VLXD Phú Thọ', totalRevenue: 750_000_000, orderCount: 35, rating: 4.0 },
-        { companyName: 'Xi Măng Hà Tiên', totalRevenue: 620_000_000, orderCount: 28, rating: 3.9 },
+        { companyName: 'CELLPHONES Quận 1', totalRevenue: 3_200_000_000, orderCount: 120, rating: 4.5 },
+        { companyName: 'CELLPHONES Cầu Giấy', totalRevenue: 2_100_000_000, orderCount: 85, rating: 4.2 },
+        { companyName: 'CELLPHONES Đà Nẵng', totalRevenue: 980_000_000, orderCount: 42, rating: 4.8 },
+        { companyName: 'CELLPHONES Thủ Đức', totalRevenue: 750_000_000, orderCount: 35, rating: 4.0 },
+        { companyName: 'CELLPHONES Cần Thơ', totalRevenue: 620_000_000, orderCount: 28, rating: 3.9 },
       ];
       break;
     case 'Tồn kho':
       rows = [
-        { productName: 'Thép hình H200', warehouseName: 'Kho HCM', currentStock: 500, minStock: 100, totalValue: 1_250_000_000, status: 'Đủ hàng' },
-        { productName: 'Xi măng PC50', warehouseName: 'Kho HN', currentStock: 200, minStock: 50, totalValue: 340_000_000, status: 'Đủ hàng' },
-        { productName: 'Sơn Dulux 5L', warehouseName: 'Kho HCM', currentStock: 15, minStock: 20, totalValue: 22_500_000, status: 'Sắp hết' },
-        { productName: 'Gạch Viglacera', warehouseName: 'Kho DN', currentStock: 0, minStock: 100, totalValue: 0, status: 'Hết hàng' },
-        { productName: 'Ống PVC D90', warehouseName: 'Kho HCM', currentStock: 800, minStock: 200, totalValue: 120_000_000, status: 'Đủ hàng' },
+        { productName: 'iPhone 15 Pro Max', warehouseName: 'Kho HCM', currentStock: 500, minStock: 100, totalValue: 1_250_000_000, status: 'Đủ hàng' },
+        { productName: 'Samsung Galaxy S24 Ultra', warehouseName: 'Kho HN', currentStock: 200, minStock: 50, totalValue: 340_000_000, status: 'Đủ hàng' },
+        { productName: 'AirPods Pro 2', warehouseName: 'Kho HCM', currentStock: 15, minStock: 20, totalValue: 22_500_000, status: 'Sắp hết' },
+        { productName: 'MacBook Air M2', warehouseName: 'Kho DN', currentStock: 0, minStock: 100, totalValue: 0, status: 'Hết hàng' },
+        { productName: 'Sạc nhanh Anker 67W', warehouseName: 'Kho HCM', currentStock: 800, minStock: 200, totalValue: 120_000_000, status: 'Đủ hàng' },
       ];
       break;
     case 'Công nợ':
       rows = [
-        { buyerName: 'Công ty XD Phú Thọ', amount: 450_000_000, dueDate: '2026-02-15', status: 'Quá hạn', daysOverdue: 28 },
-        { buyerName: 'TNHH An Lộc', amount: 280_000_000, dueDate: '2026-03-01', status: 'Quá hạn', daysOverdue: 14 },
-        { buyerName: 'Đại Phát Corp', amount: 180_000_000, dueDate: '2026-03-10', status: 'Quá hạn', daysOverdue: 5 },
-        { buyerName: 'Minh Anh DNTN', amount: 95_000_000, dueDate: '2026-03-20', status: 'Chờ thanh toán', daysOverdue: 0 },
+        { buyerName: 'Lê Hoàng Anh', amount: 450_000_000, dueDate: '2026-02-15', status: 'Quá hạn', daysOverdue: 28 },
+        { buyerName: 'Nguyễn Thị Mai', amount: 280_000_000, dueDate: '2026-03-01', status: 'Quá hạn', daysOverdue: 14 },
+        { buyerName: 'Trần Quốc Bảo', amount: 180_000_000, dueDate: '2026-03-10', status: 'Quá hạn', daysOverdue: 5 },
+        { buyerName: 'Đặng Thuỳ Dung', amount: 95_000_000, dueDate: '2026-03-20', status: 'Chờ thanh toán', daysOverdue: 0 },
       ];
       break;
     case 'Đơn hàng':

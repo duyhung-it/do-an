@@ -193,11 +193,11 @@ export function ReviewItem({ review, onHelpful, onEdit, onDelete, currentUserId,
           </div>
         </div>
       </div>
-      {/* Phản hồi NCC */}
+      {/* Phản hồi cửa hàng */}
       {review.sellerReply && (
         <div className="mt-3 ml-6 p-3 rounded-lg bg-muted/50 border-l-2 border-primary">
           <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-            <MessageSquare className="h-3 w-3" /> Phản hồi từ nhà cung cấp · {review.sellerReplyAt}
+            <MessageSquare className="h-3 w-3" /> Phản hồi từ cửa hàng · {review.sellerReplyAt}
           </p>
           <p>{review.sellerReply}</p>
         </div>
@@ -231,7 +231,7 @@ export function ReviewItem({ review, onHelpful, onEdit, onDelete, currentUserId,
   );
 }
 
-// -------- Hiển thị 1 review NCC --------
+// -------- Hiển thị 1 review cửa hàng --------
 export function SupplierReviewItem({ review, onHelpful }: {
   review: SupplierReview;
   onHelpful?: (id: string) => void;
@@ -264,7 +264,7 @@ export function SupplierReviewItem({ review, onHelpful }: {
       {review.sellerReply && (
         <div className="mt-3 ml-6 p-3 rounded-lg bg-muted/50 border-l-2 border-primary">
           <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-            <MessageSquare className="h-3 w-3" /> Phản hồi từ nhà cung cấp · {review.sellerReplyAt}
+            <MessageSquare className="h-3 w-3" /> Phản hồi từ cửa hàng · {review.sellerReplyAt}
           </p>
           <p>{review.sellerReply}</p>
         </div>
@@ -391,7 +391,7 @@ export function WriteReviewDialog({ open, onOpenChange, onSubmit, editReview, pr
   );
 }
 
-// -------- Dialog viết đánh giá NCC --------
+// -------- Dialog viết đánh giá cửa hàng --------
 export function WriteSupplierReviewDialog({ open, onOpenChange, onSubmit, supplierName }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -424,7 +424,7 @@ export function WriteSupplierReviewDialog({ open, onOpenChange, onSubmit, suppli
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>Đánh giá nhà cung cấp — {supplierName}</DialogTitle>
+          <DialogTitle>Đánh giá cửa hàng — {supplierName}</DialogTitle>
           <DialogDescription>
             Chia sẻ trải nghiệm của bạn để giúp người mua khác
           </DialogDescription>
@@ -444,7 +444,7 @@ export function WriteSupplierReviewDialog({ open, onOpenChange, onSubmit, suppli
             <Textarea
               value={comment}
               onChange={e => setComment(e.target.value)}
-              placeholder="Chia sẻ trải nghiệm với nhà cung cấp... (tối thiểu 10 ký tự)"
+              placeholder="Chia sẻ trải nghiệm với cửa hàng... (tối thiểu 10 ký tự)"
               rows={4}
             />
           </div>

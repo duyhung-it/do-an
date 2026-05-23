@@ -5,6 +5,7 @@ import java.text.Normalizer;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -375,6 +376,7 @@ public class CatalogService {
 	}
 
 	private Specification<ProductEntity> specification(ProductFilter filter) {
+		List<UUID> categoryIds = filter.categoryId() == null ? List.of() : categoryAndDescendantIds(filter.categoryId());
 		return (root, query, cb) -> {
 			List<jakarta.persistence.criteria.Predicate> predicates = new java.util.ArrayList<>();
 			predicates.add(cb.equal(root.get("status"), filter.status() == null ? ProductStatus.ACTIVE : filter.status()));
@@ -383,7 +385,7 @@ public class CatalogService {
 				predicates.add(cb.or(cb.like(cb.lower(root.get("name")), value), cb.like(cb.lower(root.get("brand")), value)));
 			}
 			if (filter.categoryId() != null) {
-				predicates.add(cb.equal(root.get("category").get("id"), filter.categoryId()));
+				predicates.add(root.get("category").get("id").in(categoryIds));
 			}
 			if (filter.categorySlug() != null) {
 				predicates.add(cb.equal(root.get("category").get("slug"), filter.categorySlug()));
@@ -414,6 +416,22 @@ public class CatalogService {
 			}
 			return cb.and(predicates.toArray(jakarta.persistence.criteria.Predicate[]::new));
 		};
+	}
+
+	private List<UUID> categoryAndDescendantIds(UUID categoryId) {
+		List<CategoryEntity> all = categories.findAllByOrderBySortOrderAscNameAsc();
+		LinkedHashSet<UUID> ids = new LinkedHashSet<>();
+		ids.add(categoryId);
+		boolean changed;
+		do {
+			changed = false;
+			for (CategoryEntity category : all) {
+				if (category.getParent() != null && ids.contains(category.getParent().getId()) && ids.add(category.getId())) {
+					changed = true;
+				}
+			}
+		} while (changed);
+		return List.copyOf(ids);
 	}
 
 	private Sort sort(PageRequestParams params) {

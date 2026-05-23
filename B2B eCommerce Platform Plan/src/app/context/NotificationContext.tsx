@@ -29,7 +29,7 @@ const POLL_INTERVAL = 30_000;
 // Danh sách thông báo mẫu sẽ được tạo ngẫu nhiên
 const randomNotifications = [
   { type: 'order' as const, title: 'Đơn hàng mới', priority: 'high' as const, category: 'giao_dich' as const, messages: [
-    'Bạn có đơn hàng mới từ Công ty TNHH ABC',
+    'Bạn có đơn hàng mới từ khách hàng ABC',
     'Đơn hàng DH-202500031 vừa được tạo',
     'Khách hàng đã đặt hàng 50 sản phẩm',
   ]},
@@ -39,21 +39,21 @@ const randomNotifications = [
     'Giá sản phẩm "Thép cuộn HRC" vừa được cập nhật',
   ]},
   { type: 'message' as const, title: 'Tin nhắn mới', priority: 'medium' as const, category: 'tuong_tac' as const, messages: [
-    'Nhà cung cấp đã phản hồi yêu cầu báo giá',
-    'Bạn có tin nhắn mới từ Tập đoàn Dệt may Thành Công',
-    'Khách hàng hỏi về sản phẩm Gạo ST25',
+    'Cửa hàng đã phản hồi tin nhắn của bạn',
+    'Bạn có tin nhắn mới từ CELLPHONES',
+    'Khách hàng hỏi về sản phẩm iPhone 15',
   ]},
   { type: 'system' as const, title: 'Thông báo hệ thống', priority: 'low' as const, category: 'he_thong' as const, messages: [
     'Hệ thống vừa được cập nhật phiên bản mới',
     'Chương trình khuyến mãi tháng 3 đã bắt đầu',
-    'Nhắc nhở: Cập nhật thông tin doanh nghiệp',
+    'Nhắc nhở: Cập nhật thông tin tài khoản',
   ]},
   { type: 'payment' as const, title: 'Nhắc thanh toán', priority: 'urgent' as const, category: 'canh_bao' as const, messages: [
     'Có khoản thanh toán sắp đến hạn',
     'Thanh toán đơn DH-202500012 quá hạn 2 ngày',
   ]},
   { type: 'rfq' as const, title: 'Báo giá mới', priority: 'high' as const, category: 'giao_dich' as const, messages: [
-    'Nhà cung cấp vừa gửi báo giá cho RFQ của bạn',
+    'Cửa hàng vừa gửi báo giá cho yêu cầu của bạn',
     'Có báo giá mới cần xem xét',
   ]},
   { type: 'shipment' as const, title: 'Cập nhật vận chuyển', priority: 'medium' as const, category: 'giao_dich' as const, messages: [

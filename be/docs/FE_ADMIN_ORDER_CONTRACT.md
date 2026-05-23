@@ -49,6 +49,8 @@ Response uses global pagination shape:
       "items": {
         "count": 1,
         "firstItem": {
+          "productId": "b1b2c3d4-0001-0001-0001-000000000001",
+          "variantId": "c1b2c3d4-0001-0001-0001-000000000001",
           "productName": "iPhone 15 Pro Max 256GB",
           "productImage": "https://cdn.cellphones.vn/products/iphone15promax-1.jpg",
           "variantName": "256GB - Titan Tu Nhien"

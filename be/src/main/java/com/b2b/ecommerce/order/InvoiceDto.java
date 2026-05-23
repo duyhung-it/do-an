@@ -1,5 +1,7 @@
 package com.b2b.ecommerce.order;
 
+import java.util.List;
+
 public record InvoiceDto(
 		String id,
 		String invoiceNumber,
@@ -13,6 +15,14 @@ public record InvoiceDto(
 		String issueDate,
 		String dueDate,
 		String paidAt,
-		String createdAt
+		String createdAt,
+		String customerEmail,
+		String customerPhone,
+		String invoiceType,
+		String sellerName,
+		String sellerTaxCode,
+		String sellerAddress,
+		String notes,
+		List<InvoiceLineDto> lines
 ) {
 }

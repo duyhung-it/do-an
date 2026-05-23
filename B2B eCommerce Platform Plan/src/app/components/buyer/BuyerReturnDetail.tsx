@@ -24,6 +24,8 @@ import type { ReturnRequest, ReturnStatus } from '../../types';
 const formatPrice = (n: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(n);
 
+const getReturnStoreName = (returnReq: Pick<ReturnRequest, 'supplierName'>) => returnReq.supplierName || 'CELLPHONES';
+
 const statusSteps: { key: ReturnStatus; label: string; icon: React.ElementType }[] = [
   { key: 'Chờ duyệt', label: 'Gửi yêu cầu', icon: Clock },
   { key: 'Đã duyệt', label: 'Được duyệt', icon: CheckCircle2 },
@@ -110,7 +112,7 @@ export function BuyerReturnDetail() {
               <Badge variant="outline">{returnReq.reason}</Badge>
             </div>
             <p className="text-muted-foreground mt-1">
-              Đơn hàng: {returnReq.orderNumber} · NCC: {returnReq.supplierName}
+              Đơn hàng: {returnReq.orderNumber} · Cửa hàng: {getReturnStoreName(returnReq)}
             </p>
           </div>
         </div>
@@ -189,7 +191,7 @@ export function BuyerReturnDetail() {
           <CardContent className="space-y-3">
             <InfoRow label="Mã yêu cầu" value={returnReq.id} />
             <InfoRow label="Đơn hàng" value={returnReq.orderNumber} />
-            <InfoRow label="Nhà cung cấp" value={returnReq.supplierName} />
+            <InfoRow label="Cửa hàng" value={getReturnStoreName(returnReq)} />
             <InfoRow label="Lý do" value={returnReq.reason} />
             <InfoRow label="Ngày tạo" value={returnReq.createdAt} />
             {returnReq.resolvedAt && <InfoRow label="Ngày xử lý" value={returnReq.resolvedAt} />}
@@ -233,7 +235,7 @@ export function BuyerReturnDetail() {
             {/* Seller note */}
             {returnReq.sellerNote && (
               <div>
-                <p className="text-sm text-muted-foreground mb-1">Ghi chú từ NCC</p>
+                <p className="text-sm text-muted-foreground mb-1">Ghi chú từ cửa hàng</p>
                 <div className="p-3 rounded-lg bg-amber-50/50 dark:bg-amber-950/10 border border-amber-200/50">
                   <p className="text-sm">{returnReq.sellerNote}</p>
                 </div>
