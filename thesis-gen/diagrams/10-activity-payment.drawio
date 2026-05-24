@@ -1,0 +1,79 @@
+<mxGraphModel dx="1800" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="960" pageHeight="780" math="0" shadow="0">
+  <root>
+    <mxCell id="0"/><mxCell id="1" parent="0"/>
+
+    <!-- Title -->
+    <mxCell id="title" value="Hình 2.10. Biểu đồ hoạt động: Quy trình thanh toán VNPay" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontStyle=1;fontSize=14;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="60" y="8" width="840" height="36" as="geometry"/></mxCell>
+
+    <!-- Lane: Khách hàng -->
+    <mxCell id="bg_kh" value="" style="rounded=0;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=40;" vertex="1" parent="1"><mxGeometry x="40" y="52" width="265" height="712" as="geometry"/></mxCell>
+    <mxCell id="lbl_kh" value="Khách hàng" style="text;html=1;align=center;fontStyle=1;fontSize=13;fontFamily=Times New Roman;fontColor=#23527c;" vertex="1" parent="1"><mxGeometry x="40" y="52" width="265" height="38" as="geometry"/></mxCell>
+
+    <!-- Lane: Hệ thống -->
+    <mxCell id="bg_ht" value="" style="rounded=0;fillColor=#ffe6cc;strokeColor=#d6b656;opacity=40;" vertex="1" parent="1"><mxGeometry x="305" y="52" width="308" height="712" as="geometry"/></mxCell>
+    <mxCell id="lbl_ht" value="Hệ thống" style="text;html=1;align=center;fontStyle=1;fontSize=13;fontFamily=Times New Roman;fontColor=#8a5a00;" vertex="1" parent="1"><mxGeometry x="305" y="52" width="308" height="38" as="geometry"/></mxCell>
+
+    <!-- Lane: VNPay -->
+    <mxCell id="bg_vn" value="" style="rounded=0;fillColor=#d5e8d4;strokeColor=#82b366;opacity=40;" vertex="1" parent="1"><mxGeometry x="613" y="52" width="307" height="712" as="geometry"/></mxCell>
+    <mxCell id="lbl_vn" value="VNPay Gateway" style="text;html=1;align=center;fontStyle=1;fontSize=13;fontFamily=Times New Roman;fontColor=#336600;" vertex="1" parent="1"><mxGeometry x="613" y="52" width="307" height="38" as="geometry"/></mxCell>
+
+    <!-- START -->
+    <mxCell id="s0" value="" style="ellipse;fillColor=#000000;strokeColor=#000000;" vertex="1" parent="1"><mxGeometry x="460" y="104" width="24" height="24" as="geometry"/></mxCell>
+
+    <!-- HT: Tạo yêu cầu thanh toán -->
+    <mxCell id="h1" value="Tạo yêu cầu thanh toán&#xa;(Mã đơn, Số tiền, Redirect URL)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="330" y="148" width="258" height="55" as="geometry"/></mxCell>
+
+    <!-- HT → VNPay: Chuyển hướng -->
+    <mxCell id="h2" value="Chuyển hướng trình duyệt&#xa;đến VNPay" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="330" y="230" width="258" height="50" as="geometry"/></mxCell>
+
+    <!-- VNPay: Hiển thị trang TT -->
+    <mxCell id="v1" value="Hiển thị trang thanh toán" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="636" y="230" width="258" height="50" as="geometry"/></mxCell>
+
+    <!-- KH: Nhập thông tin TT -->
+    <mxCell id="k1" value="Nhập thông tin thanh toán&#xa;(Thẻ ATM / QR Code / Ví)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="55" y="308" width="230" height="55" as="geometry"/></mxCell>
+
+    <!-- VNPay: Xác thực & xử lý -->
+    <mxCell id="v2" value="Xác thực thông tin&#xa;thanh toán" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="636" y="308" width="258" height="50" as="geometry"/></mxCell>
+
+    <!-- VNPay: Decision -->
+    <mxCell id="vd1" value="Thanh toán&#xa;thành công?" style="rhombus;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="701" y="385" width="128" height="75" as="geometry"/></mxCell>
+
+    <!-- VNPay: Gửi callback thành công -->
+    <mxCell id="v3" value="Gửi IPN Callback&#xa;(Secure Hash + TxnRef)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="636" y="488" width="258" height="50" as="geometry"/></mxCell>
+
+    <!-- VNPay: Thông báo thất bại -->
+    <mxCell id="v4" value="Gửi thông báo&#xa;thất bại" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="636" y="635" width="258" height="50" as="geometry"/></mxCell>
+
+    <!-- HT: Xác minh callback -->
+    <mxCell id="h3" value="Xác minh Secure Hash&#xa;từ VNPay" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="330" y="488" width="258" height="50" as="geometry"/></mxCell>
+
+    <!-- HT: Cập nhật trạng thái TT -->
+    <mxCell id="h4" value="Cập nhật trạng thái đơn hàng&#xa;→ ĐÃ THANH TOÁN" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="330" y="566" width="258" height="50" as="geometry"/></mxCell>
+
+    <!-- KH: Nhận kết quả -->
+    <mxCell id="k2" value="Nhận trang kết quả&#xa;thanh toán thành công" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="55" y="566" width="230" height="50" as="geometry"/></mxCell>
+
+    <!-- KH: Nhận email -->
+    <mxCell id="k3" value="Nhận email xác nhận&#xa;đơn hàng" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="55" y="644" width="230" height="50" as="geometry"/></mxCell>
+
+    <!-- END -->
+    <mxCell id="e0" value="" style="ellipse;fillColor=#000000;strokeColor=#000000;strokeWidth=3;" vertex="1" parent="1"><mxGeometry x="460" y="720" width="24" height="24" as="geometry"/></mxCell>
+
+    <!-- Edges -->
+    <mxCell id="e0_h1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;" edge="1" source="s0" target="h1" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e_h1_h2" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;" edge="1" source="h1" target="h2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e_h2_v1" value="Redirect" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#666666;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="h2" target="v1" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e_v1_k1" value="Hiển thị" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#666666;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" source="v1" target="k1" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="636" y="255"/><mxPoint x="305" y="255"/><mxPoint x="305" y="335"/><mxPoint x="285" y="335"/></Array></mxGeometry></mxCell>
+    <mxCell id="e_k1_v2" value="Gửi dữ liệu" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#666666;exitX=1;exitY=0.5;entryX=0;entryY=0.5;" edge="1" source="k1" target="v2" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="285" y="335"/><mxPoint x="613" y="335"/></Array></mxGeometry></mxCell>
+    <mxCell id="e_v2_vd1" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;" edge="1" source="v2" target="vd1" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e_vd1_v3" value="Thành công" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#336600;" edge="1" source="vd1" target="v3" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e_vd1_v4" value="Thất bại" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#b85450;exitX=1;exitY=0.5;" edge="1" source="vd1" target="v4" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="940" y="422"/><mxPoint x="940" y="660"/><mxPoint x="894" y="660"/></Array></mxGeometry></mxCell>
+    <mxCell id="e_v3_h3" value="IPN Callback" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#666666;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" source="v3" target="h3" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e_h3_h4" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;" edge="1" source="h3" target="h4" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e_h4_k2" value="Kết quả" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;strokeColor=#666666;exitX=0;exitY=0.5;entryX=1;entryY=0.5;" edge="1" source="h4" target="k2" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e_k2_k3" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;" edge="1" source="k2" target="k3" parent="1"><mxGeometry relative="1" as="geometry"/></mxCell>
+    <mxCell id="e_k3_end" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;" edge="1" source="k3" target="e0" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="170" y="720"/><mxPoint x="472" y="720"/></Array></mxGeometry></mxCell>
+    <mxCell id="e_h4_end" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=1.5;" edge="1" source="h4" target="e0" parent="1"><mxGeometry relative="1" as="geometry"><Array as="points"><mxPoint x="459" y="616"/><mxPoint x="459" y="720"/><mxPoint x="472" y="720"/></Array></mxGeometry></mxCell>
+
+  </root>
+</mxGraphModel>

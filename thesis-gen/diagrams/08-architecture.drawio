@@ -1,0 +1,62 @@
+<mxGraphModel dx="1800" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1200" pageHeight="680" math="0" shadow="0">
+  <root>
+    <mxCell id="0"/><mxCell id="1" parent="0"/>
+
+    <!-- Title -->
+    <mxCell id="title" value="Hình 1.1. Kiến trúc tổng thể hệ thống CELLPHONES B2C" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontStyle=1;fontSize=14;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="150" y="8" width="900" height="36" as="geometry"/></mxCell>
+
+    <!-- ═══ LAYER 1: PRESENTATION ═══ -->
+    <mxCell id="L1bg" value="" style="rounded=1;fillColor=#dae8fc;strokeColor=#6c8ebf;opacity=30;" vertex="1" parent="1"><mxGeometry x="40" y="55" width="1120" height="130" as="geometry"/></mxCell>
+    <mxCell id="L1lbl" value="PRESENTATION&#xa;LAYER" style="text;html=1;align=center;fontStyle=1;fontSize=11;fontFamily=Times New Roman;fillColor=none;strokeColor=none;fontColor=#23527c;" vertex="1" parent="1"><mxGeometry x="42" y="95" width="90" height="50" as="geometry"/></mxCell>
+
+    <mxCell id="react18" value="&lt;b&gt;React 18&lt;/b&gt;&#xa;SPA" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="145" y="80" width="140" height="55" as="geometry"/></mxCell>
+    <mxCell id="ts" value="&lt;b&gt;TypeScript&lt;/b&gt;&#xa;Static Typing" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="305" y="80" width="140" height="55" as="geometry"/></mxCell>
+    <mxCell id="vite" value="&lt;b&gt;Vite&lt;/b&gt;&#xa;Build Tool" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="465" y="80" width="140" height="55" as="geometry"/></mxCell>
+    <mxCell id="tailwind" value="&lt;b&gt;Tailwind CSS v4&lt;/b&gt;&#xa;UI Framework" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="625" y="80" width="155" height="55" as="geometry"/></mxCell>
+    <mxCell id="shadcn" value="&lt;b&gt;shadcn/ui&lt;/b&gt;&#xa;Components" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="800" y="80" width="140" height="55" as="geometry"/></mxCell>
+    <mxCell id="router" value="&lt;b&gt;React Router v7&lt;/b&gt;&#xa;Navigation" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="960" y="80" width="155" height="55" as="geometry"/></mxCell>
+
+    <!-- Arrow: HTTPS -->
+    <mxCell id="https_lbl" value="HTTPS / REST API" style="text;html=1;align=center;fontStyle=1;fontSize=11;fontFamily=Times New Roman;fontColor=#666666;" vertex="1" parent="1"><mxGeometry x="490" y="192" width="220" height="22" as="geometry"/></mxCell>
+    <mxCell id="e_L1L2" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;startArrow=block;startFill=1;strokeWidth=2;strokeColor=#666666;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="600" y="185" as="sourcePoint"/><mxPoint x="600" y="220" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- ═══ LAYER 2: APPLICATION ═══ -->
+    <mxCell id="L2bg" value="" style="rounded=1;fillColor=#ffe6cc;strokeColor=#d6b656;opacity=30;" vertex="1" parent="1"><mxGeometry x="40" y="215" width="1120" height="130" as="geometry"/></mxCell>
+    <mxCell id="L2lbl" value="APPLICATION&#xa;LAYER" style="text;html=1;align=center;fontStyle=1;fontSize=11;fontFamily=Times New Roman;fillColor=none;strokeColor=none;fontColor=#8a5a00;" vertex="1" parent="1"><mxGeometry x="42" y="255" width="90" height="50" as="geometry"/></mxCell>
+
+    <mxCell id="sb" value="&lt;b&gt;Spring Boot 3.x&lt;/b&gt;&#xa;REST Controllers" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="145" y="240" width="190" height="55" as="geometry"/></mxCell>
+    <mxCell id="sec" value="&lt;b&gt;Spring Security&lt;/b&gt;&#xa;JWT RS256 Auth" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="355" y="240" width="190" height="55" as="geometry"/></mxCell>
+    <mxCell id="biz" value="&lt;b&gt;Business Services&lt;/b&gt;&#xa;Domain Logic" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="565" y="240" width="190" height="55" as="geometry"/></mxCell>
+    <mxCell id="jpa" value="&lt;b&gt;Spring Data JPA&lt;/b&gt;&#xa;Hibernate ORM" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="775" y="240" width="190" height="55" as="geometry"/></mxCell>
+    <mxCell id="cache" value="&lt;b&gt;Spring Cache&lt;/b&gt;&#xa;Redis Integration" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="985" y="240" width="155" height="55" as="geometry"/></mxCell>
+
+    <!-- Arrows: App → Data -->
+    <mxCell id="e_jdbc" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;startArrow=block;startFill=1;strokeWidth=2;strokeColor=#82b366;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="350" y="348" as="sourcePoint"/><mxPoint x="350" y="388" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="jdbc_lbl" value="JDBC / JPA" style="text;html=1;align=center;fontSize=10;fontFamily=Times New Roman;fontColor=#336600;" vertex="1" parent="1"><mxGeometry x="290" y="355" width="120" height="18" as="geometry"/></mxCell>
+
+    <mxCell id="e_redis" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;startArrow=block;startFill=1;strokeWidth=2;strokeColor=#6d8764;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="680" y="348" as="sourcePoint"/><mxPoint x="680" y="388" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="redis_lbl" value="Redis Protocol" style="text;html=1;align=center;fontSize=10;fontFamily=Times New Roman;fontColor=#336600;" vertex="1" parent="1"><mxGeometry x="620" y="355" width="120" height="18" as="geometry"/></mxCell>
+
+    <mxCell id="e_ext" style="edgeStyle=orthogonalEdgeStyle;endArrow=block;endFill=1;strokeWidth=2;strokeColor=#b85450;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="960" y="348" as="sourcePoint"/><mxPoint x="960" y="388" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="ext_lbl" value="API / Webhook" style="text;html=1;align=center;fontSize=10;fontFamily=Times New Roman;fontColor=#8a0000;" vertex="1" parent="1"><mxGeometry x="895" y="355" width="120" height="18" as="geometry"/></mxCell>
+
+    <!-- ═══ LAYER 3: DATA STORAGE ═══ -->
+    <mxCell id="L3bg" value="" style="rounded=1;fillColor=#d5e8d4;strokeColor=#82b366;opacity=30;" vertex="1" parent="1"><mxGeometry x="40" y="385" width="555" height="130" as="geometry"/></mxCell>
+    <mxCell id="L3lbl" value="DATA&#xa;LAYER" style="text;html=1;align=center;fontStyle=1;fontSize=11;fontFamily=Times New Roman;fillColor=none;strokeColor=none;fontColor=#336600;" vertex="1" parent="1"><mxGeometry x="42" y="425" width="80" height="50" as="geometry"/></mxCell>
+
+    <mxCell id="pg" value="&lt;b&gt;PostgreSQL 15+&lt;/b&gt;&#xa;Relational DB (35+ tables)&#xa;ACID | Full-text Search" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="140" y="408" width="230" height="80" as="geometry"/></mxCell>
+    <mxCell id="redis" value="&lt;b&gt;Redis 7+&lt;/b&gt;&#xa;Cache | Session&#xa;JWT Blacklist" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="395" y="408" width="175" height="80" as="geometry"/></mxCell>
+
+    <!-- ═══ LAYER 4: EXTERNAL SERVICES ═══ -->
+    <mxCell id="L4bg" value="" style="rounded=1;fillColor=#f8cecc;strokeColor=#b85450;opacity=30;" vertex="1" parent="1"><mxGeometry x="610" y="385" width="550" height="130" as="geometry"/></mxCell>
+    <mxCell id="L4lbl" value="EXTERNAL&#xa;SERVICES" style="text;html=1;align=center;fontStyle=1;fontSize=11;fontFamily=Times New Roman;fillColor=none;strokeColor=none;fontColor=#8a0000;" vertex="1" parent="1"><mxGeometry x="612" y="425" width="80" height="50" as="geometry"/></mxCell>
+
+    <mxCell id="vnpay" value="&lt;b&gt;VNPay&lt;/b&gt;&#xa;Thanh toán QR&#xa;ATM / Ví điện tử" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="705" y="408" width="140" height="80" as="geometry"/></mxCell>
+    <mxCell id="ghn" value="&lt;b&gt;GHN / GHTK&lt;/b&gt;&#xa;Vận chuyển&#xa;Tracking" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="865" y="408" width="140" height="80" as="geometry"/></mxCell>
+    <mxCell id="smtp" value="&lt;b&gt;SMTP / Email&lt;/b&gt;&#xa;Xác nhận đơn&#xa;Bảo hành" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="1020" y="408" width="120" height="80" as="geometry"/></mxCell>
+
+    <!-- Legend -->
+    <mxCell id="leg" value="Chú giải: ■ Client Layer  ■ Application Layer  ■ Data Layer  ■ External Services" style="text;html=1;align=center;fontSize=10;fontFamily=Times New Roman;fontColor=#666666;" vertex="1" parent="1"><mxGeometry x="200" y="530" width="800" height="22" as="geometry"/></mxCell>
+
+  </root>
+</mxGraphModel>

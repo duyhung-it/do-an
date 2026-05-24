@@ -1,0 +1,74 @@
+<mxGraphModel dx="1800" dy="900" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1000" pageHeight="680" math="0" shadow="0">
+  <root>
+    <mxCell id="0"/><mxCell id="1" parent="0"/>
+
+    <!-- Title -->
+    <mxCell id="title" value="Hình 2.12. Biểu đồ trình tự: Quy trình đăng nhập JWT" style="text;html=1;strokeColor=none;fillColor=none;align=center;fontStyle=1;fontSize=14;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="50" y="8" width="900" height="36" as="geometry"/></mxCell>
+
+    <!-- ── Participants ── -->
+    <mxCell id="p_browser" value="&lt;b&gt;Browser&lt;/b&gt;&#xa;(Client)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="50" y="52" width="130" height="50" as="geometry"/></mxCell>
+    <mxCell id="p_api" value="&lt;b&gt;AuthController&lt;/b&gt;&#xa;(Spring Boot)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="270" y="52" width="160" height="50" as="geometry"/></mxCell>
+    <mxCell id="p_svc" value="&lt;b&gt;AuthService&lt;/b&gt;&#xa;(Business Logic)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d6b656;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="510" y="52" width="160" height="50" as="geometry"/></mxCell>
+    <mxCell id="p_db" value="&lt;b&gt;UserRepository&lt;/b&gt;&#xa;(PostgreSQL)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="730" y="52" width="160" height="50" as="geometry"/></mxCell>
+    <mxCell id="p_redis" value="&lt;b&gt;Redis&lt;/b&gt;&#xa;(Token Store)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontSize=12;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="870" y="52" width="80" height="50" as="geometry"/></mxCell>
+
+    <!-- Lifelines -->
+    <mxCell id="ll_b" value="" style="endArrow=none;dashed=1;strokeColor=#666666;strokeWidth=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="115" y="102" as="sourcePoint"/><mxPoint x="115" y="650" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="ll_a" value="" style="endArrow=none;dashed=1;strokeColor=#666666;strokeWidth=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="350" y="102" as="sourcePoint"/><mxPoint x="350" y="650" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="ll_s" value="" style="endArrow=none;dashed=1;strokeColor=#666666;strokeWidth=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="590" y="102" as="sourcePoint"/><mxPoint x="590" y="650" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="ll_d" value="" style="endArrow=none;dashed=1;strokeColor=#666666;strokeWidth=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="810" y="102" as="sourcePoint"/><mxPoint x="810" y="650" as="targetPoint"/></mxGeometry></mxCell>
+    <mxCell id="ll_r" value="" style="endArrow=none;dashed=1;strokeColor=#666666;strokeWidth=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="910" y="102" as="sourcePoint"/><mxPoint x="910" y="650" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- ── Messages ── -->
+    <!-- 1: POST /auth/login {email, password} -->
+    <mxCell id="m1" value="POST /api/auth/login {email, password}" style="text;html=1;align=left;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="120" y="125" width="225" height="18" as="geometry"/></mxCell>
+    <mxCell id="e_m1" style="endArrow=block;endFill=1;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="115" y="143" as="sourcePoint"/><mxPoint x="350" y="143" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- 2: Validate request format -->
+    <mxCell id="m2" value="validate(request)" style="text;html=1;align=left;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="355" y="168" width="230" height="18" as="geometry"/></mxCell>
+    <mxCell id="e_m2" style="endArrow=block;endFill=1;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="350" y="186" as="sourcePoint"/><mxPoint x="590" y="186" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- 3: findByEmail -->
+    <mxCell id="m3" value="findByEmail(email)" style="text;html=1;align=left;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="595" y="211" width="210" height="18" as="geometry"/></mxCell>
+    <mxCell id="e_m3" style="endArrow=block;endFill=1;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="590" y="229" as="sourcePoint"/><mxPoint x="810" y="229" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- 4: return User -->
+    <mxCell id="m4" value="User entity" style="text;html=1;align=right;fontSize=11;fontFamily=Times New Roman;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="595" y="249" width="210" height="18" as="geometry"/></mxCell>
+    <mxCell id="e_m4" style="endArrow=open;endFill=0;strokeWidth=1.5;dashed=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="810" y="267" as="sourcePoint"/><mxPoint x="590" y="267" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- 5: BCrypt verify password -->
+    <mxCell id="m5" value="BCrypt.verify(password, hash)" style="text;html=1;align=left;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="355" y="285" width="230" height="18" as="geometry"/></mxCell>
+    <mxCell id="e_m5" style="endArrow=block;endFill=1;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="350" y="303" as="sourcePoint"/><mxPoint x="590" y="303" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- 6: Generate JWT tokens -->
+    <mxCell id="m6" value="generateTokens(userId, roles)" style="text;html=1;align=left;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="355" y="323" width="230" height="18" as="geometry"/></mxCell>
+    <mxCell id="e_m6" style="endArrow=block;endFill=1;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="350" y="341" as="sourcePoint"/><mxPoint x="590" y="341" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- 7: Store refresh token in Redis -->
+    <mxCell id="m7" value="SET refresh:{userId} → token (TTL 7d)" style="text;html=1;align=left;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="595" y="361" width="310" height="18" as="geometry"/></mxCell>
+    <mxCell id="e_m7" style="endArrow=block;endFill=1;strokeWidth=1.5;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="590" y="379" as="sourcePoint"/><mxPoint x="910" y="379" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- 8: OK -->
+    <mxCell id="m8" value="OK" style="text;html=1;align=right;fontSize=11;fontFamily=Times New Roman;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="595" y="399" width="310" height="18" as="geometry"/></mxCell>
+    <mxCell id="e_m8" style="endArrow=open;endFill=0;strokeWidth=1.5;dashed=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="910" y="417" as="sourcePoint"/><mxPoint x="590" y="417" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- 9: Return tokens to controller -->
+    <mxCell id="m9" value="{accessToken (RS256, 1h), refreshToken}" style="text;html=1;align=right;fontSize=11;fontFamily=Times New Roman;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="355" y="437" width="230" height="18" as="geometry"/></mxCell>
+    <mxCell id="e_m9" style="endArrow=open;endFill=0;strokeWidth=1.5;dashed=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="590" y="455" as="sourcePoint"/><mxPoint x="350" y="455" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- 10: 200 OK Response -->
+    <mxCell id="m10" value="200 OK: {accessToken, refreshToken, user}" style="text;html=1;align=right;fontSize=11;fontFamily=Times New Roman;fontStyle=2;" vertex="1" parent="1"><mxGeometry x="120" y="475" width="225" height="18" as="geometry"/></mxCell>
+    <mxCell id="e_m10" style="endArrow=open;endFill=0;strokeWidth=1.5;dashed=1;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="350" y="493" as="sourcePoint"/><mxPoint x="115" y="493" as="targetPoint"/></mxGeometry></mxCell>
+
+    <!-- 11: Store in localStorage -->
+    <mxCell id="m11" value="Lưu token vào localStorage" style="text;html=1;align=left;fontSize=11;fontFamily=Times New Roman;" vertex="1" parent="1"><mxGeometry x="50" y="510" width="220" height="18" as="geometry"/></mxCell>
+    <mxCell id="e_m11" style="endArrow=open;endFill=0;strokeWidth=1.5;strokeColor=#23527c;" edge="1" parent="1"><mxGeometry relative="1" as="geometry"><mxPoint x="115" y="528" as="sourcePoint"/><mxPoint x="115" y="528" as="targetPoint"/><Array as="points"><mxPoint x="80" y="510"/><mxPoint x="80" y="528"/></Array></mxGeometry></mxCell>
+
+    <!-- Note box: 401 Unauthorized case -->
+    <mxCell id="note1" value="&lt;b&gt;[alt] Sai mật khẩu&lt;/b&gt;&#xa;→ 401 Unauthorized: &quot;Email hoặc mật khẩu không đúng&quot;" style="shape=note;size=14;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontSize=11;fontFamily=Times New Roman;align=left;" vertex="1" parent="1"><mxGeometry x="55" y="545" width="350" height="50" as="geometry"/></mxCell>
+
+    <!-- Note box: Token structure -->
+    <mxCell id="note2" value="&lt;b&gt;JWT Payload:&lt;/b&gt; sub(userId), roles[], iss, iat, exp&#xa;&lt;b&gt;Algorithm:&lt;/b&gt; RS256 (RSA Private Key ký, Public Key xác minh)" style="shape=note;size=14;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#666666;fontSize=11;fontFamily=Times New Roman;align=left;" vertex="1" parent="1"><mxGeometry x="450" y="545" width="490" height="55" as="geometry"/></mxCell>
+
+  </root>
+</mxGraphModel>
