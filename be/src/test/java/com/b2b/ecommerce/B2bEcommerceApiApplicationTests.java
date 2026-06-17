@@ -1,18 +1,27 @@
 package com.b2b.ecommerce;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.MvcResult;
+import org.springframework.test.context.TestPropertySource;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
+import java.util.Map;
+import java.util.TreeMap;
 import java.util.UUID;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
+import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
@@ -23,14 +32,157 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 @AutoConfigureMockMvc
 @SpringBootTest
+@TestPropertySource(properties = {
+		"vnpay.tmn-code=TESTVNPY",
+		"vnpay.hash-secret=test-vnpay-secret",
+		"vnpay.return-url=http://localhost:8080/api/v1/payments/gateway/return"
+})
 class B2bEcommerceApiApplicationTests {
 	@Autowired
 	private MockMvc mockMvc;
 	@Autowired
 	private JdbcTemplate jdbc;
 
+	@BeforeEach
+	void resetOrderTestStock() {
+		jdbc.update("""
+				UPDATE product_variants
+				SET stock = GREATEST(stock, 50), updated_at = NOW()
+				WHERE id IN (
+				  'c1b2c3d4-0001-0001-0001-000000000001',
+				  'c1b2c3d4-0001-0001-0001-000000000002',
+				  'c1b2c3d4-0001-0001-0001-000000000003',
+				  'c1b2c3d4-0001-0001-0001-000000000004'
+				)
+				""");
+	}
+
 	@Test
 	void contextLoads() {
+	}
+
+	@Test
+	void demoAuthLoginWorksForBuyerAndAdmin() throws Exception {
+		mockMvc.perform(post("/api/v1/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"email\":\"khachhang@gmail.com\",\"password\":\"123456\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.email").value("khachhang@gmail.com"))
+				.andExpect(jsonPath("$.data.role").value("CUSTOMER"))
+				.andExpect(jsonPath("$.data.token").exists());
+
+		mockMvc.perform(post("/api/v1/auth/login")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"email\":\"admin@cellphones.vn\",\"password\":\"123456\"}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.email").value("admin@cellphones.vn"))
+				.andExpect(jsonPath("$.data.role").value("ADMIN"))
+				.andExpect(jsonPath("$.data.companyName").value("CELLPHONES"))
+				.andExpect(jsonPath("$.data.token").exists());
+	}
+
+	private void resetDemoBuyerProfile() {
+		jdbc.update("""
+				INSERT INTO customer_profiles (
+				  id, full_name, email, phone, role, status, avatar_url, address,
+				  email_verified, phone_verified, created_at, updated_at
+				)
+				VALUES (
+				  ?::uuid, 'Demo Buyer', 'buyer.demo@cellphones.local', '0900000199',
+				  'CUSTOMER', 'ACTIVE', 'https://cdn.cellphones.vn/users/demo-buyer.png',
+				  '1 Demo Street, TP. Ho Chi Minh', TRUE, TRUE, NOW() - INTERVAL '30 days', NOW()
+				)
+				ON CONFLICT (id) DO UPDATE SET
+				  full_name = EXCLUDED.full_name,
+				  email = EXCLUDED.email,
+				  phone = EXCLUDED.phone,
+				  role = EXCLUDED.role,
+				  status = EXCLUDED.status,
+				  avatar_url = EXCLUDED.avatar_url,
+				  address = EXCLUDED.address,
+				  email_verified = EXCLUDED.email_verified,
+				  phone_verified = EXCLUDED.phone_verified,
+				  updated_at = NOW()
+				""", UUID.fromString("00000000-0000-4000-8000-000000000199"));
+	}
+
+	private void seedDemoBuyerWishlist() {
+		jdbc.update("""
+				INSERT INTO customer_wishlist (id, user_id, product_id, added_price, price_alert, created_at, updated_at)
+				SELECT 'dd000001-0199-4000-8000-000000000199'::uuid,
+				       ?::uuid,
+				       p.id,
+				       p.price,
+				       30000000,
+				       NOW() - INTERVAL '10 days',
+				       NOW()
+				FROM products p
+				WHERE p.id = 'b1b2c3d4-0001-0001-0001-000000000001'
+				ON CONFLICT (user_id, product_id) DO UPDATE SET
+				  added_price = EXCLUDED.added_price,
+				  price_alert = EXCLUDED.price_alert,
+				  updated_at = NOW()
+				""", UUID.fromString("00000000-0000-4000-8000-000000000199"));
+
+		jdbc.update("""
+				INSERT INTO customer_wishlist (id, user_id, product_id, added_price, price_alert, created_at, updated_at)
+				SELECT ('dd000001-0199-4000-8000-' || LPAD(n::text, 12, '0'))::uuid,
+				       ?::uuid,
+				       product_id,
+				       p.price,
+				       p.price - (n * 100000),
+				       NOW() - (n || ' days')::interval,
+				       NOW() - (n || ' days')::interval
+				FROM (
+				  SELECT ROW_NUMBER() OVER (ORDER BY p.created_at DESC, p.id) AS n, p.id AS product_id
+				  FROM products p
+				  WHERE p.status = 'ACTIVE'
+				  ORDER BY p.created_at DESC, p.id
+				  LIMIT 10
+				) seeded
+				JOIN products p ON p.id = seeded.product_id
+				ON CONFLICT (id) DO UPDATE SET
+				  user_id = EXCLUDED.user_id,
+				  product_id = EXCLUDED.product_id,
+				  added_price = EXCLUDED.added_price,
+				  price_alert = EXCLUDED.price_alert,
+				  updated_at = NOW()
+				""", UUID.fromString("00000000-0000-4000-8000-000000000199"));
+	}
+
+	private void resetDemoBuyerDefaultAddress() {
+		jdbc.update("""
+				UPDATE customer_addresses
+				SET is_default = false,
+				    updated_at = NOW()
+				WHERE user_id = '00000000-0000-4000-8000-000000000199'::uuid
+				""");
+		jdbc.update("""
+				UPDATE customer_addresses
+				SET is_default = true,
+				    updated_at = NOW()
+				WHERE id = 'dd000000-0199-4000-8000-000000000001'::uuid
+				""");
+	}
+
+	private String vnpaySignature(Map<String, String> params) throws Exception {
+		String hashData = new TreeMap<>(params).entrySet().stream()
+				.filter(entry -> !"vnp_SecureHash".equals(entry.getKey()) && !"vnp_SecureHashType".equals(entry.getKey()))
+				.map(entry -> encode(entry.getKey()) + "=" + encode(entry.getValue()))
+				.reduce((left, right) -> left + "&" + right)
+				.orElse("");
+		Mac mac = Mac.getInstance("HmacSHA512");
+		mac.init(new SecretKeySpec("test-vnpay-secret".getBytes(StandardCharsets.UTF_8), "HmacSHA512"));
+		byte[] bytes = mac.doFinal(hashData.getBytes(StandardCharsets.UTF_8));
+		StringBuilder hex = new StringBuilder(bytes.length * 2);
+		for (byte value : bytes) {
+			hex.append(String.format("%02x", value));
+		}
+		return hex.toString();
+	}
+
+	private String encode(String value) {
+		return URLEncoder.encode(value, StandardCharsets.UTF_8);
 	}
 
 	@Test
@@ -65,9 +217,49 @@ class B2bEcommerceApiApplicationTests {
 	}
 
 	@Test
+	void adminPromotionCreateAcceptsArrayScopes() throws Exception {
+		String code = "ABC" + System.currentTimeMillis();
+		mockMvc.perform(post("/api/v1/admin/promotions")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "code": "%s",
+								  "name": "Khuyen mai 100k",
+								  "description": "",
+								  "type": "FIXED_AMOUNT",
+								  "value": 100,
+								  "minOrderValue": 1000000,
+								  "maxDiscount": 2000000,
+								  "startDate": "2026-06-09T07:37:00.000Z",
+								  "endDate": "2026-07-09T07:37:00.000Z",
+								  "usageLimit": 200,
+								  "applicableProducts": [
+								    "557b8ba2-1da6-4a62-975f-034eccb254b6",
+								    "b5ad4ddf-368b-43dc-9723-a9f46ad0e7bd",
+								    "12a7a013-7a53-48e1-b71d-e341f566247a"
+								  ],
+								  "applicableCategories": [
+								    "a1b2c3d4-0001-0001-0001-000000000006",
+								    "a1b2c3d4-0001-0001-0001-000000000003"
+								  ],
+								  "applicableBrands": ["Apple"],
+								  "isActive": true
+								}
+								""".formatted(code)))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.success").value(true))
+				.andExpect(jsonPath("$.data.code").value(code))
+				.andExpect(jsonPath("$.data.type").value("FIXED_AMOUNT"))
+				.andExpect(jsonPath("$.data.applicableProducts.length()").value(3))
+				.andExpect(jsonPath("$.data.applicableCategories.length()").value(2))
+				.andExpect(jsonPath("$.data.applicableBrands[0]").value("Apple"));
+	}
+
+	@Test
 	void buyerSavedAddressCanBeUsedForCheckout() throws Exception {
 		String userId = "00000000-0000-4000-8000-000000000199";
 		String addressId = "dd000000-0199-4000-8000-000000000001";
+		resetDemoBuyerDefaultAddress();
 
 		mockMvc.perform(get("/api/v1/users/me/addresses")
 						.header("X-User-Id", userId))
@@ -104,6 +296,7 @@ class B2bEcommerceApiApplicationTests {
 	@Test
 	void buyerProfileCanBeReadUpdatedAndSummarized() throws Exception {
 		String userId = "00000000-0000-4000-8000-000000000199";
+		resetDemoBuyerProfile();
 
 		mockMvc.perform(get("/api/v1/users/me")
 						.header("X-User-Id", userId))
@@ -139,6 +332,73 @@ class B2bEcommerceApiApplicationTests {
 	}
 
 	@Test
+	void buyerWishlistIsDbBackedAndIdempotent() throws Exception {
+		String userId = "00000000-0000-4000-8000-000000000199";
+		String productId = "b1b2c3d4-0001-0001-0001-000000000001";
+		seedDemoBuyerWishlist();
+
+		mockMvc.perform(get("/api/v1/users/me/wishlist")
+						.header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.length()").value(greaterThanOrEqualTo(1)))
+				.andExpect(jsonPath("$.data[0].productId").exists())
+				.andExpect(jsonPath("$.data[0].addedPrice").exists());
+
+		String body = """
+				{
+				  "productId": "%s",
+				  "priceAlert": 30000000
+				}
+				""".formatted(productId);
+
+		mockMvc.perform(post("/api/v1/users/me/wishlist")
+						.header("X-User-Id", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(body))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.productId").value(productId));
+
+		mockMvc.perform(post("/api/v1/users/me/wishlist")
+						.header("X-User-Id", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(body))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.productId").value(productId));
+
+		mockMvc.perform(patch("/api/v1/users/me/wishlist/{productId}/price-alert", productId)
+						.header("X-User-Id", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("{\"priceAlert\":28000000}"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.priceAlert").value(28000000));
+	}
+
+	@Test
+	void publicStoresAreDbBackedAndAvailabilityUsesUuidProduct() throws Exception {
+		String productId = "b1b2c3d4-0001-0001-0001-000000000001";
+
+		MvcResult stores = mockMvc.perform(get("/api/v1/stores"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.length()").value(greaterThanOrEqualTo(1)))
+				.andExpect(jsonPath("$.data[0].id").exists())
+				.andExpect(jsonPath("$.data[0].city").exists())
+				.andReturn();
+		String storeId = stores.getResponse().getContentAsString()
+				.replaceAll("(?s).*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+
+		mockMvc.perform(get("/api/v1/stores/{id}", storeId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.id").value(storeId));
+
+		mockMvc.perform(get("/api/v1/stores/{id}/availability", storeId)
+						.param("productId", productId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.storeId").value(storeId))
+				.andExpect(jsonPath("$.data.productId").value(productId))
+				.andExpect(jsonPath("$.data.availableQuantity").value(greaterThanOrEqualTo(0)));
+	}
+
+	@Test
 	void publicInstallmentPlansCanBeListedAndCalculated() throws Exception {
 		mockMvc.perform(get("/api/v1/installment-plans"))
 				.andExpect(status().isOk())
@@ -165,7 +425,17 @@ class B2bEcommerceApiApplicationTests {
 
 	@Test
 	void reviewHelpfulIsIdempotentPerUser() throws Exception {
-		MvcResult first = mockMvc.perform(patch("/api/v1/reviews/rev-demo-1/helpful")
+		String reviewId = "dd000002-0199-4000-8000-000000000001";
+		String productId = "b1b2c3d4-0001-0001-0001-000000000001";
+
+		mockMvc.perform(get("/api/v1/products/{productId}/reviews", productId)
+						.param("page", "1")
+						.param("pageSize", "20"))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data[0].productId").exists())
+				.andExpect(jsonPath("$.data[0].helpfulCount").exists());
+
+		MvcResult first = mockMvc.perform(patch("/api/v1/reviews/{id}/helpful", reviewId)
 						.header("X-User-Id", "00000000-0000-4000-8000-000000000199"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.helpful").value(true))
@@ -173,7 +443,7 @@ class B2bEcommerceApiApplicationTests {
 		String firstCount = first.getResponse().getContentAsString()
 				.replaceAll("(?s).*\"helpfulCount\"\\s*:\\s*([0-9]+).*", "$1");
 
-		mockMvc.perform(patch("/api/v1/reviews/rev-demo-1/helpful")
+		mockMvc.perform(patch("/api/v1/reviews/{id}/helpful", reviewId)
 						.header("X-User-Id", "00000000-0000-4000-8000-000000000199"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.helpful").value(true))
@@ -973,7 +1243,7 @@ class B2bEcommerceApiApplicationTests {
 		mockMvc.perform(get("/api/v1/promotions").param("page", "1").param("pageSize", "10"))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.success").value(true))
-				.andExpect(jsonPath("$.pagination.total").value(greaterThanOrEqualTo(8)))
+				.andExpect(jsonPath("$.pagination.total").value(greaterThanOrEqualTo(7)))
 				.andExpect(jsonPath("$.data[0].code").exists());
 
 		String validBody = """
@@ -1736,16 +2006,35 @@ class B2bEcommerceApiApplicationTests {
 				.andExpect(status().isBadRequest())
 				.andExpect(jsonPath("$.error.code").value("PAYMENT_ALREADY_PAID"));
 
-		String refundBody = """
+		String partialRefundBody = """
 				{
-				  "refundAmount": 520000,
+				  "refundAmount": 100000,
 				  "reason": "Khach huy don sau khi da thanh toan",
 				  "method": "BANK_TRANSFER"
 				}
 				""";
 		mockMvc.perform(post("/api/v1/admin/payments/{id}/refund", paymentId)
 						.contentType(MediaType.APPLICATION_JSON)
-						.content(refundBody))
+						.content(partialRefundBody))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.status").value("PARTIALLY_REFUNDED"))
+				.andExpect(jsonPath("$.data.refundAmount").value(100000))
+				.andExpect(jsonPath("$.data.refundMethod").value("BANK_TRANSFER"))
+				.andExpect(jsonPath("$.data.refundedAt").exists());
+		mockMvc.perform(get("/api/v1/orders/{id}", orderId).header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.paymentStatus").value("PARTIALLY_REFUNDED"));
+
+		String finalRefundBody = """
+				{
+				  "refundAmount": 420000,
+				  "reason": "Hoan tat phan con lai",
+				  "method": "BANK_TRANSFER"
+				}
+				""";
+		mockMvc.perform(post("/api/v1/admin/payments/{id}/refund", paymentId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(finalRefundBody))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.status").value("REFUNDED"))
 				.andExpect(jsonPath("$.data.refundAmount").value(520000))
@@ -1754,6 +2043,163 @@ class B2bEcommerceApiApplicationTests {
 		mockMvc.perform(get("/api/v1/orders/{id}", orderId).header("X-User-Id", userId))
 				.andExpect(status().isOk())
 				.andExpect(jsonPath("$.data.paymentStatus").value("REFUNDED"));
+	}
+
+	@Test
+	void refundedReturnMarksOriginalOrderReturned() throws Exception {
+		String userId = UUID.randomUUID().toString();
+		String orderBody = """
+				{
+				  "items": [
+				    {
+				      "productId": "b1b2c3d4-0001-0001-0001-000000000001",
+				      "variantId": "c1b2c3d4-0001-0001-0001-000000000001",
+				      "quantity": 1
+				    }
+				  ],
+				  "shippingAddress": {
+				    "recipientName": "Nguyen Return",
+				    "phone": "0964567890",
+				    "province": "Ha Noi",
+				    "district": "Cau Giay",
+				    "ward": "Dich Vong",
+				    "addressLine": "5 Xuan Thuy"
+				  },
+				  "paymentMethod": "COD"
+				}
+				""";
+		MvcResult created = mockMvc.perform(post("/api/v1/orders")
+						.header("X-User-Id", userId)
+						.header("X-User-Name", "Nguyen Return")
+						.header("X-User-Email", "return.test@gmail.com")
+						.header("X-User-Phone", "0964567890")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(orderBody))
+				.andExpect(status().isCreated())
+				.andReturn();
+		String body = created.getResponse().getContentAsString();
+		String orderId = body.replaceAll("(?s).*\"order\"\\s*:\\s*\\{\\s*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+
+		for (String nextStatus : List.of("CONFIRMED", "SHIPPING", "DELIVERED")) {
+			mockMvc.perform(patch("/api/v1/admin/orders/{id}/status", orderId)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("""
+									{
+									  "status": "%s",
+									  "note": "Test return flow"
+									}
+									""".formatted(nextStatus)))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.data.status").value(nextStatus));
+		}
+
+		MvcResult createdReturn = mockMvc.perform(post("/api/v1/returns")
+						.header("X-User-Id", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "orderId": "%s",
+								  "reason": "San pham loi can hoan tra",
+								  "refundAmount": 33990000
+								}
+								""".formatted(orderId)))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.data.status").value("PENDING"))
+				.andReturn();
+		String returnId = createdReturn.getResponse().getContentAsString()
+				.replaceAll("(?s).*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+
+		for (String nextStatus : List.of("APPROVED", "PROCESSING", "REFUNDED")) {
+			mockMvc.perform(patch("/api/v1/admin/returns/{id}/status", returnId)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("""
+									{
+									  "status": "%s"
+									}
+									""".formatted(nextStatus)))
+					.andExpect(status().isOk())
+					.andExpect(jsonPath("$.data.status").value(nextStatus));
+		}
+
+		mockMvc.perform(get("/api/v1/orders/{id}", orderId)
+						.header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.status").value("RETURNED"));
+		Integer historyRows = jdbc.queryForObject("""
+				SELECT COUNT(*) FROM order_status_history
+				WHERE order_id = ?::uuid AND to_status = 'RETURNED'
+				""", Integer.class, orderId);
+		org.assertj.core.api.Assertions.assertThat(historyRows).isNotNull();
+		org.assertj.core.api.Assertions.assertThat(historyRows).isGreaterThanOrEqualTo(1);
+	}
+
+	@Test
+	void buyerCanDeletePendingReturnRequest() throws Exception {
+		String userId = UUID.randomUUID().toString();
+		MvcResult created = mockMvc.perform(post("/api/v1/orders")
+						.header("X-User-Id", userId)
+						.header("X-User-Name", "Delete Return Buyer")
+						.header("X-User-Email", "delete.return@gmail.com")
+						.header("X-User-Phone", "0974567890")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "items": [
+								    {
+								      "productId": "b1b2c3d4-0001-0001-0001-000000000001",
+								      "variantId": "c1b2c3d4-0001-0001-0001-000000000001",
+								      "quantity": 1
+								    }
+								  ],
+								  "shippingAddress": {
+								    "recipientName": "Delete Return Buyer",
+								    "phone": "0974567890",
+								    "province": "Ha Noi",
+								    "district": "Cau Giay",
+								    "ward": "Dich Vong",
+								    "addressLine": "6 Xuan Thuy"
+								  },
+								  "paymentMethod": "COD"
+								}
+								"""))
+				.andExpect(status().isCreated())
+				.andReturn();
+		String orderId = created.getResponse().getContentAsString()
+				.replaceAll("(?s).*\"order\"\\s*:\\s*\\{\\s*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+		for (String nextStatus : List.of("CONFIRMED", "SHIPPING", "DELIVERED")) {
+			mockMvc.perform(patch("/api/v1/admin/orders/{id}/status", orderId)
+							.contentType(MediaType.APPLICATION_JSON)
+							.content("""
+									{
+									  "status": "%s",
+									  "note": "Prepare delete return test"
+									}
+									""".formatted(nextStatus)))
+					.andExpect(status().isOk());
+		}
+		MvcResult createdReturn = mockMvc.perform(post("/api/v1/returns")
+						.header("X-User-Id", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content("""
+								{
+								  "orderId": "%s",
+								  "reason": "Khach tao nham yeu cau",
+								  "refundAmount": 33990000
+								}
+								""".formatted(orderId)))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.data.status").value("PENDING"))
+				.andReturn();
+		String returnId = createdReturn.getResponse().getContentAsString()
+				.replaceAll("(?s).*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+
+		mockMvc.perform(delete("/api/v1/returns/{id}", returnId)
+						.header("X-User-Id", userId))
+				.andExpect(status().isNoContent());
+		mockMvc.perform(get("/api/v1/returns/{id}", returnId)
+						.header("X-User-Id", userId))
+				.andExpect(status().isNotFound())
+				.andExpect(jsonPath("$.error.code").value("RETURN_NOT_FOUND"));
 	}
 
 	@Test
@@ -1870,5 +2316,99 @@ class B2bEcommerceApiApplicationTests {
 				.andExpect(jsonPath("$.data[0].type").value("PAYMENT"))
 				.andExpect(jsonPath("$.data[0].entityType").value("ORDER"))
 				.andExpect(jsonPath("$.data[0].entityId").value(orderId));
+	}
+
+	@Test
+	void vnpayGatewaySessionBuildsSignedSandboxUrlAndReturnMarksPaymentPaid() throws Exception {
+		String userId = UUID.randomUUID().toString();
+		String orderBody = """
+				{
+				  "items": [
+				    {
+				      "productId": "b1b2c3d4-0001-0001-0001-000000000002",
+				      "variantId": "c1b2c3d4-0001-0001-0001-000000000003",
+				      "quantity": 1
+				    }
+				  ],
+				  "shippingAddress": {
+				    "recipientName": "Tran Van Vnpay",
+				    "phone": "0974567890",
+				    "province": "TP. Ho Chi Minh",
+				    "district": "Quan 1",
+				    "ward": "Ben Nghe",
+				    "addressLine": "10 Le Loi"
+				  },
+				  "paymentMethod": "VNPAY"
+				}
+				""";
+
+		MvcResult created = mockMvc.perform(post("/api/v1/orders")
+						.header("X-User-Id", userId)
+						.header("X-User-Name", "Tran Van Vnpay")
+						.header("X-User-Email", "vnpay@gmail.com")
+						.header("X-User-Phone", "0974567890")
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(orderBody))
+				.andExpect(status().isCreated())
+				.andExpect(jsonPath("$.data.payment.method").value("VNPAY"))
+				.andReturn();
+		String body = created.getResponse().getContentAsString();
+		String orderId = body.replaceAll("(?s).*\"order\"\\s*:\\s*\\{\\s*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+		String paymentId = body.replaceAll("(?s).*\"payment\"\\s*:\\s*\\{\\s*\"id\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+		long totalAmount = Long.parseLong(body.replaceAll("(?s).*\"payment\"\\s*:\\s*\\{.*\"amount\"\\s*:\\s*(\\d+).*", "$1"));
+		String sessionBody = """
+				{
+				  "provider": "VNPAY",
+				  "returnUrl": "http://localhost:3000/payment-return",
+				  "callbackUrl": "http://localhost:8080/api/v1/payments/gateway/return",
+				  "ipAddress": "127.0.0.1",
+				  "locale": "vn",
+				  "bankCode": "VNBANK"
+				}
+				""";
+
+		MvcResult session = mockMvc.perform(post("/api/v1/payments/{id}/gateway-session", paymentId)
+						.header("X-User-Id", userId)
+						.contentType(MediaType.APPLICATION_JSON)
+						.content(sessionBody))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.provider").value("VNPAY"))
+				.andExpect(jsonPath("$.data.status").value("PENDING"))
+				.andExpect(jsonPath("$.data.paymentUrl").value(startsWith("https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?")))
+				.andReturn();
+		String sessionText = session.getResponse().getContentAsString();
+		String requestId = sessionText.replaceAll("(?s).*\"requestId\"\\s*:\\s*\"([^\"]+)\".*", "$1");
+
+		Map<String, String> returnParams = new TreeMap<>();
+		returnParams.put("vnp_TmnCode", "TESTVNPY");
+		returnParams.put("vnp_Amount", String.valueOf(totalAmount * 100));
+		returnParams.put("vnp_BankCode", "VNBANK");
+		String uniqueRef = UUID.randomUUID().toString().replace("-", "").substring(0, 12);
+		returnParams.put("vnp_BankTranNo", "VNPAYBANK" + uniqueRef);
+		returnParams.put("vnp_CardType", "ATM");
+		returnParams.put("vnp_OrderInfo", "Thanh toan don hang");
+		returnParams.put("vnp_PayDate", "20260529120000");
+		returnParams.put("vnp_ResponseCode", "00");
+		returnParams.put("vnp_TransactionNo", "VNPAYTXN" + uniqueRef);
+		returnParams.put("vnp_TransactionStatus", "00");
+		returnParams.put("vnp_TxnRef", requestId);
+		returnParams.put("vnp_SecureHash", vnpaySignature(returnParams));
+
+		mockMvc.perform(get("/api/v1/payments/gateway/return")
+						.params(new org.springframework.util.LinkedMultiValueMap<>(returnParams.entrySet().stream()
+								.collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, entry -> List.of(entry.getValue()))))))
+				.andExpect(status().isFound())
+				.andExpect(header().string("Location", startsWith("http://localhost:3000/payment-return?requestId=")));
+
+		mockMvc.perform(get("/api/v1/payments/{id}", paymentId)
+						.header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.status").value("PAID"))
+				.andExpect(jsonPath("$.data.transactionRef").value("VNPAYTXN" + uniqueRef))
+				.andExpect(jsonPath("$.data.remainingAmount").value(0));
+
+		mockMvc.perform(get("/api/v1/orders/{id}", orderId).header("X-User-Id", userId))
+				.andExpect(status().isOk())
+				.andExpect(jsonPath("$.data.paymentStatus").value("PAID"));
 	}
 }

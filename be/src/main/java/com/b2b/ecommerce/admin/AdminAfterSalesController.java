@@ -200,7 +200,9 @@ class AdminAfterSalesService {
 		jdbc.update("UPDATE return_requests SET status = ?::return_request_status, updated_at = NOW() WHERE id = ?",
 				next, UUID.fromString(id));
 		if ("REFUNDED".equals(next) && current.orderId() != null) {
-			loyaltyEvents.reverseEarnedPoints(UUID.fromString(current.orderId()), "Hoan diem do tra hang");
+			UUID orderId = UUID.fromString(current.orderId());
+			markOrderReturned(orderId, current.returnNumber());
+			loyaltyEvents.reverseEarnedPoints(orderId, "Hoan diem do tra hang");
 		}
 		notifications.send(UUID.fromString(current.customerId()), "SYSTEM", "Cap nhat yeu cau tra hang",
 				"Yeu cau tra hang " + current.returnNumber() + " da chuyen sang trang thai " + next + ".", "MEDIUM",
@@ -338,6 +340,45 @@ class AdminAfterSalesService {
 			case "PROCESSING" -> to.equals("RESOLVED");
 			default -> false;
 		};
+	}
+
+	private void markOrderReturned(UUID orderId, String returnNumber) {
+		OrderReturnSnapshot order = orderReturnSnapshot(orderId);
+		if ("RETURNED".equals(order.status())) {
+			return;
+		}
+		if (!"DELIVERED".equals(order.status())) {
+			throw new AppException(ErrorCode.ORDER_INVALID_STATUS_TRANSITION, "Don hang khong the chuyen sang hoan tra",
+					Map.of("from", order.status(), "to", "RETURNED"));
+		}
+		jdbc.update("""
+				UPDATE orders
+				SET status = 'RETURNED',
+				    updated_at = NOW()
+				WHERE id = ?
+				""", orderId);
+		jdbc.update("""
+				INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by, changed_by_name, note)
+				VALUES (?, ?, ?::order_status, 'RETURNED', ?::uuid, 'Admin Returns', ?)
+				""", UUID.randomUUID(), orderId, order.status(), "00000000-0000-4000-8000-000000009001",
+				"Return " + returnNumber + " refunded");
+	}
+
+	private OrderReturnSnapshot orderReturnSnapshot(UUID orderId) {
+		try {
+			return jdbc.queryForObject("""
+					SELECT id, order_number, status::text AS status
+					FROM orders
+					WHERE id = ?
+					""", (rs, rowNum) -> new OrderReturnSnapshot(rs.getObject("id", UUID.class), rs.getString("order_number"),
+					rs.getString("status")), orderId);
+		}
+		catch (EmptyResultDataAccessException exception) {
+			throw new AppException(ErrorCode.ORDER_NOT_FOUND);
+		}
+	}
+
+	private record OrderReturnSnapshot(UUID id, String orderNumber, String status) {
 	}
 
 	private AdminAfterSalesController.ReturnRequestDto returnRow(ResultSet rs, int rowNum) throws SQLException {

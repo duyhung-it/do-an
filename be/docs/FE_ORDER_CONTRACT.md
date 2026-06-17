@@ -183,12 +183,14 @@ Accepted now:
 - `VNPAY`
 - `INSTALLMENT`
 
-Current payment implementation is placeholder only:
+Current order create payment behavior:
 
 - Creates payment record.
 - `status = UNPAID`.
-- `paymentUrl = null`.
-- Gateway callback is not implemented yet.
+- `paymentUrl = null` in `POST /orders` response.
+- For `MOMO` or `VNPAY`, FE should call `POST /api/v1/payments/{paymentId}/gateway-session` after order creation.
+- `VNPAY` gateway-session returns a signed VNPay sandbox redirect URL and verifies `vnp_*` return params through `GET /api/v1/payments/gateway/return`.
+- See `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md` for the payment session/return contract.
 
 ## Shipping Fee
 

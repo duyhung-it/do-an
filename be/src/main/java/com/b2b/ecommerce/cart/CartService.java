@@ -43,6 +43,9 @@ public class CartService {
 			throw new AppException(ErrorCode.PRODUCT_INACTIVE);
 		}
 		VariantSnapshot variant = variantId == null ? null : variant(productId, variantId);
+		if (variantId == null && product.variantCount() > 0) {
+			throw new AppException(ErrorCode.PRODUCT_VARIANT_NOT_FOUND, "San pham can chon bien the");
+		}
 		if (variant != null && !variant.active()) {
 			throw new AppException(ErrorCode.PRODUCT_INACTIVE, "Bien the san pham khong con kinh doanh");
 		}
@@ -172,7 +175,8 @@ public class CartService {
 					         WHERE pi.product_id = p.id
 					         ORDER BY pi.is_primary DESC, pi.sort_order ASC
 					         LIMIT 1
-					       ), '') AS image
+					       ), '') AS image,
+					       (SELECT COUNT(*) FROM product_variants pv WHERE pv.product_id = p.id) AS variant_count
 					FROM products p
 					WHERE p.id = ?
 					""", this::productSnapshot, productId);
@@ -197,7 +201,7 @@ public class CartService {
 
 	private ProductSnapshot productSnapshot(ResultSet rs, int rowNum) throws SQLException {
 		return new ProductSnapshot((UUID) rs.getObject("id"), rs.getString("name"), rs.getString("brand"),
-				rs.getLong("price"), rs.getString("status"), rs.getString("image"));
+				rs.getLong("price"), rs.getString("status"), rs.getString("image"), rs.getInt("variant_count"));
 	}
 
 	private VariantSnapshot variantSnapshot(ResultSet rs, int rowNum) throws SQLException {
@@ -215,7 +219,7 @@ public class CartService {
 		}
 	}
 
-	private record ProductSnapshot(UUID id, String name, String brand, long price, String status, String image) {
+	private record ProductSnapshot(UUID id, String name, String brand, long price, String status, String image, int variantCount) {
 	}
 
 	private record VariantSnapshot(UUID id, String name, long price, int stock, String color, String storage, boolean active) {

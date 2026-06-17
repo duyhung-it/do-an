@@ -44,6 +44,7 @@ public enum ErrorCode {
 	PAYMENT_REFUNDED(HttpStatus.BAD_REQUEST, "Thanh toan da hoan tien"),
 	PAYMENT_NOT_PAID(HttpStatus.BAD_REQUEST, "Chi co the hoan tien cho thanh toan da thanh toan"),
 	PAYMENT_GATEWAY_SESSION_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay phien thanh toan gateway"),
+	PAYMENT_GATEWAY_SIGNATURE_INVALID(HttpStatus.BAD_REQUEST, "Chu ky cong thanh toan khong hop le"),
 	REFUND_AMOUNT_EXCEEDS_PAID(HttpStatus.UNPROCESSABLE_ENTITY, "So tien hoan vuot qua so tien da thanh toan"),
 	INSTALLMENT_PLAN_NOT_FOUND(HttpStatus.NOT_FOUND, "Khong tim thay goi tra gop"),
 	INSTALLMENT_AMOUNT_TOO_LOW(HttpStatus.BAD_REQUEST, "Gia tri tra gop thap hon muc toi thieu"),

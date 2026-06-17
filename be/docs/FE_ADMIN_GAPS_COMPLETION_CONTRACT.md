@@ -141,6 +141,12 @@ Returns:
 
 Return transitions: `PENDING -> APPROVED -> PROCESSING -> REFUNDED -> CLOSED`, and `PENDING -> REJECTED`.
 
+Return `REFUNDED` side effects:
+
+- Updates linked original order from `DELIVERED` to `RETURNED`.
+- Inserts `order_status_history` with `to_status = RETURNED`.
+- Reverses earned loyalty points for the linked order, idempotently.
+
 Warranty:
 
 - `GET /api/v1/admin/warranty-claims?page=&pageSize=&status=&search=`

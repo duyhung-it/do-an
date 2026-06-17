@@ -23,6 +23,7 @@ Purpose: map BA docs to implemented backend contracts so FE can wire screens wit
 | Home product groups | `04-api-catalog.md` | `/products/featured`, `/hot`, `/new`, `/brands` | Done | `be/docs/FE_CATALOG_CONTRACT.md` |
 | Product variants/images | `04-api-catalog.md` | `/products/{productId}/variants`, `/images` | Done | `be/docs/FE_CATALOG_CONTRACT.md` |
 | Buyer product combos | `04-api-catalog.md`, product detail upsell | `/combos`, `/combos/{id}`, `/products/{productId}/combos` | Done with typed DTO and seed data | `be/docs/FE_CATALOG_CONTRACT.md` |
+| Public stores/availability | `04-api-catalog.md`, stores section | `GET /stores`, `GET /stores/{id}`, `GET /stores/{id}/availability?productId=` | Done with DB-backed branches and branch product inventory | `be/docs/FE_BUYER_BACKEND_GAPS.md` |
 | Admin catalog CRUD | `04-api-catalog.md`, `09-api-admin.md` | `/admin/categories`, `/admin/products`, variants/images admin routes, `/admin/products/{productId}/images/reorder`, `/admin/combos`, `/admin/blog` | Done, auth deferred | `be/docs/FE_ADMIN_GAPS_COMPLETION_CONTRACT.md` |
 
 ## Cart
@@ -42,6 +43,7 @@ Purpose: map BA docs to implemented backend contracts so FE can wire screens wit
 | --- | --- | --- | --- | --- |
 | Current user profile | `03-api-auth-users.md` User Object, profile endpoints | `GET /users/me`, `PATCH /users/me`, `POST /users/me/avatar`, `GET /users/me/stats` | Done, dev ownership header | `be/docs/FE_BUYER_PROFILE_CONTRACT.md` |
 | Saved shipping addresses | `03-api-auth-users.md` ShippingAddress, `05-api-orders.md` `shippingAddressId` | `GET/POST/PATCH/DELETE /users/me/addresses`, `PATCH /users/me/addresses/{id}/set-default`, `POST /orders` with `shippingAddressId` | Done, dev ownership header | `be/docs/FE_BUYER_PROFILE_CONTRACT.md` |
+| Wishlist | `04-api-catalog.md`, section `6 Wishlist` | `GET/POST/DELETE /users/me/wishlist`, `DELETE /users/me/wishlist/items/{id}`, `PATCH /users/me/wishlist/{productId}/price-alert` | Done with PostgreSQL table and UUID catalog ids | `be/docs/FE_BUYER_PROFILE_CONTRACT.md` |
 
 ## Promotions
 
@@ -121,7 +123,7 @@ Purpose: map BA docs to implemented backend contracts so FE can wire screens wit
 | Inventory management | `09-api-admin.md`, inventory plan | `/admin/inventory`, `/admin/inventory/{id}`, `/adjust`, `/low-stock`, `/movements` | Done, auth deferred | `be/docs/FE_ADMIN_GAPS_COMPLETION_CONTRACT.md` |
 | Returns admin | `07-api-after-sales.md` | `/admin/returns`, `/admin/returns/{id}`, `/status`, `/dispute-resolution` | Done, auth deferred | `be/docs/FE_ADMIN_GAPS_COMPLETION_CONTRACT.md` |
 | Warranty admin | `07-api-after-sales.md` | `/admin/warranty-claims`, `/admin/warranty-claims/{id}`, `/status` | Done, auth deferred | `be/docs/FE_ADMIN_GAPS_COMPLETION_CONTRACT.md` |
-| Review moderation | `07-api-after-sales.md` | `/admin/reviews`, `/approve`, `/hide`, `/status`, `/reply`, delete review | Done, auth deferred | `be/docs/FE_ADMIN_GAPS_COMPLETION_CONTRACT.md` |
+| Review moderation | `07-api-after-sales.md`, `04-api-catalog.md` reviews | `/products/{productId}/reviews`, `/products/{productId}/reviews/stats`, `/users/me/reviews`, `/reviews/{id}/helpful`, `/admin/reviews`, `/approve`, `/hide`, `/status`, `/reply`, delete review | Done with DB-backed buyer reviews, auth deferred | `be/docs/FE_BUYER_BACKEND_GAPS.md`, `be/docs/FE_ADMIN_GAPS_COMPLETION_CONTRACT.md` |
 | Trade-in admin | `07-api-after-sales.md` | `/admin/trade-in`, `/admin/trade-in/{id}`, `/valuate`, `/complete`, `/status` | Done, auth deferred | `be/docs/FE_ADMIN_GAPS_COMPLETION_CONTRACT.md` |
 | Admin reports | `09-api-admin.md` | `/admin/reports/revenue`, `/products`, `/customers`, `/inventory`, `/returns`, `/export` | Done, auth deferred | `be/docs/FE_ADMIN_GAPS_COMPLETION_CONTRACT.md` |
 | Admin settings/content | `09-api-admin.md` | `/admin/settings`, `/admin/settings/banners`, `/admin/settings/email-templates`, `/admin/settings/seo`, `/branches`, `/branches/{id}/toggle`, `/staff`, `/staff/{id}`, `/activity-logs` | Done, auth deferred | `be/docs/FE_ADMIN_GAPS_COMPLETION_CONTRACT.md` |

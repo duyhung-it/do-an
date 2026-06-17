@@ -7,6 +7,7 @@ import java.sql.SQLException;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -29,6 +30,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -73,6 +75,14 @@ public class CustomerAfterSalesController {
 			@RequestHeader(name = "X-User-Id", required = false) String userId,
 			@PathVariable String id) {
 		return ApiResponse.ok(afterSales.returnDetail(userId(userId), id));
+	}
+
+	@DeleteMapping("/returns/{id}")
+	public ResponseEntity<Void> deleteReturn(
+			@RequestHeader(name = "X-User-Id", required = false) String userId,
+			@PathVariable String id) {
+		afterSales.deleteReturn(userId(userId), id);
+		return ResponseEntity.noContent().build();
 	}
 
 	@GetMapping("/warranty")
@@ -284,6 +294,20 @@ class CustomerAfterSalesService {
 		}
 	}
 
+	@Transactional
+	public void deleteReturn(UUID userId, String id) {
+		CustomerAfterSalesController.ReturnDto current = returnDetail(userId, id);
+		if (!"PENDING".equals(current.status())) {
+			throw new AppException(ErrorCode.RETURN_INVALID_STATUS, "Chi co the huy yeu cau tra hang dang cho duyet",
+					Map.of("status", current.status()));
+		}
+		int rows = jdbc.update("DELETE FROM return_requests WHERE id = ? AND customer_id = ? AND status = 'PENDING'",
+				uuid(id), userId);
+		if (rows == 0) {
+			throw new AppException(ErrorCode.RETURN_NOT_FOUND);
+		}
+	}
+
 	@Transactional(readOnly = true)
 	public Page<CustomerAfterSalesController.WarrantyItemDto> warrantyItems(UUID userId, PageRequestParams params,
 			String status) {
@@ -489,13 +513,19 @@ class CustomerAfterSalesService {
 	private OrderSnapshot deliveredOrder(UUID userId, String orderId) {
 		try {
 			OrderSnapshot order = jdbc.queryForObject("""
-					SELECT id, customer_name, customer_phone, total_amount, status
-					FROM orders
-					WHERE id = ? AND customer_id = ?
+					SELECT o.id, o.customer_name, o.customer_phone, o.total_amount, o.status,
+					       COALESCE(s.actual_delivery, o.updated_at) AS delivered_at
+					FROM orders o
+					LEFT JOIN shipments s ON s.order_id = o.id
+					WHERE o.id = ? AND o.customer_id = ?
 					""", (rs, rowNum) -> new OrderSnapshot(rs.getObject("id", UUID.class), rs.getString("customer_name"),
-					rs.getString("customer_phone"), rs.getLong("total_amount"), rs.getString("status")), uuid(orderId), userId);
+					rs.getString("customer_phone"), rs.getLong("total_amount"), rs.getString("status"),
+					rs.getObject("delivered_at", OffsetDateTime.class)), uuid(orderId), userId);
 			if (!"DELIVERED".equals(order.status())) {
 				throw new AppException(ErrorCode.RETURN_ORDER_NOT_DELIVERED);
+			}
+			if (order.deliveredAt() != null && order.deliveredAt().isBefore(OffsetDateTime.now().minus(7, ChronoUnit.DAYS))) {
+				throw new AppException(ErrorCode.RETURN_WINDOW_EXPIRED);
 			}
 			return order;
 		}
@@ -651,6 +681,7 @@ class CustomerAfterSalesService {
 		return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(value);
 	}
 
-	private record OrderSnapshot(UUID id, String customerName, String customerPhone, long totalAmount, String status) {
+	private record OrderSnapshot(UUID id, String customerName, String customerPhone, long totalAmount, String status,
+			OffsetDateTime deliveredAt) {
 	}
 }

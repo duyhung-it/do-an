@@ -22,6 +22,9 @@ class ProductImageEntity {
 	@ManyToOne(fetch = FetchType.LAZY)
 	@JoinColumn(name = "product_id")
 	private ProductEntity product;
+	@ManyToOne(fetch = FetchType.LAZY)
+	@JoinColumn(name = "variant_id")
+	private ProductVariantEntity variant;
 	@Column(columnDefinition = "text")
 	private String url;
 	private String altText;
@@ -35,6 +38,8 @@ class ProductImageEntity {
 	UUID getId() { return id; }
 	ProductEntity getProduct() { return product; }
 	void setProduct(ProductEntity product) { this.product = product; }
+	ProductVariantEntity getVariant() { return variant; }
+	void setVariant(ProductVariantEntity variant) { this.variant = variant; }
 	String getUrl() { return url; }
 	void setUrl(String url) { this.url = url; }
 	String getAltText() { return altText; }

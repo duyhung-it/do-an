@@ -289,13 +289,21 @@ public class CatalogService {
 
 	@Transactional
 	public List<ProductImageDto> reorderImages(String productId, List<String> imageIds) {
+		UUID productUuid = UUID.fromString(productId);
 		productEntity(productId);
+		List<UUID> orderedIds = imageIds.stream().map(UUID::fromString).toList();
 		int sort = 0;
-		for (String imageId : imageIds) {
-			ProductImageEntity image = images.findByIdAndProductId(UUID.fromString(imageId), UUID.fromString(productId))
+		for (UUID imageId : orderedIds) {
+			ProductImageEntity image = images.findByIdAndProductId(imageId, productUuid)
 					.orElseThrow(() -> new NoSuchElementException("Khong tim thay anh san pham"));
 			image.setSortOrder(sort++);
 			images.save(image);
+		}
+		for (ProductImageEntity image : images.findByProductIdOrderBySortOrderAsc(productUuid)) {
+			if (!orderedIds.contains(image.getId())) {
+				image.setSortOrder(sort++);
+				images.save(image);
+			}
 		}
 		return productImages(productId);
 	}
@@ -361,6 +369,11 @@ public class CatalogService {
 	}
 
 	private void applyImage(ProductImageEntity image, ProductImageRequest request) {
+		ProductVariantEntity variant = null;
+		if (request.variantId() != null && !request.variantId().isBlank()) {
+			variant = variants.findByIdAndProductId(UUID.fromString(request.variantId()), image.getProduct().getId())
+					.orElseThrow(() -> new AppException(ErrorCode.PRODUCT_VARIANT_NOT_FOUND));
+		}
 		if (Boolean.TRUE.equals(request.isPrimary())) {
 			images.findByProductIdAndIsPrimaryTrue(image.getProduct().getId()).ifPresent(existing -> {
 				if (!existing.getId().equals(image.getId())) {
@@ -369,6 +382,7 @@ public class CatalogService {
 				}
 			});
 		}
+		image.setVariant(variant);
 		image.setUrl(request.url());
 		image.setAltText(request.altText());
 		image.setSortOrder(request.sortOrder() == null ? image.getSortOrder() : request.sortOrder());
@@ -439,6 +453,7 @@ public class CatalogService {
 			case "price" -> "price";
 			case "rating" -> "rating";
 			case "soldCount" -> "soldCount";
+			case "updatedAt" -> "updatedAt";
 			default -> "createdAt";
 		};
 		return Sort.by(params.ascending() ? Sort.Direction.ASC : Sort.Direction.DESC, field);
@@ -499,8 +514,10 @@ public class CatalogService {
 	}
 
 	private ProductImageDto imageDto(ProductImageEntity image) {
-		return new ProductImageDto(image.getId().toString(), image.getProduct().getId().toString(), image.getUrl(),
-				image.getAltText(), image.getSortOrder(), image.isPrimary(), iso(image.getCreatedAt()));
+		ProductVariantEntity variant = image.getVariant();
+		return new ProductImageDto(image.getId().toString(), image.getProduct().getId().toString(),
+				variant == null ? null : variant.getId().toString(), variant == null ? null : variant.getName(),
+				image.getUrl(), image.getAltText(), image.getSortOrder(), image.isPrimary(), iso(image.getCreatedAt()));
 	}
 
 	private PhoneSpecsDto phoneSpecsDto(PhoneSpecsEntity specs) {

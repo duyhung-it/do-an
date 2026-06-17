@@ -8,6 +8,8 @@ public record AuthUserDto(
 		String companyName,
 		String supplierId,
 		String avatarUrl,
+		String phone,
+		String status,
 		String token
 ) {
 }

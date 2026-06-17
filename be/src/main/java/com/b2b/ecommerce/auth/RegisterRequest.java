@@ -8,6 +8,10 @@ public record RegisterRequest(
 		@NotBlank String password,
 		@NotBlank String fullName,
 		String role,
-		String companyName
+		String companyName,
+		String phone,
+		String taxCode,
+		String address,
+		String city
 ) {
 }

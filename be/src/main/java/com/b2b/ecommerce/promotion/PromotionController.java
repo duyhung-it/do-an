@@ -1,10 +1,10 @@
 package com.b2b.ecommerce.promotion;
 
 import java.util.List;
+import java.util.Map;
 
 import com.b2b.ecommerce.common.ApiResponse;
 import com.b2b.ecommerce.common.PageRequestParams;
-import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -33,7 +33,32 @@ public class PromotionController {
 	}
 
 	@PostMapping("/validate")
-	public ApiResponse<PromotionValidateResponse> validate(@Valid @RequestBody PromotionValidateRequest request) {
-		return ApiResponse.ok(promotions.validate(request));
+	public ApiResponse<PromotionValidateResponse> validate(@RequestBody Map<String, Object> body) {
+		return ApiResponse.ok(promotions.validate(normalizeValidateRequest(body)));
+	}
+
+	private PromotionValidateRequest normalizeValidateRequest(Map<String, Object> body) {
+		String code = String.valueOf(body.getOrDefault("code", body.getOrDefault("couponCode", "")));
+		Object totalValue = body.getOrDefault("cartTotal", body.getOrDefault("subtotal", body.getOrDefault("orderTotal", 0)));
+		long cartTotal = Long.parseLong(String.valueOf(totalValue));
+		@SuppressWarnings("unchecked")
+		List<Map<String, Object>> rawItems = body.get("cartItems") instanceof List<?> rows
+				? (List<Map<String, Object>>) (List<?>) rows
+				: List.of();
+		List<PromotionCartItemRequest> cartItems = rawItems.stream()
+				.map(item -> new PromotionCartItemRequest(
+						String.valueOf(item.getOrDefault("productId", "all")),
+						text(item.get("categoryId")),
+						text(item.get("brand")),
+						text(item.get("brandId"))))
+				.toList();
+		if (cartItems.isEmpty()) {
+			cartItems = List.of(new PromotionCartItemRequest("all", null, null, null));
+		}
+		return new PromotionValidateRequest(code, cartTotal, cartItems);
+	}
+
+	private String text(Object value) {
+		return value == null ? null : String.valueOf(value);
 	}
 }

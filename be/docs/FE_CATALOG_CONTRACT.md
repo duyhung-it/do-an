@@ -17,6 +17,8 @@ Security: tam thoi chua bat auth/RBAC, nen `/admin/*` hien dang open trong local
 - Category delete la soft delete: `isActive = false`.
 - UUID fields la string.
 - Money fields tra ve number JSON, FE format VND o client.
+- Demo data tu migration `V34` dam bao moi danh muc con dang hien thi co 10 san pham `ACTIVE`: iPhone, Samsung, Xiaomi, OPPO, Vivo, Tai nghe, Sac cap, Op lung.
+- `productCount` cua danh muc con la so san pham active truc tiep; `productCount` cua danh muc cha la tong san pham active trong toan bo cay con.
 
 ## Category APIs
 
@@ -320,6 +322,8 @@ Image object:
 {
   "id": "44444444-4444-4444-8444-444444444444",
   "productId": "11111111-1111-4111-8111-111111111111",
+  "variantId": "22222222-2222-4222-8222-222222222222",
+  "variantName": "256GB - Bạc",
   "url": "https://example.com/iphone-15-pro-max.jpg",
   "altText": "iPhone 15 Pro Max",
   "sortOrder": 1,
@@ -337,11 +341,19 @@ Request:
 ```json
 {
   "url": "https://example.com/iphone-15-pro-max.jpg",
+  "variantId": "22222222-2222-4222-8222-222222222222",
   "altText": "iPhone 15 Pro Max",
   "sortOrder": 1,
   "isPrimary": true
 }
 ```
+
+`variantId` is optional:
+
+- `null` or omitted means shared product-level image.
+- Non-null means the image belongs to that product variant. One variant can have many images.
+- BE validates that `variantId` belongs to the same `productId`.
+- `isPrimary` still represents the primary image for the product-level catalog display.
 
 ### Update Image
 

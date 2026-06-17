@@ -2,7 +2,7 @@
 
 Base URL local: `http://localhost:8080/api/v1`
 
-Module status: implemented payment side effects, customer payment list/detail, invoice metadata, admin manual mark-paid, and local gateway session/callback for `MOMO`/`VNPAY`.
+Module status: implemented payment side effects, customer payment list/detail, invoice metadata, admin manual mark-paid, local `MOMO` gateway bridge, and signed VNPay sandbox payment URL/return verification.
 
 BA source:
 
@@ -136,11 +136,24 @@ Request:
 
 ```json
 {
-  "provider": "MOMO",
-  "returnUrl": "http://localhost:3000/payment-return",
-  "callbackUrl": "http://localhost:8080/api/v1/payments/gateway/callback"
+  "provider": "VNPAY",
+  "returnUrl": "http://localhost:5173/payment-result?paymentId=97500820-9f45-4c9b-afaf-fbb52c9709f5&provider=VNPAY",
+  "callbackUrl": "http://localhost:8080/api/v1/payments/gateway/callback",
+  "ipAddress": "127.0.0.1",
+  "locale": "vn",
+  "bankCode": "VNBANK",
+  "orderType": "other"
 }
 ```
+
+Optional VNPay fields:
+
+| Field | Note |
+| --- | --- |
+| `ipAddress` | Customer IP sent as `vnp_IpAddr`; defaults to `127.0.0.1` if omitted. |
+| `locale` | `vn` or `en`; defaults to `vn`. |
+| `bankCode` | Optional VNPay bank/payment method code such as `VNPAYQR`, `VNBANK`, `INTCARD`. |
+| `orderType` | VNPay order category; defaults to `other`. |
 
 Response:
 
@@ -150,13 +163,13 @@ Response:
     "id": "b2ad8cb5-6cfb-49d6-a09e-f88b5d1b4ed1",
     "paymentId": "97500820-9f45-4c9b-afaf-fbb52c9709f5",
     "orderId": "8c2f5d3b-5a3d-4a0d-a7cc-568f0b0ddcc1",
-    "provider": "MOMO",
-    "requestId": "MOMO-20260520-4a844a3d-2f8b-4f8a-9f62-33cc6bb9b64a",
+    "provider": "VNPAY",
+    "requestId": "VNPAY20260529f2a9d1b364624b0b8e2c",
     "transactionRef": null,
     "amount": 33490000,
     "status": "PENDING",
-    "paymentUrl": "/api/v1/payments/gateway/return?provider=MOMO&requestId=MOMO-20260520-4a844a3d-2f8b-4f8a-9f62-33cc6bb9b64a&status=SUCCESS",
-    "returnUrl": "http://localhost:3000/payment-return",
+    "paymentUrl": "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?vnp_Amount=3349000000&...&vnp_SecureHash=...",
+    "returnUrl": "http://localhost:5173/payment-result?paymentId=97500820-9f45-4c9b-afaf-fbb52c9709f5&provider=VNPAY",
     "callbackUrl": "http://localhost:8080/api/v1/payments/gateway/callback",
     "paidAt": null,
     "createdAt": "2026-05-20T00:26:08+07:00"
@@ -174,7 +187,17 @@ Rules:
 - `provider` must match `payment.method`.
 - Payment owner only; other `X-User-Id` returns `403 PAYMENT_ACCESS_DENIED`.
 - If a pending session already exists for the same payment/provider, backend returns it instead of creating a duplicate.
-- `paymentUrl` is a local mock gateway return URL for FE/dev integration. External provider signing is still deferred.
+- For `VNPAY`, `paymentUrl` is a signed sandbox redirect URL using HMAC-SHA512 over sorted `vnp_*` params.
+- FE sends `returnUrl` as `/payment-result?paymentId={paymentId}&provider=VNPAY`; backend persists this URL on the gateway session.
+- For `MOMO`, `paymentUrl` remains the local dev return bridge until real MOMO credentials are configured later.
+- VNPay config is read from env/properties:
+  - `VNPAY_PAY_URL`, default `https://sandbox.vnpayment.vn/paymentv2/vpcpay.html`
+  - `VNPAY_TMN_CODE`, configured sandbox default `VZ5ZPNQT`
+  - `VNPAY_HASH_SECRET`, configured sandbox default `ZGAWKRS0JM60P0HQALQU9Q5M2FQDYA4T`
+  - `VNPAY_RETURN_URL`, default `http://localhost:8080/api/v1/payments/gateway/return`
+  - `VNPAY_EXPIRE_MINUTES`, default `15`
+- Override `VNPAY_TMN_CODE` and `VNPAY_HASH_SECRET` by env if switching to another VNPay sandbox merchant.
+- BE intentionally rejects VNPay session creation with `SERVICE_UNAVAILABLE` while `VNPAY_TMN_CODE=DEMOV210` or `VNPAY_HASH_SECRET=VNPAY_SANDBOX_HASH_SECRET_CHANGE_ME`, because those are documentation placeholders and VNPay will show a generic error page if FE redirects users with them.
 
 ## Gateway Callback / Return
 
@@ -194,6 +217,10 @@ Request:
 ```
 
 `GET /payments/gateway/return?provider=MOMO&requestId={requestId}&status=SUCCESS&transactionRef=MOMO-TEST-001&amount=33490000`
+
+VNPay sandbox redirects back to the same return endpoint with official `vnp_*` query params, for example:
+
+`GET /payments/gateway/return?vnp_TmnCode=...&vnp_TxnRef={requestId}&vnp_Amount={amount*100}&vnp_ResponseCode=00&vnp_TransactionStatus=00&vnp_TransactionNo=...&vnp_SecureHash=...`
 
 Response for both callback and return:
 
@@ -236,6 +263,19 @@ Callback status mapping:
 
 Callback is idempotent: repeated callback for the same `requestId` returns the already-paid payment and does not double count.
 
+VNPay return verification:
+
+- Backend verifies `vnp_SecureHash` with configured `VNPAY_HASH_SECRET`.
+- `vnp_TxnRef` maps to `payment_gateway_sessions.request_id`.
+- `vnp_Amount` must equal `session.amount * 100`.
+- `vnp_ResponseCode=00` and `vnp_TransactionStatus=00` mark the session/payment/order as `PAID`.
+- `vnp_ResponseCode=24` maps to `CANCELLED`; other non-success codes map to `FAILED`.
+- Invalid signature returns `PAYMENT_GATEWAY_SIGNATURE_INVALID`.
+- After VNPay return is verified and payment/order are synced, `GET /payments/gateway/return` redirects with HTTP `302` to the session `returnUrl` when it exists.
+- Redirect target includes final identifiers/status, for example: `http://localhost:5173/payment-result?paymentId={paymentId}&provider=VNPAY&requestId={requestId}&orderId={orderId}&status={PAID|FAILED|CANCELLED}`.
+- If `returnUrl` is missing, keep the JSON response above for API testing.
+- FE route `/payment-result` treats query params as hints only, then calls `GET /payments/{paymentId}` and/or `GET /orders/{orderId}` to display the backend verified state.
+
 ## List My Invoices
 
 `GET /invoices?page=1&pageSize=20&status=PENDING&search=CP20260514`
@@ -260,6 +300,7 @@ Response: `InvoiceDto`.
 `InvoiceDto` now includes print/detail fields so FE does not need display fallbacks for invoice detail:
 
 - `customerEmail`, `customerPhone`
+- `discountAmount`: tiền khuyến mãi snapshot từ order; `totalAmount` là số phải thu sau khuyến mãi.
 - `invoiceType`: currently `ORDER`
 - `sellerName`, `sellerTaxCode`, `sellerAddress`
 - `notes`
@@ -537,11 +578,13 @@ Rules:
 
 - Payment must be `PAID`, otherwise backend returns `PAYMENT_NOT_PAID`.
 - `refundAmount > 0`.
-- `refundAmount <= paidAmount`, otherwise backend returns `REFUND_AMOUNT_EXCEEDS_PAID`.
+- `refundAmount + existing refundAmount <= paidAmount`, otherwise backend returns `REFUND_AMOUNT_EXCEEDS_PAID`.
 - Supported `method`: `BANK_TRANSFER`, `MOMO`, `VNPAY`, `CASH`.
-- Backend sets `payments.status = REFUNDED`.
-- Backend sets `orders.paymentStatus = REFUNDED`.
-- If the order previously awarded loyalty points, backend creates one `EXPIRE` loyalty transaction to reverse those points without making the balance negative.
+- Partial refund is supported:
+  - if cumulative refund amount is lower than `paidAmount`, backend sets `payments.status = PARTIALLY_REFUNDED` and `orders.paymentStatus = PARTIALLY_REFUNDED`.
+  - if cumulative refund amount equals `paidAmount`, backend sets `payments.status = REFUNDED` and `orders.paymentStatus = REFUNDED`.
+- Backend stores cumulative `payments.refundAmount`.
+- If the order previously awarded loyalty points, backend creates one `EXPIRE` loyalty transaction only when payment reaches full `REFUNDED`.
 
 Response: `AdminPaymentDto` with refund fields:
 
@@ -557,7 +600,8 @@ Response: `AdminPaymentDto` with refund fields:
 
 ## Deferred
 
-- Real external MOMO/VNPAY credentials, provider signature verification, and production redirect URL signing.
+- Real external MOMO credentials/signature verification.
+- Production VNPay credential rotation/IPN hardening beyond sandbox return verification.
 - Security/RBAC is still deferred by request; customer ownership currently uses `X-User-Id`.
 
 ## BA Mapping

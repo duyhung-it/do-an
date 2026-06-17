@@ -1,3 +1,4 @@
+dev
 # FE Admin Backend Gaps
 
 Source of truth:
@@ -10,7 +11,142 @@ Source of truth:
 
 This document lists only the backend gaps blocking real FE admin screens. Do not add FE-only mock APIs for these items.
 
-Latest review: 2026-05-20. No open P0/P1 admin backend blockers remain in this file. Buyer/default demo data gaps were handled separately in `be/docs/FE_BUYER_BACKEND_GAPS.md` by Flyway `V23__buyer_demo_gap_data.sql`.
+Latest review: 2026-06-09. No open P0/P1 admin backend blockers remain in this file. Buyer/default demo data gaps were handled separately in `be/docs/FE_BUYER_BACKEND_GAPS.md` by Flyway `V23__buyer_demo_gap_data.sql`.
+
+## Catalog Real Image URLs
+
+Status: DONE on 2026-06-11.
+
+- Added Flyway `V38__catalog_real_image_urls.sql` to replace old placeholder/demo image URLs in catalog seed data.
+- Updated product images, variant/demo images, category images, and banner images to real product image URLs for phone/accessory retail demo.
+- FE/admin API contract is unchanged:
+  - `GET /api/v1/products/{productId}/images`
+  - `POST /api/v1/admin/products/{productId}/images`
+  - `PATCH /api/v1/admin/products/{productId}/images/{id}`
+  - `DELETE /api/v1/admin/products/{productId}/images/{id}`
+- Admin can still add/edit/delete product images manually; this change only improves seeded/default data.
+
+Verification:
+
+- Main external image URLs were checked with `curl.exe -L -I` and returned `200 OK`.
+
+## Catalog Real Product Names
+
+Status: DONE on 2026-06-11.
+
+- Added Flyway `V39__catalog_real_product_names.sql` to replace catalog placeholder product names such as `iPhone Demo 01`, `Samsung Demo 01`, and accessory demo names with real product model names.
+- Updated product `slug`, `brand`, short description, description, tags, specifications, variant name/SKU, and product image alt text for those seeded rows.
+- Synced display snapshots in `cart_items`, `order_items`, and `warranty_items` where the row references an updated catalog product.
+- FE/admin API contract is unchanged; admin product list/detail should continue reading the same fields.
+
+Verification:
+
+- BE `mvn test -Dtest=B2bEcommerceApiApplicationTests#contextLoads`: passed.
+- Local DB check: `products` has `0` rows with `name` or `slug` containing `demo`.
+
+## Catalog Minimum Variants And Images
+
+Status: DONE on 2026-06-11.
+
+- Added Flyway `V40__catalog_min_three_variants_images.sql`.
+- Every product now has at least 3 `product_variants` rows.
+- Every product now has at least 3 `product_images` rows using real image URLs, with no `placehold.co` or old `cdn.cellphones.vn/products` URLs.
+- Admin product detail/image management contract is unchanged; FE can rely on product galleries and variant selectors having multiple entries.
+
+Verification:
+
+- BE `mvn test -Dtest=B2bEcommerceApiApplicationTests#contextLoads`: passed.
+- Local DB check: `products_under_3_variants = 0`, `products_under_3_images = 0`.
+
+## Catalog Variant Specific Images
+
+Status: DONE on 2026-06-11.
+
+- Added Flyway `V41__catalog_variant_specific_images.sql`.
+- Every product variant now has at least one linked image through `product_images.variant_id`.
+- This fixes buyer product detail behavior where selecting a variant did not visibly change the gallery because most variants only had shared product-level images.
+- Admin image management contract is unchanged; variant-specific images still use the existing `variantId` field in product image create/update payloads.
+
+Verification:
+
+- BE `mvn test -Dtest=B2bEcommerceApiApplicationTests#contextLoads`: passed.
+- Local DB check: `variant_images = 252`, `variants_without_images = 0`.
+
+## Buyer Header Menu Catalog Data
+
+Status: DONE on 2026-06-11.
+
+- Added Flyway `V42__buyer_menu_real_catalog_data.sql` to normalize buyer-facing category names and add real catalog data for Realme, smart watches, charging/power, headphones, and tech devices.
+- Added Flyway `V43__buyer_menu_variant_backfill.sql` to backfill missing variants/images for menu products after the data migration.
+- FE buyer header menu now loads real category/product data instead of hardcoded `cat-01..cat-06` ids.
+- Admin category/product management contract is unchanged; this is seed/default catalog data for the B2C storefront.
+
+Verification:
+
+- BE `mvn test -Dtest=B2bEcommerceApiApplicationTests#contextLoads`: passed.
+- Local DB check: `seeded_products_under_3_variants = 0`, `variants_without_images = 0`.
+
+## FE Admin Promotion Target Combobox
+
+Status: DONE on 2026-06-09.
+
+- Admin promotion create/edit form replaced raw `Product ids CSV`, `Category ids CSV`, and `Brands CSV` inputs with multi-select autocomplete controls.
+- Product options are loaded from `adminProductApi.getPaginated({ page: 1, pageSize: 1000 })`.
+- Category options are loaded from `adminCategoryApi.getAll()` and flattened for selection.
+- Brand options are auto-filled from product brands plus existing promotion scopes.
+- Selected values render as removable chips.
+- Admin can still paste comma-separated IDs/brands for quick input.
+- API contract unchanged: payload still sends `applicableProducts`, `applicableCategories`, and `applicableBrands` as arrays to `POST /api/v1/admin/promotions` and `PATCH /api/v1/admin/promotions/{id}`.
+
+Verification:
+
+- FE `npm.cmd run build -- --outDir dist-codex-promotion-combobox-check`: passed.
+
+## Admin Promotion Create 500 Fix
+
+Status: DONE on 2026-06-09.
+
+- Fixed `POST /api/v1/admin/promotions` returning `500 INTERNAL_ERROR` for FE payloads that send array scopes.
+- Root cause: duplicate-code validation used `(? IS NULL OR id <> ?)` with `currentId = null`; PostgreSQL could not infer the parameter type and raised `could not determine data type of parameter $2`.
+- Create and update now use separate duplicate-code queries, so create no longer passes a null UUID parameter.
+- Added validation for promotion `type`, `applicableProducts` UUIDs, and `applicableCategories` UUIDs so malformed scope data returns `VALIDATION_ERROR` instead of a generic 500.
+- Regression test added with FE-style payload containing `applicableProducts`, `applicableCategories`, and `applicableBrands` arrays.
+
+Verification:
+
+- BE `mvn test -Dtest=B2bEcommerceApiApplicationTests#adminPromotionCreateAcceptsArrayScopes`: passed.
+- BE `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+
+## FE Admin Product Specifications UX
+
+Status: DONE on 2026-06-09.
+
+- FE admin product form no longer uses a free-text specifications textarea.
+- Each product specification is edited as one row with `key` and `value` inputs.
+- Admin can add, edit, and delete specification rows per product before saving.
+- Product detail modal shows specifications as rows and has a direct `Sửa thông số` action that opens the product edit form.
+- API contract unchanged: FE still saves through `POST /api/v1/admin/products` and `PATCH /api/v1/admin/products/{id}` with `specifications` as an object, for example `{ "Chip": "A17 Pro", "RAM": "8GB" }`.
+
+Verification:
+
+- FE `npm.cmd run build -- --outDir dist-codex-product-specs-check`: passed.
+
+## FE Admin Product Updated Sort And Edit Flow
+
+Status: DONE on 2026-06-09.
+
+- Admin product list now defaults to `sortBy=updatedAt&sortDir=desc`, so newly created and recently edited products appear first.
+- Backend catalog sort whitelist now accepts `updatedAt`.
+- Product creation already sets `createdAt` and `updatedAt` to current time via entity `@PrePersist`; product update sets `updatedAt` via `@PreUpdate`.
+- Clicking edit on a product opens the product popup in read-only mode first.
+- The popup footer has a `Sửa` action; clicking it enables the form.
+- Saving an existing product updates the data, refreshes the list, keeps the popup open, and returns the popup to read-only mode.
+- Creating a new product still closes the popup after successful create.
+
+Verification:
+
+- FE `npm.cmd run build -- --outDir dist-codex-product-updated-sort-check`: passed.
+- BE `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
 
 ## Already wired by FE
 
@@ -49,6 +185,13 @@ The FE admin now consumes these implemented backend contracts through `adminBack
 - `POST /api/v1/admin/products/{productId}/images`
 - `PATCH /api/v1/admin/products/{productId}/images/{id}`
 - `DELETE /api/v1/admin/products/{productId}/images/{id}`
+
+Update 2026-05-27:
+
+- Product image request/response now supports optional `variantId`.
+- `variantId = null` means shared product image; non-null means the image belongs to one product variant.
+- One variant can have many images.
+- FE admin image dialog now allows selecting "Ảnh chung sản phẩm" or a concrete variant.
 - `GET /api/v1/promotions`
 - `GET /api/v1/admin/promotions`
 - `POST /api/v1/admin/promotions`
@@ -437,6 +580,7 @@ Implemented note:
 
 - Invalid transitions return BA error shape with `RETURN_INVALID_STATUS`.
 - `POST /returns/{id}/dispute-resolution` stores `disputeResolution`.
+- As of 2026-05-28, `PROCESSING -> REFUNDED` updates the linked original order from `DELIVERED` to `RETURNED`, writes `order_status_history`, and reverses earned loyalty points idempotently.
 
 ### Warranty
 
@@ -637,3 +781,204 @@ No BE blocker was found in this step. Remaining legacy keys are compatibility co
 - `ReportDataSource` still contains `NCC`, `RFQ`, and `Công nợ`.
 - FE maps those to visible `Cửa hàng`, `Báo giá`, and `Thanh toán`.
 - A formal BE/type migration can be planned later, but current FE behavior does not require BE changes.
+
+## FE legacy stub cleanup note - 2026-05-24
+
+FE audited `src/app/services/api.ts` and `src/app/data/mockData.ts`:
+
+- Visible fallback values were adjusted from B2B wording to retail/store wording.
+- Legacy `rfqNumber` fallback now generates `BG-*` while keeping the field name for compatibility.
+- The mock seller-like account now uses `nguonhang@cellphones.vn`; the role value `Nhà cung cấp` is preserved because current FE auth/admin filters still depend on it and map it visibly to `Đối tác`.
+
+No BE change is required now. If BE wants to remove legacy naming completely, plan a coordinated DTO migration for:
+
+- `supplierId`, `supplierName`, `supplierCompany`, `supplierTaxCode`
+- `rfqNumber`, `pendingRFQs`
+- `activeContracts`
+- role value `Nhà cung cấp`
+
+## FE route audit note - 2026-05-24
+
+FE audited registered routes:
+
+- `/seller/*`, `/rfq`, `/contracts`, `/bulk-order`, `/pr-list` are not registered in the active B2C route tree.
+- Admin `/rfq` and `/contracts` are not registered either.
+- Activity-log links for legacy BE entities were remapped to existing admin pages:
+  - `RFQ` -> `/admin/report-builder`
+  - `Hợp đồng` -> `/admin/documents`
+  - `Chứng chỉ` -> `/admin/documents`
+  - `Người dùng` -> `/admin/customers`
+
+No BE change is required. BE may continue emitting legacy activity-log entity values; FE now handles them without dead links.
+
+## FE route consistency note - 2026-05-24
+
+FE completed a visible-link consistency pass:
+
+- `/chat` is now registered as an authenticated customer route because existing product/order/profile actions navigate there.
+- Removed command-palette exposure for deleted `/seller/*`, `/templates`, and `/quick-order` routes.
+- Footer links were changed away from unregistered `/about`, `/contact`, `/policy`.
+- Store search links now point to `/stores` instead of `/stores/{id}` because no store-detail route exists yet.
+
+No BE change is required. If BE later supports store detail pages, FE can restore `/stores/{id}` with a matching route and endpoint.
+
+## FE route smoke note - 2026-05-24
+
+FE ran a Vite route smoke check for:
+
+- `/login`, `/admin`, `/admin/categories`, `/admin/products`, `/admin/orders`
+- `/admin/payments`, `/admin/invoices`, `/admin/shipments`, `/admin/activity-logs`
+- `/products`, `/cart`, `/orders`, `/chat`, `/stores`
+
+All checked routes returned HTTP 200 and served the app shell. No BE change is required from this smoke pass.
+
+Remaining verification should be manual browser interaction for admin actions that depend on live BE state: category tree/edit, product approval, order status, payment mark-overdue/refund, invoice/detail/export, and shipment status/tracking.
+
+## FE admin action smoke note - 2026-05-24
+
+FE ran live BE smoke checks for the admin actions currently used by:
+
+- `/admin/payments`
+- `/admin/invoices`
+- `/admin/shipments`
+
+Passed endpoints:
+
+- `PATCH /api/v1/admin/payments/{id}/mark-overdue`
+- `POST /api/v1/admin/payments/{id}/refund`
+- `GET /api/v1/admin/invoices/{id}`
+- `GET /api/v1/admin/invoices/{id}/download`
+- `PATCH /api/v1/admin/shipments/{id}/status`
+
+Smoke data touched:
+
+- Payment/order `CP2026052300084`: marked `OVERDUE`.
+- Payment/order `CP2026052300082`: refund smoke with amount `1000`, BE returned `REFUNDED`.
+- Shipment `DEMO-BUYER-GHTK-0001`: moved `AWAITING_PICKUP -> IN_TRANSIT`.
+
+Backend refund gap resolved on 2026-05-24:
+
+- `POST /api/v1/admin/payments/{id}/refund` now supports partial refund.
+- If cumulative refund amount is lower than `paidAmount`, BE returns `PARTIALLY_REFUNDED` and updates `orders.paymentStatus = PARTIALLY_REFUNDED`.
+- Follow-up refund is allowed while status is `PARTIALLY_REFUNDED`.
+- If cumulative refund amount reaches `paidAmount`, BE returns `REFUNDED` and updates `orders.paymentStatus = REFUNDED`.
+- `refundAmount` in `AdminPaymentDto` is cumulative.
+- Loyalty reverse side effect runs only when payment reaches full `REFUNDED`.
+- `refundAmount + existingRefundAmount > paidAmount` returns `REFUND_AMOUNT_EXCEEDS_PAID`.
+- Verification after fix: `mvn test` passed, 26 tests, 0 failures, 0 errors.
+
+No other BE blocker was found for invoice detail/download or shipment status update.
+
+## FE remaining critical smoke note - 2026-05-24
+
+FE ran another live BE smoke pass for remaining critical admin surfaces:
+
+- `GET /api/v1/categories?includeInactive=true`: passed, current tree has `2` roots and the first root has `5` children.
+- `GET /api/v1/products/{id}`: passed for product detail with variants/images.
+- `PATCH /api/v1/admin/orders/{id}/status`: passed for `PENDING -> CONFIRMED`.
+- `GET /api/v1/admin/reports/export?type=revenue`: passed, `text/csv`.
+- `GET /api/v1/admin/reports/export?type=products`: passed, `text/csv`.
+- `GET /api/v1/admin/reports/export?type=customers`: passed, `text/csv`.
+- `GET /api/v1/admin/reports/export?type=inventory`: passed, `text/csv`.
+- `GET /api/v1/admin/reports/export?type=returns`: passed, `text/csv`.
+
+Smoke data touched:
+
+- Order `CP2026052300084`: moved `PENDING -> CONFIRMED`.
+
+No new BE blocker was found in this pass. Refund semantics are now resolved as partial-refund capable.
+
+## FE partial refund alignment note - 2026-05-24
+
+FE has been updated to consume the resolved partial refund contract:
+
+- `/admin/payments` now exposes refund for `PAID` and `PARTIALLY_REFUNDED`.
+- FE calculates remaining refundable amount as `paidAmount - refundAmount`.
+- FE blocks refund requests greater than the remaining refundable amount.
+- Payment detail displays cumulative refunded amount and remaining refundable amount.
+
+Live verification after BE fix:
+
+- Payment/order `CP2026052400016`
+- Refund request amount: `1000`
+- BE response status: `PARTIALLY_REFUNDED`
+- BE response cumulative `refundAmount`: `1000`
+- Remaining refundable amount calculated by FE: `33989000`
+
+No BE gap remains for admin payment refund at this point.
+
+## FE sidebar scope note - 2026-05-24
+
+FE removed these mock-only / not-yet-wired routes from the primary admin sidebar:
+
+- `/admin/analytics`
+- `/admin/report-builder`
+- `/admin/warehouses`
+- `/admin/combos`
+- `/admin/installments`
+- `/admin/loyalty`
+- `/admin/blog`
+- `/admin/suppliers`
+
+No new BE blocker is raised by this change. The routes still exist in FE code for future wiring, but they should not be treated as production-ready admin modules until FE connects them to the agreed BE contract and verifies seed data.
+
+## FE admin customers wiring note - 2026-05-24
+
+FE `/admin/customers` now consumes the existing admin users contract:
+
+- `GET /api/v1/admin/users`
+- `GET /api/v1/admin/users/{id}`
+- `PATCH /api/v1/admin/users/{id}`
+- `PATCH /api/v1/admin/users/{id}/status`
+- `DELETE /api/v1/admin/users/{id}`
+
+FE removed the visible create-user, CSV-import, reset-password, and send-email actions because the current BE contract does not expose those operations.
+
+Optional BE backlog, not blocking the current admin page:
+
+- Add `POST /api/v1/admin/users` if admin-created accounts are required.
+- Add reset-password / admin notification endpoints if those actions are required on the customer detail modal.
+
+Data note:
+
+- Added `V31__admin_users_demo_data.sql` with 10 additional admin-user/customer rows so a fresh DB has more than 10 rows for this screen.
+- Local verification after Flyway V31: `GET /api/v1/admin/users?page=1&pageSize=20` returned 13 total rows (`ADMIN:2`, `STAFF:3`, `CUSTOMER:8`).
+
+## FE admin documents scope note - 2026-05-24
+
+FE reviewed `/admin/documents` and found it is still backed by local `documentApi.ts` mock data. FE removed `Tài liệu` from the primary admin sidebar so admin users do not operate a fake upload/archive/delete flow.
+
+Route compatibility:
+
+- `/admin/documents` remains registered in FE for old links/activity-log compatibility.
+
+BE backlog if documents are required as a real admin module:
+
+- `GET /api/v1/admin/documents?page=&pageSize=&category=&status=&fileType=&search=`
+- `GET /api/v1/admin/documents/{id}`
+- `POST /api/v1/admin/documents`
+- `PATCH /api/v1/admin/documents/{id}`
+- `DELETE /api/v1/admin/documents/{id}`
+- `GET /api/v1/admin/documents/{id}/download`
+- Optional: `GET /api/v1/admin/documents/{id}/versions`, `GET /api/v1/admin/documents/stats`.
+
+This is not a blocker for the current admin menu because the mock-only route is no longer exposed there.
+
+## FE shared notification/search cleanup note - 2026-05-24
+
+FE removed random/mock notification generation from the shared notification provider. Notification UI now relies on the existing BE-backed adapter for:
+
+- `GET /api/v1/notifications`
+- `GET /api/v1/notifications/unread-count`
+- `PATCH /api/v1/notifications/{id}/read`
+- `PATCH /api/v1/notifications/read-all`
+- `DELETE /api/v1/notifications/{id}`
+
+FE also removed legacy/procurement notification filters from visible shared UI: RFQ, contract, approval, credit, message.
+
+Live verification:
+
+- `GET /api/v1/notifications?page=1&pageSize=5`: returned 5 rows.
+- `GET /api/v1/notifications/unread-count`: returned unread count `12`.
+
+No BE blocker remains for shared notification display. Shared search suggestions also stopped calling legacy supplier search; no BE change required.

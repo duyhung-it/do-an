@@ -9,6 +9,7 @@ Status: DONE on 2026-05-20. All endpoints use standard `ApiResponse`. During sec
 - `POST /api/v1/returns`
 - `GET /api/v1/returns?page=&pageSize=&status=`
 - `GET /api/v1/returns/{id}`
+- `DELETE /api/v1/returns/{id}`
 
 Create request:
 
@@ -26,6 +27,7 @@ Rules:
 - Order status must be `DELIVERED`.
 - Backend blocks duplicate active return for the same order.
 - Customer can only read own returns.
+- Customer can delete/cancel only own `PENDING` return request. Success returns HTTP `204`; non-pending returns `RETURN_INVALID_STATUS`.
 
 Return fields: `id`, `returnNumber`, `orderId`, `customerId`, `customerName`, `customerPhone`, `reason`, `status`, `refundAmount`, `disputeResolution`, `createdAt`, `updatedAt`, `orderNumber`, `refundMethod`, `items`.
 
@@ -38,6 +40,7 @@ Statuses: `PENDING`, `APPROVED`, `PROCESSING`, `REFUNDED`, `CLOSED`, `REJECTED`.
 Return refund side effect:
 
 - When admin moves a return request to `REFUNDED`, backend reverses loyalty points previously earned from that order.
+- When admin moves a return request to `REFUNDED`, backend updates the original order status from `DELIVERED` to `RETURNED` and writes an `order_status_history` row.
 - Reverse appears in `GET /api/v1/loyalty/me/transactions?type=EXPIRE`.
 - Reverse is idempotent per order and never makes current points negative.
 

@@ -373,8 +373,12 @@ class AdminReportsSettingsService {
 		LocalDate toDate = parseDate(to, LocalDate.now());
 		return jdbc.query("""
 				SELECT o.created_at::date AS report_date,
-				       COALESCE(SUM(CASE WHEN o.payment_status = 'PAID' THEN o.total_amount ELSE 0 END), 0)::bigint AS revenue,
-				       COUNT(*)::bigint AS order_count
+				       COALESCE(SUM(o.total_amount) FILTER (
+				           WHERE o.status = 'DELIVERED' AND o.payment_status = 'PAID'
+				       ), 0)::bigint AS revenue,
+				       COUNT(o.id) FILTER (
+				           WHERE o.status = 'DELIVERED' AND o.payment_status = 'PAID'
+				       )::bigint AS order_count
 				FROM orders o
 				WHERE o.created_at >= ?::date AND o.created_at < (?::date + INTERVAL '1 day')
 				GROUP BY report_date
@@ -387,10 +391,16 @@ class AdminReportsSettingsService {
 	@Transactional(readOnly = true)
 	public List<AdminReportsSettingsController.ProductReportDto> productReport() {
 		return jdbc.query("""
-				SELECT p.id, p.name, p.brand, COALESCE(SUM(oi.quantity), 0)::bigint AS sold_count,
-				       COALESCE(SUM(oi.total_price), 0)::bigint AS revenue
+				SELECT p.id, p.name, p.brand,
+				       COALESCE(SUM(oi.quantity) FILTER (
+				           WHERE o.status = 'DELIVERED' AND o.payment_status = 'PAID'
+				       ), 0)::bigint AS sold_count,
+				       COALESCE(SUM(oi.total_price) FILTER (
+				           WHERE o.status = 'DELIVERED' AND o.payment_status = 'PAID'
+				       ), 0)::bigint AS revenue
 				FROM products p
 				LEFT JOIN order_items oi ON oi.product_id = p.id
+				LEFT JOIN orders o ON o.id = oi.order_id
 				GROUP BY p.id, p.name, p.brand
 				ORDER BY revenue DESC, sold_count DESC
 				LIMIT 50

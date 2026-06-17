@@ -2,7 +2,7 @@
 
 Nguồn: `be/src/main/resources/db/migration/`
 
-Tài liệu này mô tả schema thực tế hiện tại theo các migration `V1` đến `V27`. Nội dung tập trung vào bảng, thuộc tính, kiểu dữ liệu, ràng buộc chính và quan hệ giữa các bảng. Các câu lệnh seed/demo data không được mô tả chi tiết, trừ khi ảnh hưởng đến schema.
+Tài liệu này mô tả schema thực tế hiện tại theo các migration `V1` đến `V35`. Nội dung tập trung vào bảng, thuộc tính, kiểu dữ liệu, ràng buộc chính và quan hệ giữa các bảng. Các câu lệnh seed/demo data không được mô tả chi tiết, trừ khi ảnh hưởng đến schema.
 
 ## 1. Tổng Quan Migration
 
@@ -26,11 +26,16 @@ Tài liệu này mô tả schema thực tế hiện tại theo các migration `V
 | V21 | `V21__customer_notifications.sql` | Notification preferences và read_at |
 | V22 | `V22__payment_gateway_sessions.sql` | Phiên thanh toán online |
 | V24 | `V24__customer_payment_proofs.sql` | Chứng từ thanh toán |
+| V35 | `V35__invoice_discount_amount.sql` | Snapshot tiền khuyến mãi trên hóa đơn |
 | V25 | `V25__buyer_public_combos.sql` | Seed combo công khai, không đổi schema |
 | V26 | `V26__customer_addresses.sql` | Sổ địa chỉ khách hàng |
 | V27 | `V27__customer_profiles.sql` | Hồ sơ khách hàng |
+| V31 | `V31__admin_users_demo_data.sql` | Seed thêm dữ liệu demo cho admin users/customers, không đổi schema |
+| V32 | `V32__product_images_variant_link.sql` | Cho phép ảnh sản phẩm gắn với biến thể qua `product_images.variant_id` |
+| V33 | `V33__product_variant_images_demo_data.sql` | Seed 10 ảnh demo gắn với biến thể sản phẩm |
+| V34 | `V34__catalog_leaf_demo_products.sql` | Seed đủ 10 sản phẩm active cho mỗi danh mục con catalog và đồng bộ lại `categories.product_count` theo sản phẩm active trong cây danh mục |
 
-Các migration `V10`, `V11`, `V12`, `V18`, `V19`, `V23`, `V25` chủ yếu bổ sung seed/QA/demo data.
+Các migration `V10`, `V11`, `V12`, `V18`, `V19`, `V23`, `V25`, `V31`, `V34` chủ yếu bổ sung seed/QA/demo data.
 
 ## 2. Enum Types
 
@@ -244,6 +249,7 @@ Lưu ảnh sản phẩm.
 | --- | --- | --- | --- | --- |
 | `id` | UUID | PK, default `gen_random_uuid()` | | Mã ảnh |
 | `product_id` | UUID | NOT NULL | FK `products(id)` ON DELETE CASCADE | Sản phẩm |
+| `variant_id` | UUID | Nullable | FK `product_variants(id)` ON DELETE CASCADE | Biến thể sản phẩm, null là ảnh chung |
 | `url` | TEXT | NOT NULL | | URL ảnh |
 | `alt_text` | VARCHAR(300) | Nullable | | Alt text |
 | `sort_order` | INT | NOT NULL, default `0` | | Thứ tự ảnh |
@@ -255,6 +261,7 @@ Index:
 | Index | Cột / điều kiện | Ghi chú |
 | --- | --- | --- |
 | `idx_product_images_product_id` | `product_id` | Lấy ảnh theo sản phẩm |
+| `idx_product_images_variant_id` | `variant_id` | Lấy ảnh theo biến thể |
 | `idx_product_images_primary` | `product_id WHERE is_primary = TRUE` | Mỗi sản phẩm tối đa một ảnh chính |
 
 ### 4.5. `phone_specs`
@@ -524,6 +531,7 @@ Lưu hóa đơn.
 | `customer_name` | VARCHAR(200) | NOT NULL | | Tên khách |
 | `total_amount` | BIGINT | NOT NULL | | Tổng tiền |
 | `tax_amount` | BIGINT | NOT NULL, default `0` | | Thuế |
+| `discount_amount` | BIGINT | NOT NULL, default `0` | | Số tiền khuyến mãi snapshot từ đơn hàng |
 | `status` | `invoice_status` | NOT NULL, default `PENDING` | | Trạng thái |
 | `issue_date` | DATE | NOT NULL | | Ngày phát hành |
 | `due_date` | DATE | NOT NULL | | Hạn thanh toán |

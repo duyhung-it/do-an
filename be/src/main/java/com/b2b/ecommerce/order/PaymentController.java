@@ -1,12 +1,15 @@
 package com.b2b.ecommerce.order;
 
+import java.net.URI;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 import com.b2b.ecommerce.common.ApiResponse;
 import com.b2b.ecommerce.common.PageRequestParams;
 import jakarta.validation.Valid;
 import org.springframework.data.domain.Page;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -75,13 +78,12 @@ public class PaymentController {
 	}
 
 	@GetMapping("/gateway/return")
-	public ApiResponse<PaymentGatewayResultDto> gatewayReturn(
-			@RequestParam String requestId,
-			@RequestParam(required = false) String provider,
-			@RequestParam(required = false) String transactionRef,
-			@RequestParam(defaultValue = "SUCCESS") String status,
-			@RequestParam(required = false) Long amount) {
-		return ApiResponse.ok(orders.gatewayReturn(provider, requestId, transactionRef, status, amount));
+	public ResponseEntity<?> gatewayReturn(@RequestParam Map<String, String> params) {
+		PaymentGatewayReturnOutcome outcome = orders.gatewayReturnOutcome(params);
+		if (outcome.redirectUrl() != null && !outcome.redirectUrl().isBlank()) {
+			return ResponseEntity.status(302).location(URI.create(outcome.redirectUrl())).build();
+		}
+		return ResponseEntity.ok(ApiResponse.ok(outcome.result()));
 	}
 
 	private UUID userId(String value) {

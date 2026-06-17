@@ -30,7 +30,9 @@ public class AdminDashboardController {
 	public ApiResponse<DashboardStatsDto> stats() {
 		DashboardStatsDto data = jdbc.queryForObject("""
 				SELECT
-				  COALESCE(SUM(CASE WHEN o.payment_status = 'PAID' THEN o.total_amount ELSE 0 END), 0)::bigint AS total_revenue,
+				  COALESCE(SUM(o.total_amount) FILTER (
+				    WHERE o.status = 'DELIVERED' AND o.payment_status = 'PAID'
+				  ), 0)::bigint AS total_revenue,
 				  COUNT(o.id)::bigint AS total_orders,
 				  COUNT(*) FILTER (WHERE o.status = 'PENDING')::bigint AS pending_orders,
 				  COUNT(*) FILTER (WHERE o.status = 'DELIVERED')::bigint AS delivered_orders,
@@ -63,8 +65,12 @@ public class AdminDashboardController {
 		}
 		List<RevenuePointDto> data = jdbc.query("""
 				SELECT DATE_TRUNC(?, o.created_at)::date AS bucket,
-				       COALESCE(SUM(CASE WHEN o.payment_status = 'PAID' THEN o.total_amount ELSE 0 END), 0)::bigint AS revenue,
-				       COUNT(o.id)::bigint AS order_count
+				       COALESCE(SUM(o.total_amount) FILTER (
+				           WHERE o.status = 'DELIVERED' AND o.payment_status = 'PAID'
+				       ), 0)::bigint AS revenue,
+				       COUNT(o.id) FILTER (
+				           WHERE o.status = 'DELIVERED' AND o.payment_status = 'PAID'
+				       )::bigint AS order_count
 				FROM orders o
 				WHERE o.created_at >= ?::date AND o.created_at < (?::date + INTERVAL '1 day')
 				GROUP BY bucket

@@ -2,6 +2,7 @@ package com.b2b.ecommerce.order;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
@@ -32,19 +33,24 @@ import org.springframework.transaction.annotation.Transactional;
 
 @Service
 public class OrderService {
+	private static final UUID SYSTEM_ADMIN_ID = UUID.fromString("00000000-0000-4000-8000-000000000001");
+	private static final String SYSTEM_ADMIN_NAME = "Admin Shipment";
+
 	private final JdbcTemplate jdbc;
 	private final PromotionService promotions;
 	private final CartService cart;
 	private final NotificationEventService notifications;
 	private final LoyaltyEventService loyaltyEvents;
+	private final VnpayGatewayService vnpayGateway;
 
 	public OrderService(JdbcTemplate jdbc, PromotionService promotions, CartService cart,
-			NotificationEventService notifications, LoyaltyEventService loyaltyEvents) {
+			NotificationEventService notifications, LoyaltyEventService loyaltyEvents, VnpayGatewayService vnpayGateway) {
 		this.jdbc = jdbc;
 		this.promotions = promotions;
 		this.cart = cart;
 		this.notifications = notifications;
 		this.loyaltyEvents = loyaltyEvents;
+		this.vnpayGateway = vnpayGateway;
 	}
 
 	@Transactional
@@ -75,7 +81,7 @@ public class OrderService {
 			jdbc.update("UPDATE promotions SET used_count = used_count + 1 WHERE id = ?",
 					UUID.fromString(promotion.id()));
 		}
-		long shippingFee = subtotal >= 3_000_000 ? 0 : 30_000;
+		long shippingFee = subtotal >= 3_000_000 || (promotion != null && "FREE_SHIPPING".equals(promotion.type())) ? 0 : 30_000;
 		long totalAmount = Math.max(0, subtotal - discount + shippingFee);
 		UUID orderId = UUID.randomUUID();
 		UUID paymentId = UUID.randomUUID();
@@ -548,7 +554,7 @@ public class OrderService {
 		args.add((page - 1) * pageSize);
 		List<InvoiceDto> content = jdbc.query("""
 				SELECT id, invoice_number, order_id, order_number, customer_id, customer_name,
-				       total_amount, tax_amount, status::text AS status, issue_date, due_date, paid_at, created_at
+				       total_amount, tax_amount, discount_amount, status::text AS status, issue_date, due_date, paid_at, created_at
 				FROM invoices i
 				""" + where + " " + """
 				ORDER BY created_at DESC
@@ -609,7 +615,7 @@ public class OrderService {
 		args.add((page - 1) * pageSize);
 		List<InvoiceDto> content = jdbc.query("""
 				SELECT i.id, i.invoice_number, i.order_id, i.order_number, i.customer_id, i.customer_name,
-				       i.total_amount, i.tax_amount, i.status::text AS status, i.issue_date, i.due_date,
+				       i.total_amount, i.tax_amount, i.discount_amount, i.status::text AS status, i.issue_date, i.due_date,
 				       i.paid_at, i.created_at
 				FROM invoices i
 				JOIN orders o ON o.id = i.order_id
@@ -656,11 +662,11 @@ public class OrderService {
 		jdbc.update("""
 				INSERT INTO invoices (
 				  id, invoice_number, order_id, order_number, customer_id, customer_name,
-				  total_amount, tax_amount, status, issue_date, due_date
+				  total_amount, tax_amount, discount_amount, status, issue_date, due_date
 				)
-				VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', CURRENT_DATE, ?)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING', CURRENT_DATE, ?)
 				""", id, invoiceNumber(), order.id(), order.orderNumber(), order.customerId(), order.customerName(),
-				order.totalAmount(), request.taxAmount() == null ? 0 : request.taxAmount(), dueDate);
+				order.totalAmount(), request.taxAmount() == null ? 0 : request.taxAmount(), order.discount(), dueDate);
 		return adminInvoice(id.toString());
 	}
 
@@ -815,8 +821,9 @@ public class OrderService {
 				awardLoyalty(order);
 				jdbc.update("""
 						INSERT INTO order_status_history (id, order_id, from_status, to_status, changed_by, changed_by_name, note)
-						VALUES (?, ?, 'SHIPPING', 'DELIVERED', NULL, ?, ?)
-						""", UUID.randomUUID(), order.id(), "Admin Shipment", "Shipment marked delivered");
+						VALUES (?, ?, 'SHIPPING', 'DELIVERED', ?, ?, ?)
+						""", UUID.randomUUID(), order.id(), SYSTEM_ADMIN_ID, SYSTEM_ADMIN_NAME,
+						"Shipment marked delivered");
 				notifyOrder(order.id(), order.customerId(), "Don hang da giao thanh cong",
 						"Don hang " + order.orderNumber() + " da duoc giao thanh cong.", "HIGH", "order_delivered");
 			}
@@ -833,12 +840,13 @@ public class OrderService {
 				Status: %s
 				Issue date: %s
 				Due date: %s
-				Total: %d VND
+				Subtotal: %d VND
+				Discount: %d VND
 				Tax: %d VND
 				Grand total: %d VND
 				""".formatted(invoice.invoiceNumber(), invoice.orderNumber(), invoice.customerName(), invoice.status(),
-				invoice.issueDate(), invoice.dueDate(), invoice.totalAmount(), invoice.taxAmount(),
-				invoice.totalAmount() + invoice.taxAmount());
+				invoice.issueDate(), invoice.dueDate(), invoice.totalAmount() + invoice.discountAmount() - invoice.taxAmount(),
+				invoice.discountAmount(), invoice.taxAmount(), invoice.totalAmount());
 		return new InvoicePdfFile(invoice.invoiceNumber() + ".pdf", simplePdf(text));
 	}
 
@@ -950,10 +958,19 @@ public class OrderService {
 		if (existing != null) {
 			return gatewaySessionDto(existing);
 		}
-		String requestId = provider + "-" + DateTimeFormatter.BASIC_ISO_DATE.format(LocalDate.now()) + "-"
-				+ UUID.randomUUID();
-		String paymentUrl = "/api/v1/payments/gateway/return?provider=" + provider + "&requestId=" + requestId
-				+ "&status=SUCCESS";
+		String requestId = gatewayRequestId(provider);
+		String paymentUrl = localGatewayPaymentUrl(provider, requestId);
+		if ("VNPAY".equals(provider)) {
+			VnpayGatewayService.PaymentUrl vnpayUrl = vnpayGateway.createPaymentUrl(new VnpayGatewayService.VnpayPaymentRequest(
+					requestId,
+					payment.remainingAmount(),
+					"Thanh toan don hang " + payment.orderNumber(),
+					request == null ? null : request.orderType(),
+					request == null ? null : request.locale(),
+					request == null ? null : request.bankCode(),
+					request == null ? null : request.ipAddress()));
+			paymentUrl = vnpayUrl.url();
+		}
 		jdbc.update("""
 				INSERT INTO payment_gateway_sessions (
 				  id, payment_id, order_id, provider, request_id, amount, status, payment_url, return_url, callback_url,
@@ -978,9 +995,29 @@ public class OrderService {
 	}
 
 	@Transactional
-	public PaymentGatewayResultDto gatewayReturn(String provider, String requestId, String transactionRef, String status,
-			Long amount) {
-		return applyGatewayResult(provider, requestId, transactionRef, status, amount);
+	public PaymentGatewayResultDto gatewayReturn(Map<String, String> params) {
+		return gatewayReturnOutcome(params).result();
+	}
+
+	@Transactional
+	public PaymentGatewayReturnOutcome gatewayReturnOutcome(Map<String, String> params) {
+		PaymentGatewayResultDto result;
+		if (params != null && params.containsKey("vnp_TxnRef")) {
+			VnpayGatewayService.VnpayReturnResult vnpayResult = vnpayGateway.parseAndVerify(params);
+			PaymentGatewayResultDto paymentResult = applyGatewayResult("VNPAY", vnpayResult.requestId(),
+					vnpayResult.transactionRef(), vnpayResult.status(), vnpayResult.amount());
+			return new PaymentGatewayReturnOutcome(paymentResult, gatewayRedirectUrl(paymentResult));
+		}
+		String requestId = params == null ? null : params.get("requestId");
+		String provider = params == null ? null : params.get("provider");
+		String transactionRef = params == null ? null : params.get("transactionRef");
+		String status = params == null ? null : params.getOrDefault("status", "SUCCESS");
+		Long amount = null;
+		if (params != null && params.get("amount") != null && !params.get("amount").isBlank()) {
+			amount = Long.parseLong(params.get("amount"));
+		}
+		result = applyGatewayResult(provider, requestId, transactionRef, status, amount);
+		return new PaymentGatewayReturnOutcome(result, gatewayRedirectUrl(result));
 	}
 
 	@Transactional
@@ -1005,27 +1042,32 @@ public class OrderService {
 	public AdminPaymentDto refundPayment(String id, RefundPaymentRequest request) {
 		UUID paymentId = uuid(id, "id");
 		PaymentRecord payment = paymentRecord(paymentId);
-		if ("REFUNDED".equals(payment.status()) || "PARTIALLY_REFUNDED".equals(payment.status())) {
+		if ("REFUNDED".equals(payment.status())) {
 			throw new AppException(ErrorCode.PAYMENT_REFUNDED);
 		}
-		if (!"PAID".equals(payment.status())) {
+		if (!"PAID".equals(payment.status()) && !"PARTIALLY_REFUNDED".equals(payment.status())) {
 			throw new AppException(ErrorCode.PAYMENT_NOT_PAID);
 		}
-		if (request.refundAmount() > payment.paidAmount()) {
+		long alreadyRefunded = payment.refundAmount() == null ? 0 : payment.refundAmount();
+		long nextRefundTotal = alreadyRefunded + request.refundAmount();
+		if (nextRefundTotal > payment.paidAmount()) {
 			throw new AppException(ErrorCode.REFUND_AMOUNT_EXCEEDS_PAID);
 		}
+		String nextStatus = nextRefundTotal == payment.paidAmount() ? "REFUNDED" : "PARTIALLY_REFUNDED";
 		String method = refundMethod(request.method());
 		jdbc.update("""
 				UPDATE payments
-				SET status = 'REFUNDED',
+				SET status = ?::payment_status,
 				    refund_amount = ?,
 				    refund_reason = ?,
 				    refund_method = ?,
 				    refunded_at = NOW()
 				WHERE id = ?
-				""", request.refundAmount(), request.normalizedReason(), method, paymentId);
-		jdbc.update("UPDATE orders SET payment_status = 'REFUNDED' WHERE id = ?", payment.orderId());
-		loyaltyEvents.reverseEarnedPoints(payment.orderId(), "Hoan tien thanh toan");
+				""", nextStatus, nextRefundTotal, request.normalizedReason(), method, paymentId);
+		jdbc.update("UPDATE orders SET payment_status = ?::payment_status WHERE id = ?", nextStatus, payment.orderId());
+		if ("REFUNDED".equals(nextStatus)) {
+			loyaltyEvents.reverseEarnedPoints(payment.orderId(), "Hoan tien thanh toan");
+		}
 		notifyPayment(payment.orderId(), payment.customerId(), "Thanh toan da hoan tien",
 				"Don hang " + payment.orderNumber() + " da duoc ghi nhan hoan tien.", "HIGH");
 		return payment(paymentId);
@@ -1141,6 +1183,21 @@ public class OrderService {
 				customerPaymentDto(payment));
 	}
 
+	private String gatewayRedirectUrl(PaymentGatewayResultDto result) {
+		PaymentGatewaySession session = gatewaySession(result.requestId());
+		String returnUrl = blankToNull(session.returnUrl());
+		if (returnUrl == null) {
+			return null;
+		}
+		String separator = returnUrl.contains("?") ? "&" : "?";
+		return returnUrl + separator
+				+ "requestId=" + url(result.requestId())
+				+ "&paymentId=" + url(result.paymentId())
+				+ "&orderId=" + url(result.orderId())
+				+ "&provider=" + url(result.provider())
+				+ "&status=" + url(result.status());
+	}
+
 	private PaymentGatewaySessionDto gatewaySessionDto(PaymentGatewaySession session) {
 		return new PaymentGatewaySessionDto(session.id().toString(), session.paymentId().toString(),
 				session.orderId().toString(), session.provider(), session.requestId(), session.transactionRef(),
@@ -1208,11 +1265,11 @@ public class OrderService {
 		jdbc.update("""
 				INSERT INTO invoices (
 				  id, invoice_number, order_id, order_number, customer_id, customer_name,
-				  total_amount, tax_amount, status, issue_date, due_date
+				  total_amount, tax_amount, discount_amount, status, issue_date, due_date
 				)
-				VALUES (?, ?, ?, ?, ?, ?, ?, 0, 'PENDING', CURRENT_DATE, CURRENT_DATE + 3)
+				VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, 'PENDING', CURRENT_DATE, CURRENT_DATE + 3)
 				""", UUID.randomUUID(), invoiceNumber(), order.id(), order.orderNumber(), order.customerId(),
-				order.customerName(), order.totalAmount());
+				order.customerName(), order.totalAmount(), order.discount());
 	}
 
 	private void createShipment(OrderRecord order) {
@@ -1743,6 +1800,20 @@ public class OrderService {
 				transactionRef == null ? "null" : "\"" + escape(transactionRef) + "\"", escape(status), amount);
 	}
 
+	private String gatewayRequestId(String provider) {
+		String date = DateTimeFormatter.BASIC_ISO_DATE.format(LocalDate.now());
+		String random = UUID.randomUUID().toString().replace("-", "");
+		return "VNPAY".equals(provider) ? "VNPAY" + date + random.substring(0, 20) : provider + "-" + date + "-" + UUID.randomUUID();
+	}
+
+	private String localGatewayPaymentUrl(String provider, String requestId) {
+		return "/api/v1/payments/gateway/return?provider=" + provider + "&requestId=" + requestId + "&status=SUCCESS";
+	}
+
+	private String url(String value) {
+		return URLEncoder.encode(value == null ? "" : value, StandardCharsets.UTF_8);
+	}
+
 	private byte[] simplePdf(String text) {
 		String[] lines = text.lines().map(this::pdfText).toArray(String[]::new);
 		StringBuilder content = new StringBuilder("BT\n/F1 12 Tf\n50 780 Td\n");
@@ -1854,7 +1925,7 @@ public class OrderService {
 		try {
 			return jdbc.queryForObject("""
 					SELECT id, invoice_number, order_id, order_number, customer_id, customer_name,
-					       total_amount, tax_amount, status::text AS status, issue_date, due_date, paid_at, created_at
+					       total_amount, tax_amount, discount_amount, status::text AS status, issue_date, due_date, paid_at, created_at
 					FROM invoices
 					WHERE order_id = ?
 					""", this::invoiceRowDto, orderId);
@@ -1882,7 +1953,7 @@ public class OrderService {
 		try {
 			return jdbc.queryForObject("""
 					SELECT id, invoice_number, order_id, order_number, customer_id, customer_name,
-					       total_amount, tax_amount, status::text AS status, issue_date, due_date, paid_at, created_at
+					       total_amount, tax_amount, discount_amount, status::text AS status, issue_date, due_date, paid_at, created_at
 					FROM invoices
 					WHERE id = ?
 					""", this::invoiceRecord, invoiceId);
@@ -1915,7 +1986,7 @@ public class OrderService {
 		return new InvoiceDto(rs.getObject("id", UUID.class).toString(), rs.getString("invoice_number"),
 				orderId.toString(), rs.getString("order_number"),
 				rs.getObject("customer_id", UUID.class).toString(), rs.getString("customer_name"),
-				rs.getLong("total_amount"), rs.getLong("tax_amount"), rs.getString("status"),
+				rs.getLong("total_amount"), rs.getLong("tax_amount"), rs.getLong("discount_amount"), rs.getString("status"),
 				rs.getObject("issue_date", LocalDate.class).toString(), rs.getObject("due_date", LocalDate.class).toString(),
 				paidAt == null ? null : iso(paidAt), iso(rs.getObject("created_at", OffsetDateTime.class)),
 				order.customerEmail(), order.customerPhone(), "ORDER", "CELLPHONES",
@@ -1927,7 +1998,7 @@ public class OrderService {
 		OrderRecord order = orderRecord(invoice.orderId());
 		return new InvoiceDto(invoice.id().toString(), invoice.invoiceNumber(), invoice.orderId().toString(),
 				invoice.orderNumber(), invoice.customerId().toString(), invoice.customerName(), invoice.totalAmount(),
-				invoice.taxAmount(), invoice.status(), invoice.issueDate().toString(), invoice.dueDate().toString(),
+				invoice.taxAmount(), invoice.discountAmount(), invoice.status(), invoice.issueDate().toString(), invoice.dueDate().toString(),
 				invoice.paidAt() == null ? null : iso(invoice.paidAt()), iso(invoice.createdAt()),
 				order.customerEmail(), order.customerPhone(), "ORDER", "CELLPHONES",
 				"0310000000", "350-352 Vo Van Kiet, Quan 1, TP. Ho Chi Minh", order.notes(),
@@ -2032,7 +2103,7 @@ public class OrderService {
 	private InvoiceRecord invoiceRecord(ResultSet rs, int rowNum) throws SQLException {
 		return new InvoiceRecord(rs.getObject("id", UUID.class), rs.getString("invoice_number"),
 				rs.getObject("order_id", UUID.class), rs.getString("order_number"), rs.getObject("customer_id", UUID.class),
-				rs.getString("customer_name"), rs.getLong("total_amount"), rs.getLong("tax_amount"), rs.getString("status"),
+				rs.getString("customer_name"), rs.getLong("total_amount"), rs.getLong("tax_amount"), rs.getLong("discount_amount"), rs.getString("status"),
 				rs.getObject("issue_date", LocalDate.class), rs.getObject("due_date", LocalDate.class),
 				rs.getObject("paid_at", OffsetDateTime.class), rs.getObject("created_at", OffsetDateTime.class));
 	}
@@ -2185,7 +2256,7 @@ public class OrderService {
 	}
 
 	private record InvoiceRecord(UUID id, String invoiceNumber, UUID orderId, String orderNumber, UUID customerId,
-			String customerName, long totalAmount, long taxAmount, String status, LocalDate issueDate, LocalDate dueDate,
+			String customerName, long totalAmount, long taxAmount, long discountAmount, String status, LocalDate issueDate, LocalDate dueDate,
 			OffsetDateTime paidAt, OffsetDateTime createdAt) {
 	}
 

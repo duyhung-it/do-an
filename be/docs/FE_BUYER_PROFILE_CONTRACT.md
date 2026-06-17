@@ -170,3 +170,54 @@ Request:
 Backend validates address ownership by `X-User-Id`, snapshots it into `orders.shipping_address`, and stores `orders.shipping_address_id`.
 
 Inline `shippingAddress` remains supported for FE compatibility.
+
+## Wishlist
+
+All endpoints are customer-scoped by `X-User-Id`.
+
+Implemented endpoints:
+
+- `GET /users/me/wishlist`
+- `POST /users/me/wishlist`
+- `DELETE /users/me/wishlist/{productId}`
+- `DELETE /users/me/wishlist/items/{id}`
+- `DELETE /users/me/wishlist`
+- `PATCH /users/me/wishlist/{productId}/price-alert`
+
+Response item:
+
+```json
+{
+  "id": "dd000001-0199-4000-8000-000000000001",
+  "userId": "00000000-0000-4000-8000-000000000199",
+  "productId": "b1b2c3d4-0001-0001-0001-000000000001",
+  "productName": "iPhone 15 Pro Max 256GB",
+  "productImage": "https://cdn.cellphones.vn/products/iphone15promax-1.jpg",
+  "brand": "Apple",
+  "categoryName": "Dien thoai",
+  "price": 33990000,
+  "originalPrice": 35990000,
+  "addedPrice": 33990000,
+  "priceAlert": 30000000,
+  "stock": 20,
+  "addedAt": "2026-05-24T17:23:00+07:00",
+  "updatedAt": "2026-05-24T17:23:00+07:00"
+}
+```
+
+Create request:
+
+```json
+{
+  "productId": "b1b2c3d4-0001-0001-0001-000000000001",
+  "priceAlert": 30000000
+}
+```
+
+Rules implemented:
+
+- Data is persisted in PostgreSQL table `customer_wishlist`.
+- `productId` must be a real UUID product id from production catalog.
+- `POST /users/me/wishlist` is idempotent: if item already exists, backend returns the existing item with HTTP 200.
+- `priceAlert` must be positive when updating.
+- Demo customer `00000000-0000-4000-8000-000000000199` has 10 seeded wishlist rows from Flyway `V28__customer_wishlist.sql`.

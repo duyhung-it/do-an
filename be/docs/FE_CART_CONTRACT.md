@@ -73,6 +73,8 @@ Rules:
 - `unitPrice` duoc snapshot tu variant price neu co variant, nguoc lai lay product price.
 - Toi da 50 dong item trong cart.
 - Check product active, variant active va stock khi add.
+- Neu product co bien the, FE bat buoc gui `variantId`; backend tra `PRODUCT_VARIANT_NOT_FOUND` neu thieu bien the.
+- Khi item da ton tai trong cart, backend check ton kho theo tong so luong sau merge, khong chi check quantity moi gui len.
 
 Response: `201 Created`, body la `CartItem`.
 
@@ -90,6 +92,12 @@ Request:
 ```
 
 Response: `200 OK`, body la `CartItem`.
+
+Rules:
+
+- `quantity` phai lon hon 0.
+- Backend check lai stock hien tai cua variant theo quantity moi.
+- FE khong duoc fallback mock neu backend tra loi `PRODUCT_OUT_OF_STOCK` hoac validation error cho item UUID.
 
 ### Delete Item
 
@@ -163,3 +171,5 @@ Current issue types:
 - Format `subtotal`, `unitPrice`, `totalPrice` as VND client-side.
 - Call `/cart/validate` before checkout.
 - During dev, send `X-User-Id` if testing multiple user carts.
+- Add-to-cart tu product detail/list phai gui `variantId` cho san pham co bien the.
+- Hien thi loi backend cho buyer khi add/update gio hang vuot ton kho.

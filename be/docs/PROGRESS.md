@@ -4,6 +4,413 @@ Source of truth: `B2B eCommerce Platform Plan/ba-docs`
 
 Focus hien tai: B2C core flow, uu tien storefront -> cart -> checkout -> order operations.
 
+## 2026-06-11 Buyer Menu Filter Sync
+
+Sua loi chon loai tren menu buyer khong loc dung:
+
+- Nguyen nhan: `ProductListPage` chi doc `categoryId/categorySlug/brand/price` tu URL query luc mount lan dau. Khi user dang o `/products` va click menu khac, route khong remount nen filter state noi bo van giu gia tri cu.
+- FE `ProductListPage` nay sync lai filters moi khi `searchParams` thay doi.
+- Ho tro dong bo tu URL cho `categoryId`, `categorySlug`, `brand`, `status`, `minPrice`, `maxPrice`, `isNew`, `isHot`, `isFeatured`.
+- Them dependency `categorySlug` cho fetch flow de route slug doi se fetch lai dung.
+
+Verify:
+
+- FE `npm.cmd run build -- --outDir dist-codex-menu-filter-check`: passed.
+
+## 2026-06-11 Buyer Header Menu Real Data
+
+Gan menu buyer header voi du lieu catalog that:
+
+- FE `BuyerLayout` khong render menu bang `cat-01..cat-06` nua.
+- Menu load `GET /api/v1/categories` va `GET /api/v1/products`, sau do map category theo slug: `dien-thoai`, `phu-kien`, `tai-nghe`, `dong-ho-thong-minh`, `sac-pin`, `thiet-bi-cong-nghe`.
+- Dropdown brand duoc gom tu product brand that trong category dang hover va cac category con.
+- Link category/brand/price dung `categoryId` UUID that de FE product list loc dung voi backend.
+- Them Flyway `V42__buyer_menu_real_catalog_data.sql` de bo sung category/product that cho Realme, Dong ho thong minh, Sac & Pin, Tai nghe, Thiet bi cong nghe.
+- Them Flyway `V43__buyer_menu_variant_backfill.sql` de dam bao cac product menu moi co du 3 variants va variant images.
+
+Verify:
+
+- BE `mvn test -Dtest=B2bEcommerceApiApplicationTests#contextLoads`: passed, Flyway applied `V42` va `V43`.
+- DB check: menu categories co product_count: Dien thoai `53`, Phu kien `37`, Tai nghe `13`, Sac & Pin `14`, Dong ho thong minh `5`, Thiet bi cong nghe `3`, Realme `3`.
+- DB check: `seeded_products_under_3_variants = 0`, `variants_without_images = 0`.
+- FE `npm.cmd run build -- --outDir dist-codex-real-menu-check`: passed.
+
+## 2026-06-11 Catalog Variant Specific Images
+
+Sua loi chon bien the tren man chi tiet san pham nhung anh khong doi:
+
+- Nguyen nhan: FE da filter gallery theo `imageDetails[].variantId`, nhung seed data chi co `11` anh gan `variant_id`, con `241` bien the khong co anh rieng nen FE fallback ve anh chung cua san pham.
+- Them Flyway `V41__catalog_variant_specific_images.sql`.
+- Moi `product_variants` row nay co it nhat `1` row trong `product_images` voi `variant_id` tuong ung.
+- FE `ProductDetailPage` uu tien anh bien the len dau gallery, sau do noi them anh chung cua san pham de van giu du thumbnail.
+- API contract khong doi: FE tiep tuc dung `GET /api/v1/products/{id}` va doc `imageDetails[].variantId`.
+
+Verify:
+
+- BE `mvn test -Dtest=B2bEcommerceApiApplicationTests#contextLoads`: passed, Flyway applied `V41` to local PostgreSQL.
+- DB check: `variant_images = 252`, `variants_without_images = 0`, `total_product_images = 495`.
+- FE `npm.cmd run build -- --outDir dist-codex-variant-gallery-check`: passed.
+
+## 2026-06-11 Catalog Minimum Variants And Images
+
+Dam bao moi san pham co du bien the va anh that cho FE:
+
+- Them Flyway `V40__catalog_min_three_variants_images.sql`.
+- Bo sung bien the con thieu de moi product co it nhat `3` rows trong `product_variants`.
+- Bo sung anh con thieu de moi product co it nhat `3` rows trong `product_images`.
+- Anh bo sung dung URL san pham that theo nhom brand/category, khong dung placeholder.
+- SKU auto sinh co gan slug/product id de tranh trung lap.
+
+Verify:
+
+- BE `mvn test -Dtest=B2bEcommerceApiApplicationTests#contextLoads`: passed, Flyway applied `V40` to local PostgreSQL.
+- DB check: `products_under_3_variants = 0`, `min_variants = 3`, `total_products = 84`.
+- DB check: `products_under_3_images = 0`, `min_images = 3`, `total_product_images = 254`.
+- DB check: `product_images` con `0` URL `placehold.co`, `0` URL `cdn.cellphones.vn/products`.
+
+## 2026-06-11 Catalog Real Product Names
+
+Cap nhat toan bo ten san pham catalog thanh model san pham co that:
+
+- Them Flyway `V39__catalog_real_product_names.sql`.
+- Doi cac san pham seed dang co ten `iPhone Demo xx`, `Samsung Demo xx`, `Xiaomi Demo xx`, `OPPO Demo xx`, `Vivo Demo xx`, `Tai nghe Demo xx`, `Sac cap Demo xx`, `Op lung Demo xx` thanh ten model that.
+- Cap nhat kem `slug`, `brand`, `shortDescription`, `description`, `tags`, `specifications`, variant name/SKU va image `altText`.
+- Dong bo snapshot hien thi ten san pham trong `cart_items`, `order_items`, `warranty_items`.
+- Cap nhat FE mock/fallback tu `AirPods Pro 3` sang `AirPods Pro 2 USB-C` de tranh ten san pham khong chac chan.
+
+Verify:
+
+- BE `mvn test -Dtest=B2bEcommerceApiApplicationTests#contextLoads`: passed, Flyway applied `V39` to local PostgreSQL.
+- DB check: `products` con `0` row co `name/slug` chua `demo`, tong `84` san pham.
+- DB check: `cart_items`, `order_items`, `warranty_items` con `0` row co `product_name` chua `demo`.
+- FE `npm.cmd run build -- --outDir dist-codex-real-product-names-check`: passed.
+
+## 2026-06-11 Buyer Featured Brand Icons
+
+Sua section `Thuong hieu noi bat` tren home buyer:
+
+- Bo phu thuoc logo SVG ngoai cho brand card vi mot so URL Wikimedia tra `404/429`, lam FE chi hien text.
+- Doi sang brand icon mark noi bo cho Apple, Samsung, Xiaomi, OPPO, Vivo, Realme.
+- Card brand co kich thuoc icon on dinh, hover scale nhe, khong bi mat icon khi CDN ngoai loi.
+
+Verify:
+
+- FE `npm.cmd run build -- --outDir dist-codex-brand-icons-check`: passed.
+
+## 2026-06-11 Catalog Real Image URLs
+
+Cap nhat du lieu anh that cho catalog demo:
+
+- Them Flyway `V38__catalog_real_image_urls.sql` de thay cac URL placeholder/`cdn.cellphones.vn` demo cu bang URL anh san pham that da check song.
+- Map anh chinh theo san pham/brand/category: iPhone, Samsung, Xiaomi, OPPO, Vivo, AirPods, sac/cap, op lung.
+- Cap nhat `categories.image_url` va `banners.image_url` de man buyer/admin khong con anh placeholder.
+- Cap nhat FE mock/fallback `mockData.ts` de cac man con dung fallback cung hien anh san pham that.
+- Contract API khong doi: FE van doc `images[]`, `imageDetails[]`, `primaryImage`, `category.imageUrl`, `banner.imageUrl` nhu hien tai.
+
+Verify:
+
+- URL anh chinh da kiem tra `200 OK` bang `curl.exe -L -I`.
+- FE `npm.cmd run build -- --outDir dist-codex-real-images-check`: passed.
+- BE `mvn test -Dtest=B2bEcommerceApiApplicationTests#contextLoads`: passed, Flyway applied `V38` to local PostgreSQL.
+- DB check: `product_images` con `0` URL `placehold.co`, `0` URL `cdn.cellphones.vn/products`, tong `100` anh.
+
+## 2026-06-09 FE Buyer Mega Menu One Column
+
+Sua dropdown menu desktop buyer:
+
+- Doi mega dropdown category tu 2 cot ngang sang 1 cot doc.
+- Nhom `Thuong hieu` nam tren, nhom `Theo muc gia` nam duoi.
+- Giam width dropdown tu `500px` xuong `260px` de phu hop menu doc.
+
+Verify:
+
+- FE `npm.cmd run build -- --outDir dist-codex-buyer-menu-column-check`: passed.
+
+## 2026-06-09 Admin Promotion Create 500 Fix
+
+Sua loi `POST /api/v1/admin/promotions` khong tao duoc khuyen mai voi payload FE:
+
+- Nguyen nhan: query check trung code dung `(? IS NULL OR id <> ?)` khi tao moi truyen `currentId = null`, PostgreSQL khong suy ra duoc type cua parameter `$2`.
+- Tach query check trung code cho create va update.
+- Them validate `type`, `applicableProducts`, `applicableCategories` de UUID/type sai tra `VALIDATION_ERROR`, khong roi vao `500`.
+- Them regression test voi payload co `applicableProducts`, `applicableCategories`, `applicableBrands` la array nhu FE dang gui.
+- Da don du lieu debug/test promotion trong DB local.
+
+Verify:
+
+- BE `mvn test -Dtest=B2bEcommerceApiApplicationTests#adminPromotionCreateAcceptsArrayScopes`: passed.
+- BE `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+
+## 2026-06-09 FE Admin Promotion Target Combobox
+
+Hoan thanh yeu cau form khoi tao/cap nhat khuyen mai:
+
+- Doi 3 o `Product ids CSV`, `Category ids CSV`, `Brands CSV` thanh multi-select autocomplete.
+- San pham lay option tu BE product list, hien ten san pham va luu product id.
+- Danh muc lay option tu BE category tree, flatten de chon va luu category id.
+- Brand tu dong autofill tu danh sach san pham va promotion scope hien co.
+- Cac gia tri da chon hien thanh chip co nut xoa.
+- Van cho paste CSV de nhap nhanh khi can.
+- Contract API khong doi: FE van gui `applicableProducts`, `applicableCategories`, `applicableBrands` thanh array khi save promotion.
+
+Verify:
+
+- FE `npm.cmd run build -- --outDir dist-codex-promotion-combobox-check`: passed.
+
+## 2026-06-09 FE Admin Product Updated Sort And Edit Flow
+
+Hoan thanh yeu cau admin product list va edit popup:
+
+- Danh sach san pham mac dinh sort theo `updatedAt DESC`.
+- BE catalog sort support them `updatedAt` de FE sort dung tu server.
+- Tao moi san pham da co `updatedAt = now` qua `@PrePersist`; cap nhat san pham co `updatedAt = now` qua `@PreUpdate`.
+- Bam edit san pham mo popup dang readonly truoc.
+- Bam nut `Sua` trong popup moi enable form.
+- Bam luu cap nhat san pham khong dong popup; popup refresh du lieu vua luu va quay ve readonly.
+
+Verify:
+
+- FE `npm.cmd run build -- --outDir dist-codex-product-updated-sort-check`: passed.
+- BE `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+
+## 2026-06-09 FE Admin Product Specifications Rows
+
+Hoan thanh yeu cau man admin quan ly san pham, cau hinh thong so moi dong la mot thong so:
+
+- Doi product form tu textarea parse `key: value` sang danh sach row co `key` va `value` rieng.
+- Admin co the them, sua, xoa tung thong so cho moi san pham truoc khi luu.
+- Modal chi tiet san pham hien thong so theo row va co nut `Sua thong so` mo form edit san pham.
+- Contract FE-BE giu nguyen: `specifications` gui len `POST /api/v1/admin/products` va `PATCH /api/v1/admin/products/{id}` la JSON object.
+
+Verify:
+
+- FE `npm.cmd run build -- --outDir dist-codex-product-specs-check`: passed.
+
+## 2026-06-09 Auth Admin Login Fix
+
+Sua loi khong dang nhap duoc admin:
+
+- Nguyen nhan: `AuthService.findAdminUser()` query cot `admin_users.company_name` nhung schema `admin_users` khong co cot nay, lam `admin@cellphones.vn` bi HTTP 500.
+- Sua query tra company name hang so `CELLPHONES`.
+- Auth DTO tra role may-doc-duoc `ADMIN`/`CUSTOMER` thay vi chuoi tieng Viet de FE routing on dinh hon.
+- Them Flyway `V37__auth_admin_login_fix.sql` de upsert:
+  - `admin_users`: `admin@cellphones.vn`
+  - `auth_credentials`: `admin@cellphones.vn` / `123456`
+- Them test `demoAuthLoginWorksForBuyerAndAdmin`.
+
+Verify:
+
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+- `mvn package -DskipTests`: passed va tao boot jar.
+- `mvn test`: passed, 30 tests, 0 failures, 0 errors.
+
+FE follow-up 2026-06-09:
+
+- Sua FE routing/menu theo auth role moi tu BE.
+- Them `src/app/utils/roles.ts` de normalize `ADMIN`/`CUSTOMER` va role legacy tieng Viet.
+- Login admin se redirect `/admin`, `AdminGuard` chap nhan `ADMIN`, avatar menu hien `Admin Panel`.
+- FE build check qua `npx.cmd vite build --outDir dist-codex-admin-role-check --emptyOutDir`.
+
+## 2026-06-09 FE Buyer Order Sort And Time Display
+
+Sua hai loi FE buyer order:
+
+- Danh sach don hang sap xep mapped data theo `createdAt DESC` mac dinh, giu don moi nhat len dau.
+- Them `src/app/utils/dateTime.ts` de format timestamp theo `Asia/Ho_Chi_Minh`.
+- Cot `Ngay tao` trong `/orders` va ngay tao trong `/orders/:id` khong con hien raw UTC bi lech -7 gio.
+- Shipment createdAt trong chi tiet don hang cung dung format gio Viet Nam.
+
+Verify:
+
+- `npx.cmd vite build --outDir dist-codex-order-time-check --emptyOutDir`: passed.
+
+## 2026-06-09 FREESHIP Promotion Checkout Fix
+
+Sua loi ma `FREESHIP` validate thanh cong nhung FE van bao khong hop le:
+
+- Nguyen nhan: BE tra `valid=true`, `discount=0` cho promotion type `FREE_SHIPPING`; FE lai check `result.discount` nhu boolean nen `0` bi coi la false.
+- FE cart chap nhan promotion hop le du `discount=0`.
+- FE preview dat phi van chuyen ve `0` khi promotion la `FREE_SHIPPING`/`FREESHIP`.
+- BE tao don dat `shipping_fee = 0` khi promotion validated co type `FREE_SHIPPING`.
+
+Verify:
+
+- `npx.cmd vite build --outDir dist-codex-freeship-check --emptyOutDir`: passed.
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+
+## 2026-06-09 FE Notification Popup Layout Fix
+
+Sua popup thong bao bi chong noi dung:
+
+- Doi dropdown sang layout flex column co `max-height` theo viewport.
+- Header/filter/footer co `shrink-0`; vung list dung `overflow-y-auto`.
+- Notification row dung grid 3 cot de icon, noi dung va action khong de len nhau.
+- Timestamp thong bao dung `formatVietnamDateTime`.
+
+Verify:
+
+- `npx.cmd vite build --outDir dist-codex-notification-popup-check --emptyOutDir`: passed.
+
+## 2026-05-29 VNPay Sandbox Gateway
+
+Hoan thanh gap VNPay sandbox trong `FE_BUYER_BACKEND_GAPS.md`:
+
+- Them `VnpayGatewayService` de build signed VNPay sandbox payment URL theo HMAC-SHA512.
+- `POST /api/v1/payments/{id}/gateway-session` voi `provider = VNPAY` tra `paymentUrl` that toi `https://sandbox.vnpayment.vn/paymentv2/vpcpay.html`.
+- `GET /api/v1/payments/gateway/return` nhan bo tham so `vnp_*`, verify `vnp_SecureHash`, map `vnp_TxnRef` ve `payment_gateway_sessions.request_id`.
+- VNPay success (`vnp_ResponseCode=00`, `vnp_TransactionStatus=00`) dong bo gateway session, payment, order payment status, va invoice pending/overdue sang `PAID` neu da co.
+- VNPay cancelled/failed chi cap nhat gateway session, khong mark payment paid.
+- Sau khi verify VNPay return, neu session co `returnUrl` tu FE thi BE tra HTTP `302` ve man FE payment result kem `requestId`, `paymentId`, `orderId`, `provider`, `status`.
+- Them error `PAYMENT_GATEWAY_SIGNATURE_INVALID`.
+- Config qua env: `VNPAY_PAY_URL`, `VNPAY_TMN_CODE`, `VNPAY_HASH_SECRET`, `VNPAY_RETURN_URL`, `VNPAY_EXPIRE_MINUTES`.
+- BE chan tao VNPay session neu van dung placeholder `DEMOV210` hoac `VNPAY_SANDBOX_HASH_SECRET_CHANGE_ME`, tranh redirect sang trang loi chung cua VNPay.
+- Da cau hinh sandbox default: `VNPAY_TMN_CODE=VZ5ZPNQT`, `VNPAY_PAY_URL=https://sandbox.vnpayment.vn/paymentv2/vpcpay.html`.
+
+Docs da cap nhat:
+
+- `be/docs/FE_BUYER_BACKEND_GAPS.md`
+- `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+
+Verify:
+
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+- `mvn test`: passed, 29 tests, 0 failures, 0 errors.
+
+## 2026-05-28 Buyer Delete Pending Return
+
+Hoan thanh flow buyer huy/xoa yeu cau hoan tra tao moi:
+
+- Them `DELETE /api/v1/returns/{id}`.
+- Chi owner cua return request moi duoc xoa.
+- Chi cho xoa return dang `PENDING`; cac trang thai khac tra `RETURN_INVALID_STATUS`.
+- Xoa thanh cong tra HTTP `204`.
+- Bo sung test tao don da giao, tao return `PENDING`, xoa return va verify detail tra `RETURN_NOT_FOUND`.
+- Test fixture reset stock cua cac variant dung trong order tests de tranh fail do DB local bi chay lap nhieu lan.
+
+Docs da cap nhat:
+
+- `be/docs/FE_AFTER_SALES_CUSTOMER_CONTRACT.md`
+
+Verify:
+
+- `mvn test`: passed, 28 tests, 0 failures, 0 errors.
+- `mvn package -DskipTests`: passed.
+
+## 2026-05-28 Return Refund Updates Original Order
+
+Hoan thanh side effect cho flow hoan tra:
+
+- `PATCH /api/v1/admin/returns/{id}/status` khi chuyen `PROCESSING -> REFUNDED` se cap nhat don goc tu `DELIVERED` sang `RETURNED`.
+- Ghi them `order_status_history` voi `to_status = RETURNED`.
+- Giu nguyen side effect dao diem loyalty da co.
+- Neu return da linked voi order khong o trang thai `DELIVERED`, backend tra `ORDER_INVALID_STATUS_TRANSITION`.
+
+Docs da cap nhat:
+
+- `be/docs/FE_AFTER_SALES_CUSTOMER_CONTRACT.md`
+- `be/docs/FE_ADMIN_GAPS_COMPLETION_CONTRACT.md`
+- `be/docs/FE_ADMIN_BACKEND_GAPS.md`
+
+Verify:
+
+- `mvn test`: passed, 27 tests, 0 failures, 0 errors.
+
+## 2026-05-24 Admin Payment Partial Refund
+
+Hoan thanh gap refund semantics trong `FE_ADMIN_BACKEND_GAPS.md`:
+
+- `POST /api/v1/admin/payments/{id}/refund` ho tro partial refund.
+- Neu cumulative refund `< paidAmount`: set `payments.status = PARTIALLY_REFUNDED`, `orders.payment_status = PARTIALLY_REFUNDED`.
+- Cho phep refund tiep khi payment dang `PARTIALLY_REFUNDED`.
+- Neu cumulative refund `= paidAmount`: set `REFUNDED`.
+- `AdminPaymentDto.refundAmount` la tong so tien da refund luy ke.
+- `refundAmount + existingRefundAmount > paidAmount` tra `REFUND_AMOUNT_EXCEEDS_PAID`.
+- Loyalty reverse chi chay khi payment full `REFUNDED`, tranh dao diem khi moi partial.
+
+Docs da cap nhat:
+
+- `be/docs/FE_ADMIN_BACKEND_GAPS.md`
+- `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`
+
+Verify:
+
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+- `mvn test`: passed, 26 tests, 0 failures, 0 errors.
+- Test fixture update: profile/wishlist buyer tests now reset/seed their own demo rows so repeated local runs do not fail from prior manual app state.
+
+## 2026-05-24 Public Stores DB Availability
+
+Hoan thanh chuyen public stores/availability tu in-memory/hash sang DB theo BA:
+
+- Them Flyway `V30__public_store_inventory.sql`.
+- Them bang `branch_product_inventory` de luu ton kho theo branch/product.
+- Seed stock cho active branches va active products.
+- `GET /api/v1/stores` doc active `branches`, ho tro filter `city`.
+- `GET /api/v1/stores/{id}` doc active branch detail.
+- `GET /api/v1/stores/{id}/availability?productId={uuid}` doc `branch_product_inventory`, tra `stock` va `availableQuantity`.
+- FE khong can dung demo `store-001`/`prod-001` cho availability nua; dung UUID branch/product that.
+
+Docs da cap nhat:
+
+- `be/docs/FE_BUYER_BACKEND_GAPS.md`
+- `be/docs/BA_TO_BE_FE_MAPPING.md`
+
+Verify:
+
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+- `mvn test`: blocked vi local PostgreSQL `localhost:5432` refused connection va Docker Desktop khong chay duoc PostgreSQL container.
+
+## 2026-05-24 Buyer Reviews DB Bridge
+
+Hoan thanh chuyen buyer/product reviews tu in-memory demo sang PostgreSQL:
+
+- Them Flyway `V29__buyer_product_reviews.sql`.
+- Bo sung `product_reviews.helpful_count`, `product_reviews.is_verified_purchase`.
+- Them bang `product_review_helpful_votes` de helpful idempotent theo DB.
+- Seed 10 approved reviews cho demo customer bang UUID product ids that tu catalog.
+- Buyer endpoints doc DB:
+  - `GET /api/v1/products/{productId}/reviews`
+  - `GET /api/v1/products/{productId}/reviews/stats`
+  - `POST /api/v1/products/{productId}/reviews`
+  - `PATCH /api/v1/reviews/{id}`
+  - `DELETE /api/v1/reviews/{id}`
+  - `PATCH /api/v1/reviews/{id}/helpful`
+  - `GET /api/v1/users/me/reviews`
+- New/update review de `PENDING` cho admin moderation; product detail chi list `APPROVED`.
+
+Docs da cap nhat:
+
+- `be/docs/FE_BUYER_BACKEND_GAPS.md`
+- `be/docs/BA_TO_BE_FE_MAPPING.md`
+
+Verify:
+
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+- `mvn test`: blocked vi local PostgreSQL `localhost:5432` refused connection va Docker Desktop khong chay duoc PostgreSQL container.
+
+## 2026-05-24 Buyer Wishlist DB Bridge
+
+Hoan thanh chuyen wishlist buyer tu in-memory demo sang PostgreSQL theo BA:
+
+- Them Flyway `V28__customer_wishlist.sql`.
+- Them bang `customer_wishlist` voi unique `(user_id, product_id)`.
+- Seed 10 wishlist rows cho demo customer `00000000-0000-4000-8000-000000000199` bang UUID product ids that tu catalog.
+- `GET /api/v1/users/me/wishlist` doc tu PostgreSQL.
+- `POST /api/v1/users/me/wishlist` idempotent theo BA: san pham da co thi tra item hien tai, khong tao duplicate.
+- `DELETE /api/v1/users/me/wishlist/{productId}`, `DELETE /api/v1/users/me/wishlist/items/{id}`, `DELETE /api/v1/users/me/wishlist`.
+- `PATCH /api/v1/users/me/wishlist/{productId}/price-alert` validate `priceAlert > 0`.
+
+Docs da cap nhat:
+
+- `be/docs/FE_BUYER_PROFILE_CONTRACT.md`
+- `be/docs/FE_BUYER_BACKEND_GAPS.md`
+- `be/docs/BA_TO_BE_FE_MAPPING.md`
+
+Verify:
+
+- `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+- `mvn test`: blocked vi local PostgreSQL `localhost:5432` refused connection va Docker Desktop khong chay duoc PostgreSQL container. Day la loi moi truong DB, khong phai compile error.
+
 ## 2026-05-23 Buyer Profile DB Bridge
 
 Hoan thanh current-user profile bridge theo BA trong luc security/JWT van deferred:
@@ -1217,6 +1624,31 @@ Verify:
 - `mvn test`: passed, 20 tests, 0 failures, 0 errors.
 - `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
 
+## 2026-05-28 Catalog Demo Count Alignment
+
+Hoan thanh bo sung du lieu demo cho sidebar danh muc buyer:
+
+- Them Flyway `V34__catalog_leaf_demo_products.sql`.
+- Moi danh muc con hien co 10 san pham `ACTIVE`: iPhone, Samsung, Xiaomi, OPPO, Vivo, Tai nghe, Sac cap, Op lung.
+- Chuyen san pham sac nhanh Apple cu tu parent `Phu kien` ve leaf `Sac cap` de khong dem sai o parent.
+- Cap nhat `categories.product_count`: leaf dem san pham active truc tiep, parent dem tong active trong cay con.
+- Seed them variant, primary image va `phone_specs` cho cac san pham demo moi.
+- Test wishlist seed duoc lam idempotent hon de khong fail khi DB local da co du lieu wishlist.
+
+Docs da cap nhat:
+
+- `be/docs/FE_CATALOG_CONTRACT.md`
+- `be/docs/DATABASE_SCHEMA_CURRENT.md`
+
+Verify:
+
+- `mvn test`: passed, 26 tests, 0 failures, 0 errors.
+- DB smoke: leaf categories return 10 active products each; parent `Dien thoai` = 50, `Phu kien` = 30.
+
+Next action:
+
+- Neu FE can hien count theo ket qua filter hien tai thay vi count toan bo category, BE nen bo sung aggregation endpoint rieng cho product listing.
+
 ## 2026-05-23 Buyer Product Combos
 
 Hoan thanh product combo public contract cho FE product detail:
@@ -1294,3 +1726,36 @@ Verify:
 
 - `mvn test`: passed, 20 tests, 0 failures, 0 errors.
 - `mvn package -DskipTests "-Dspring-boot.repackage.skip=true"`: passed.
+
+## 2026-05-28 Cart Stock Guard Tightening
+
+Dong bo lai contract ton kho cho FE buyer:
+
+- `POST /api/v1/cart/items` bat buoc nhan `variantId` neu product co bien the.
+- Add cart check product active, variant active, stock hien tai, va tong quantity sau merge.
+- Update cart item check lai stock hien tai theo quantity moi.
+- FE phai hien thi loi backend, khong fallback mock khi backend tu choi add/update cart cho UUID item.
+
+Docs da cap nhat:
+
+- `be/docs/FE_CART_CONTRACT.md`
+
+Verify:
+
+- `mvn package -DskipTests`: passed.
+- `mvn test`: chua chay duoc do PostgreSQL local `localhost:5432` tu choi ket noi; can bat DB roi rerun.
+
+## 2026-05-28 Invoice Promotion Discount Snapshot
+
+Dong bo tien khuyen mai tu order sang hoa don:
+
+- Them migration `V35__invoice_discount_amount.sql` bo sung `invoices.discount_amount`.
+- Backfill invoice cu tu `orders.discount_amount`/`orders.discount`.
+- Tao invoice tu order va tao invoice admin deu luu `discount_amount = order.discount`.
+- `InvoiceDto` tra them `discountAmount`; invoice PDF hien subtotal, discount, tax, grand total.
+- Cap nhat contract FE tai `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md`.
+
+Verify can lam:
+
+- `mvn package -DskipTests`: passed.
+- FE `npx.cmd vite build --outDir dist-codex-check --emptyOutDir`: passed.

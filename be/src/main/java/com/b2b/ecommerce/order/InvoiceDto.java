@@ -11,6 +11,7 @@ public record InvoiceDto(
 		String customerName,
 		long totalAmount,
 		long taxAmount,
+		long discountAmount,
 		String status,
 		String issueDate,
 		String dueDate,

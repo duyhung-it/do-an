@@ -241,13 +241,38 @@ class AdminPromotionService {
 			throw new AppException(ErrorCode.VALIDATION_ERROR, "Gia tri khuyen mai khong hop le",
 					Map.of("value", "PERCENTAGE phai nam trong khoang 0-100"));
 		}
-		Long exists = jdbc.queryForObject("""
-				SELECT COUNT(*)
-				FROM promotions
-				WHERE UPPER(code) = UPPER(?) AND (? IS NULL OR id <> ?)
-				""", Long.class, request.code().trim(), currentId, currentId);
+		if (!List.of("PERCENTAGE", "FIXED_AMOUNT", "BUY_X_GET_Y", "FREE_SHIPPING")
+				.contains(request.type().trim().toUpperCase(Locale.ROOT))) {
+			throw new AppException(ErrorCode.VALIDATION_ERROR, "Loai khuyen mai khong hop le",
+					Map.of("type", "type phai la PERCENTAGE, FIXED_AMOUNT, BUY_X_GET_Y hoac FREE_SHIPPING"));
+		}
+		validateUuidList("applicableProducts", request.applicableProducts());
+		validateUuidList("applicableCategories", request.applicableCategories());
+		Long exists = currentId == null
+				? jdbc.queryForObject("SELECT COUNT(*) FROM promotions WHERE UPPER(code) = UPPER(?)",
+						Long.class, request.code().trim())
+				: jdbc.queryForObject("SELECT COUNT(*) FROM promotions WHERE UPPER(code) = UPPER(?) AND id <> ?",
+						Long.class, request.code().trim(), currentId);
 		if (exists != null && exists > 0) {
 			throw new AppException(ErrorCode.CONFLICT, "Ma khuyen mai da ton tai", Map.of("code", request.code().trim()));
+		}
+	}
+
+	private void validateUuidList(String field, List<String> values) {
+		if (values == null) {
+			return;
+		}
+		for (String value : values) {
+			if (value == null || value.isBlank()) {
+				continue;
+			}
+			try {
+				UUID.fromString(value.trim());
+			}
+			catch (RuntimeException exception) {
+				throw new AppException(ErrorCode.VALIDATION_ERROR, "Pham vi khuyen mai khong hop le",
+						Map.of(field, "Gia tri khong phai UUID hop le: " + value));
+			}
 		}
 	}
 
