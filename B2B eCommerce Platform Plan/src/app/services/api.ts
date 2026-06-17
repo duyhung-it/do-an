@@ -14,8 +14,9 @@ import type {
 import {
   mockCategories, mockProducts, mockOrders, mockUsers, mockReviews,
   mockPromotions, mockCartItems, mockWishlistItems, mockWarrantyItems,
-  mockTradeIns, mockBlogPosts, mockStoreLocations, mockCombos,
+  mockTradeIns, mockBlogPosts, mockStoreLocations,
 } from '../data/mockData';
+import { compareDateTimeDesc } from '../utils/dateTime';
 
 // ---- Utilities ----
 const delay = (ms = 300) => new Promise(r => setTimeout(r, ms));
@@ -41,6 +42,7 @@ function paginate<T>(arr: T[], params: PaginationParams): PaginatedResponse<T> {
 }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api/v1';
+const USE_MOCK_FALLBACKS = import.meta.env.VITE_USE_MOCK_FALLBACKS === 'true';
 
 type ApiEnvelope<T> = {
   success: boolean;
@@ -58,12 +60,31 @@ type ApiEnvelope<T> = {
   } | null;
 };
 
+type BackendAuthUser = {
+  id: string;
+  email: string;
+  fullName: string;
+  role: string;
+  companyName?: string | null;
+  supplierId?: string | null;
+  avatarUrl?: string | null;
+  phone?: string | null;
+  status?: string | null;
+  token?: string | null;
+};
+
 type BackendCategory = Omit<Category, 'children'> & {
   children?: BackendCategory[];
 };
 
 type BackendProductImage = {
+  id?: string;
+  variantId?: string | null;
+  variantName?: string | null;
   url: string;
+  altText?: string | null;
+  sortOrder?: number;
+  isPrimary?: boolean;
 };
 
 type BackendProduct = Omit<Product, 'images' | 'categoryName' | 'status' | 'condition'> & {
@@ -71,6 +92,16 @@ type BackendProduct = Omit<Product, 'images' | 'categoryName' | 'status' | 'cond
   images?: BackendProductImage[];
   status: 'ACTIVE' | 'INACTIVE' | 'OUT_OF_STOCK' | 'DISCONTINUED';
   condition: 'NEW' | 'LIKE_NEW' | 'USED' | 'REFURBISHED';
+};
+
+type BackendProductCombo = ProductCombo & {
+  updatedAt?: string;
+};
+
+type BackendPromotion = Omit<Promotion, 'type' | 'value' | 'createdAt'> & {
+  type: string;
+  value: number | string;
+  createdAt?: string;
 };
 
 function toQuery(params: Record<string, string | number | boolean | null | undefined>) {
@@ -101,13 +132,9 @@ let addressStore: ShippingAddress[] = Array.from({ length: 10 }, (_, index) => (
 
 function getDevUserHeaders(user?: { id?: string; fullName?: string; email?: string; phone?: string } | null) {
   const uuidLike = user?.id && UUID_PATTERN.test(user.id);
-  const headers: Record<string, string> = {
+  return {
     'X-User-Id': uuidLike ? user!.id! : DEFAULT_DEV_USER_ID,
   };
-  if (user?.fullName) headers['X-User-Name'] = user.fullName;
-  if (user?.email) headers['X-User-Email'] = user.email;
-  if (user?.phone) headers['X-User-Phone'] = user.phone;
-  return headers;
 }
 
 async function backendRequest<T>(path: string, init?: RequestInit): Promise<{ data: T; pagination?: ApiEnvelope<T>['pagination'] }> {
@@ -120,6 +147,23 @@ async function backendRequest<T>(path: string, init?: RequestInit): Promise<{ da
     throw new Error(payload.error?.message ?? payload.message ?? `API error ${response.status}`);
   }
   return { data: payload.data, pagination: payload.pagination };
+}
+
+function assertMockFallbackAllowed(error: unknown): void {
+  if (USE_MOCK_FALLBACKS) return;
+  throw error instanceof Error ? error : new Error('Backend API failed and mock fallback is disabled');
+}
+
+function mapBackendAuthUser(user: BackendAuthUser): AuthUser {
+  return {
+    id: user.id,
+    fullName: user.fullName,
+    email: user.email,
+    role: user.role as AuthUser['role'],
+    avatarUrl: user.avatarUrl ?? '',
+    phone: user.phone ?? undefined,
+    status: 'Hoáº¡t Ä‘á»™ng' as UserStatus,
+  };
 }
 
 function mapProductStatus(status: BackendProduct['status']): Product['status'] {
@@ -141,6 +185,7 @@ function mapBackendProduct(product: BackendProduct): Product {
     ...product,
     categoryName: product.category?.name ?? product.categoryId,
     images: images.length ? images : [primaryImage],
+    imageDetails: product.images ?? [],
     status: mapProductStatus(product.status),
     condition: mapProductCondition(product.condition),
     rating: Number(product.rating ?? 0),
@@ -153,6 +198,46 @@ function mapBackendProduct(product: BackendProduct): Product {
     supplierId: 'cellphones',
     supplierName: 'CELLPHONES',
   } as Product;
+}
+
+function mapPromotionType(type: string): Promotion['type'] {
+  if (type === 'PERCENTAGE' || type === 'Phan tram' || type === 'Phần trăm') return 'Phần trăm' as Promotion['type'];
+  if (type === 'FIXED_AMOUNT' || type === 'So tien' || type === 'Số tiền') return 'Số tiền' as Promotion['type'];
+  if (type === 'BUY_X_GET_Y' || type === 'Mua X tặng Y') return 'Mua X tặng Y' as Promotion['type'];
+  return 'Miễn phí vận chuyển' as Promotion['type'];
+}
+
+function mapBackendPromotion(promotion: BackendPromotion): Promotion {
+  return {
+    ...promotion,
+    type: mapPromotionType(promotion.type),
+    value: Number(promotion.value ?? 0),
+    minOrderValue: Number(promotion.minOrderValue ?? 0),
+    maxDiscount: Number(promotion.maxDiscount ?? 0),
+    usageLimit: Number(promotion.usageLimit ?? 0),
+    usedCount: Number(promotion.usedCount ?? 0),
+    applicableProducts: promotion.applicableProducts ?? [],
+    applicableCategories: promotion.applicableCategories ?? [],
+    applicableBrands: promotion.applicableBrands ?? [],
+    isActive: Boolean(promotion.isActive),
+    createdAt: promotion.createdAt ?? promotion.startDate,
+  };
+}
+
+function promotionAppliesToProduct(promotion: Promotion, product?: Product | null, productId?: string) {
+  const scopeEmpty =
+    promotion.applicableProducts.length === 0
+    && promotion.applicableCategories.length === 0
+    && promotion.applicableBrands.length === 0;
+  if (scopeEmpty) return true;
+  const targetProductId = product?.id ?? productId;
+  const categoryId = product?.categoryId;
+  const brand = product?.brand?.trim().toLowerCase();
+  return (
+    Boolean(targetProductId && promotion.applicableProducts.some(id => id.toLowerCase() === targetProductId.toLowerCase()))
+    || Boolean(categoryId && promotion.applicableCategories.some(id => id.toLowerCase() === categoryId.toLowerCase()))
+    || Boolean(brand && promotion.applicableBrands.some(item => item.trim().toLowerCase() === brand))
+  );
 }
 
 function normalizeProductFilters(filters?: Record<string, unknown> | ActiveFilter[], search?: string) {
@@ -192,6 +277,47 @@ type BackendOrder = Omit<Order, 'status' | 'paymentStatus' | 'paymentMethod' | '
   paymentMethod: 'COD' | 'BANK_TRANSFER' | 'MOMO' | 'VNPAY' | 'INSTALLMENT';
   shippingAddress: BackendShippingAddress;
   statusHistory?: unknown[];
+};
+
+type BackendPaymentDto = {
+  id: string;
+  orderId: string;
+  orderNumber: string;
+  method: 'COD' | 'BANK_TRANSFER' | 'MOMO' | 'VNPAY' | 'INSTALLMENT';
+  status: BackendPaymentStatus;
+  amount: number;
+  paidAmount: number;
+  transactionId?: string | null;
+  paymentUrl?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+};
+
+export type OrderCreateResult = Order & {
+  payment?: BackendPaymentDto;
+  paymentId?: string;
+  paymentUrl?: string | null;
+};
+
+export type PaymentGatewaySession = {
+  id: string;
+  paymentId: string;
+  orderId: string;
+  provider: 'MOMO' | 'VNPAY';
+  requestId: string;
+  transactionRef?: string | null;
+  amount: number;
+  status: string;
+  paymentUrl: string;
+  returnUrl?: string | null;
+  callbackUrl?: string | null;
+  paidAt?: string | null;
+  createdAt: string;
+};
+
+type BackendOrderCreateResponse = {
+  order: BackendOrder;
+  payment?: BackendPaymentDto;
 };
 
 type CreateBackendOrderPayload = {
@@ -282,28 +408,42 @@ function mapBackendOrder(order: BackendOrder): Order {
 // ============================================================
 export const authApi = {
   getCurrentUser: async (): Promise<AuthUser | null> => {
-    await delay(200);
     const raw = localStorage.getItem('cellphones_auth_user');
     if (!raw) return null;
     try { return JSON.parse(raw) as AuthUser; } catch { return null; }
   },
   login: async (creds: LoginCredentials): Promise<AuthUser> => {
-    await delay(500);
-    const found = userStore.find(u => u.email === creds.email);
-    if (!found || found.status === 'Bị khoá') throw new Error('Email hoặc mật khẩu không đúng');
-    const authUser: AuthUser = { id: found.id, fullName: found.fullName, email: found.email, role: found.role, avatarUrl: found.avatarUrl, phone: found.phone, status: found.status, loyaltyPoints: found.loyaltyPoints };
+    const { data } = await backendRequest<BackendAuthUser>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify(creds),
+    });
+    const authUser = mapBackendAuthUser(data);
     localStorage.setItem('cellphones_auth_user', JSON.stringify(authUser));
     return authUser;
   },
   register: async (data: RegisterData): Promise<AuthUser> => {
-    await delay(500);
-    if (userStore.find(u => u.email === data.email)) throw new Error('Email đã được sử dụng');
-    const newUser: User = { id: nextId('user'), fullName: data.fullName, email: data.email, phone: data.phone, role: 'Khách hàng', status: 'Hoạt động', avatarUrl: `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(data.fullName)}`, address: data.address, loyaltyPoints: 0, totalOrders: 0, totalSpent: 0, emailVerified: false, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
-    userStore = [newUser, ...userStore];
-    const authUser: AuthUser = { id: newUser.id, fullName: newUser.fullName, email: newUser.email, role: newUser.role, avatarUrl: newUser.avatarUrl, phone: newUser.phone, status: newUser.status, loyaltyPoints: 0 };
+    const { data: created } = await backendRequest<BackendAuthUser>('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        fullName: data.fullName,
+        email: data.email,
+        password: data.password,
+        phone: data.phone,
+        role: 'Khách hàng',
+        companyName: data.companyName,
+        taxCode: data.taxCode,
+        address: data.address,
+        city: data.city,
+      }),
+    });
+    const authUser = mapBackendAuthUser(created);
+    localStorage.setItem('cellphones_auth_user', JSON.stringify(authUser));
     return authUser;
   },
-  logout: async () => { await delay(100); localStorage.removeItem('cellphones_auth_user'); },
+  logout: async () => {
+    await backendRequest<void>('/auth/logout', { method: 'POST' }).catch(() => undefined);
+    localStorage.removeItem('cellphones_auth_user');
+  },
 };
 
 // ============================================================
@@ -314,7 +454,8 @@ export const categoryApi = {
     try {
       const { data } = await backendRequest<BackendCategory[]>('/categories');
       return data as Category[];
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return mockCategories;
     }
@@ -323,7 +464,8 @@ export const categoryApi = {
     try {
       const { data } = await backendRequest<BackendCategory>(`/categories/${id}`);
       return data as Category;
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(150);
       return mockCategories.find(c => c.id === id) ?? null;
     }
@@ -341,7 +483,8 @@ export const productApi = {
     try {
       const page = await productApi.getPaginated({ page: 1, pageSize: 100 });
       return page.data;
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return productStore;
     }
@@ -375,7 +518,8 @@ export const productApi = {
         pageSize: pagination?.pageSize ?? params.pageSize,
         totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(300);
       filters = normalizeProductFilters(filters, search);
     }
@@ -404,11 +548,13 @@ export const productApi = {
   },
   getById: async (id: string) => {
     try {
-      const { data } = await backendRequest<BackendProduct>(`/products/${id}`);
+      const path = UUID_PATTERN.test(id) ? `/products/${id}` : `/products/${encodeURIComponent(id)}/by-slug`;
+      const { data } = await backendRequest<BackendProduct>(path);
       return mapBackendProduct(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
-      return productStore.find(p => p.id === id) ?? null;
+      return productStore.find(p => p.id === id || p.slug === id) ?? null;
     }
   },
   getByCategory: async (categoryId: string) => { await delay(200); return productStore.filter(p => p.categoryId === categoryId); },
@@ -417,7 +563,8 @@ export const productApi = {
     try {
       const { data } = await backendRequest<BackendProduct[]>(`/products/featured${toQuery({ limit })}`);
       return data.map(mapBackendProduct);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return productStore.filter(p => p.isFeatured).slice(0, limit);
     }
@@ -426,7 +573,8 @@ export const productApi = {
     try {
       const { data } = await backendRequest<BackendProduct[]>(`/products/hot${toQuery({ limit })}`);
       return data.map(mapBackendProduct);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return productStore.filter(p => p.isHot).slice(0, limit);
     }
@@ -435,7 +583,8 @@ export const productApi = {
     try {
       const { data } = await backendRequest<BackendProduct[]>(`/products/new${toQuery({ limit })}`);
       return data.map(mapBackendProduct);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return productStore.filter(p => p.isNew).slice(0, limit);
     }
@@ -444,7 +593,8 @@ export const productApi = {
     try {
       const { data } = await backendRequest<BackendProduct[]>(`/products/${productId}/similar${toQuery({ limit })}`);
       return data.map(mapBackendProduct);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       const p = productStore.find(x => x.id === productId);
       if (!p) return [];
@@ -459,7 +609,8 @@ export const productApi = {
     try {
       const { data } = await backendRequest<string[]>('/products/brands');
       return data;
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(100);
       return [...new Set(productStore.map(p => p.brand))].sort();
     }
@@ -505,7 +656,8 @@ Object.assign(orderApi, {
         pageSize: pagination?.pageSize ?? params.pageSize,
         totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(300);
       let list = [...orderStore];
       if (filters?.customerId) list = list.filter(o => o.customerId === filters.customerId);
@@ -515,11 +667,12 @@ Object.assign(orderApi, {
       return paginate(list, params);
     }
   },
-  getById: async (id: string) => {
+  getById: async (id: string, user?: { id?: string; fullName?: string; email?: string; phone?: string } | null) => {
     try {
-      const { data } = await backendRequest<BackendOrder>(`/orders/${id}`, { headers: getDevUserHeaders() });
+      const { data } = await backendRequest<BackendOrder>(`/orders/${id}`, { headers: getDevUserHeaders(user) });
       return mapBackendOrder(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return orderStore.find(o => o.id === id) ?? null;
     }
@@ -528,24 +681,30 @@ Object.assign(orderApi, {
     try {
       const page = await orderApi.getPaginated({ page: 1, pageSize: 50 });
       return page.data;
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return orderStore.filter(o => o.customerId === customerId);
     }
   },
   create: async (data: Partial<Order> | CreateBackendOrderPayload, user?: { id?: string; fullName?: string; email?: string; phone?: string } | null) => {
-    try {
-      const payload = data as CreateBackendOrderPayload;
-      if (payload.items?.length && payload.shippingAddress && typeof payload.shippingAddress !== 'string') {
-        const { data: result } = await backendRequest<{ order: BackendOrder; payment?: unknown }>('/orders', {
+    const payload = data as CreateBackendOrderPayload;
+    if (payload.items?.length && payload.shippingAddress && typeof payload.shippingAddress !== 'string') {
+      try {
+        const { data: result } = await backendRequest<BackendOrderCreateResponse>('/orders', {
           method: 'POST',
           headers: getDevUserHeaders(user),
           body: JSON.stringify(payload),
         });
-        return mapBackendOrder(result.order);
+        return {
+          ...mapBackendOrder(result.order),
+          payment: result.payment,
+          paymentId: result.payment?.id,
+          paymentUrl: result.payment?.paymentUrl ?? null,
+        } as OrderCreateResult;
+      } catch (error) {
+        throw new Error(error instanceof Error ? error.message : 'Không thể tạo đơn hàng');
       }
-    } catch {
-      // Fall through to local mock behavior when BE is unavailable.
     }
     await delay(500);
     const o = { ...data, id: nextId('ord'), orderNumber: `CP${Date.now()}`, status: 'Chờ xác nhận', paymentStatus: 'Chưa thanh toán', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as Order;
@@ -560,7 +719,8 @@ Object.assign(orderApi, {
         body: JSON.stringify({ reason }),
       });
       return mapBackendOrder(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(300);
       orderStore = orderStore.map(o => o.id === id ? { ...o, status: 'Đã huỷ' as OrderStatus, cancelReason: reason, cancelledAt: new Date().toISOString(), updatedAt: new Date().toISOString() } : o);
       return orderStore.find(o => o.id === id)!;
@@ -575,6 +735,9 @@ Object.assign(orderApi, {
     maybeFilters?: ActiveFilter[] | Record<string, unknown>,
     search?: string,
   ) => {
+    const requestedSort = sortOrFilters && 'field' in sortOrFilters
+      ? sortOrFilters as SortParams
+      : { field: 'createdAt', direction: 'desc' } as SortParams;
     const rawFilters = Array.isArray(maybeFilters)
       ? Object.fromEntries(maybeFilters.map(filter => [filter.key, filter.value]))
       : maybeFilters ?? (!sortOrFilters || 'field' in sortOrFilters ? {} : sortOrFilters);
@@ -598,14 +761,29 @@ Object.assign(orderApi, {
       const { data, pagination } = await backendRequest<BackendOrder[]>(`/orders${query}`, {
         headers: getDevUserHeaders(),
       });
+      const mapped = data.map(mapBackendOrder).sort((left, right) => {
+        if (requestedSort.field === 'createdAt' || !requestedSort.field) {
+          const result = compareDateTimeDesc(left.createdAt, right.createdAt);
+          return requestedSort.direction === 'asc' ? -result : result;
+        }
+        const leftValue = (left as Record<string, unknown>)[requestedSort.field];
+        const rightValue = (right as Record<string, unknown>)[requestedSort.field];
+        if (typeof leftValue === 'number' && typeof rightValue === 'number') {
+          return requestedSort.direction === 'asc' ? leftValue - rightValue : rightValue - leftValue;
+        }
+        return requestedSort.direction === 'asc'
+          ? String(leftValue ?? '').localeCompare(String(rightValue ?? ''), 'vi')
+          : String(rightValue ?? '').localeCompare(String(leftValue ?? ''), 'vi');
+      });
       return {
-        data: data.map(mapBackendOrder),
+        data: mapped,
         total: pagination?.total ?? data.length,
         page: pagination?.page ?? params.page,
         pageSize: pagination?.pageSize ?? params.pageSize,
         totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(300);
       let list = [...orderStore];
       if (rawFilters.customerId) list = list.filter(o => o.customerId === rawFilters.customerId);
@@ -649,7 +827,15 @@ export const promotionApi = {
   getAll: async () => { await delay(200); return mockPromotions; },
   getActive: async () => { await delay(200); const now = new Date().toISOString(); return mockPromotions.filter(p => p.isActive && p.startDate <= now && p.endDate >= now); },
   getActiveForProduct: async (_productId: string) => { await delay(150); const now = new Date().toISOString(); return mockPromotions.filter(p => p.isActive && p.startDate <= now && p.endDate >= now).slice(0, 2); },
-  validate: async (code: string) => { await delay(300); const p = mockPromotions.find(x => x.code === code && x.isActive); if (!p) throw new Error('Mã khuyến mãi không hợp lệ hoặc đã hết hạn'); return p; },
+  validate: async (code: string, cartTotal = 0, _items: CartItem[] = []) => {
+    await delay(300);
+    const p = mockPromotions.find(x => x.code === code && x.isActive);
+    if (!p) return { valid: false, promotion: null, discount: 0, error: 'Mã khuyến mãi không hợp lệ hoặc đã hết hạn' };
+    const discount = p.type === 'Phần trăm'
+      ? Math.min(Math.floor(cartTotal * (p.value / 100)), p.maxDiscount || cartTotal)
+      : Math.min(p.value, cartTotal);
+    return { valid: true, promotion: p, discount, message: `Giam ${discount} VND` };
+  },
   getPaginated: async (params: PaginationParams) => { await delay(200); return paginate(mockPromotions, params); },
   getActiveAll: async (params: PaginationParams, search?: string) => {
     await delay(200);
@@ -662,6 +848,90 @@ export const promotionApi = {
   update: async (id: string, data: Partial<Promotion>) => { await delay(300); return { ...mockPromotions.find(p => p.id === id)!, ...data }; },
   delete: async (_id: string) => { await delay(300); },
 };
+
+Object.assign(promotionApi, {
+  getAll: async () => {
+    try {
+      const { data } = await backendRequest<BackendPromotion[]>('/promotions?page=1&pageSize=200');
+      return data.map(mapBackendPromotion);
+    } catch (error) {
+      assertMockFallbackAllowed(error);
+      await delay(200);
+      return mockPromotions;
+    }
+  },
+  getActive: async () => {
+    return promotionApi.getAll();
+  },
+  getActiveForProduct: async (productId: string) => {
+    try {
+      const [product, promotions] = await Promise.all([
+        productApi.getById(productId).catch(() => null),
+        promotionApi.getAll(),
+      ]);
+      return promotions.filter(promotion => promotionAppliesToProduct(promotion, product, productId));
+    } catch (error) {
+      assertMockFallbackAllowed(error);
+      await delay(150);
+      const now = new Date().toISOString();
+      return mockPromotions
+        .filter(p => p.isActive && p.startDate <= now && p.endDate >= now)
+        .filter(p => p.applicableProducts.length === 0 || p.applicableProducts.includes(productId))
+        .slice(0, 2);
+    }
+  },
+  validate: async (code: string, cartTotal = 0, items: CartItem[] = []) => {
+    try {
+      const cartItems = await Promise.all(items.map(async item => {
+        const product = await productApi.getById(item.productId).catch(() => null);
+        return {
+          productId: item.productId,
+          categoryId: product?.categoryId,
+          brand: item.brand || product?.brand,
+        };
+      }));
+      const { data } = await backendRequest<{ valid: boolean; promotion: BackendPromotion; discount: number; message?: string }>('/promotions/validate', {
+        method: 'POST',
+        body: JSON.stringify({ code, cartTotal, cartItems }),
+      });
+      return {
+        ...data,
+        promotion: data.promotion ? mapBackendPromotion(data.promotion) : undefined,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Mã khuyến mãi không hợp lệ hoặc đã hết hạn';
+      return { valid: false, promotion: null, discount: 0, error: message };
+    }
+  },
+  getPaginated: async (params: PaginationParams) => {
+    return promotionApi.getActiveAll(params);
+  },
+  getActiveAll: async (params: PaginationParams, search?: string) => {
+    try {
+      const query = toQuery({ page: params.page, pageSize: params.pageSize });
+      const { data, pagination } = await backendRequest<BackendPromotion[]>(`/promotions${query}`);
+      let list = data.map(mapBackendPromotion);
+      if (search) {
+        const keyword = search.toLowerCase();
+        list = list.filter(p => p.name.toLowerCase().includes(keyword) || p.code.toLowerCase().includes(keyword));
+      }
+      return {
+        data: list,
+        total: pagination?.total ?? list.length,
+        page: pagination?.page ?? params.page,
+        pageSize: pagination?.pageSize ?? params.pageSize,
+        totalPages: pagination?.totalPages ?? Math.ceil(list.length / params.pageSize),
+      };
+    } catch (error) {
+      assertMockFallbackAllowed(error);
+      await delay(200);
+      const now = new Date().toISOString();
+      let list = mockPromotions.filter(p => p.isActive && p.startDate <= now && p.endDate >= now);
+      if (search) list = list.filter(p => p.name.toLowerCase().includes(search.toLowerCase()) || p.code.toLowerCase().includes(search.toLowerCase()));
+      return paginate(list, params);
+    }
+  },
+});
 
 // ============================================================
 // CART API
@@ -683,7 +953,8 @@ Object.assign(cartApi, {
     try {
       const { data } = await backendRequest<BackendCart>('/cart', { headers: getDevUserHeaders() });
       return data.items.map(item => ({ supplierId: 'cellphones', supplierName: 'CELLPHONES', ...item } as CartItem));
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(150);
       return cartStore;
     }
@@ -707,11 +978,8 @@ Object.assign(cartApi, {
         }),
       });
       return { supplierId: 'cellphones', supplierName: 'CELLPHONES', ...data } as CartItem;
-    } catch {
-      await delay(200);
-      const newItem: CartItem = { ...item, id: nextId('cart'), totalPrice: item.unitPrice * item.quantity };
-      cartStore = [...cartStore, newItem];
-      return newItem;
+    } catch (error) {
+      throw new Error(error instanceof Error ? error.message : 'Không thể thêm sản phẩm vào giỏ hàng');
     }
   },
   updateQuantity: async (id: string, quantity: number): Promise<CartItem> => {
@@ -722,7 +990,10 @@ Object.assign(cartApi, {
         body: JSON.stringify({ quantity }),
       });
       return { supplierId: 'cellphones', supplierName: 'CELLPHONES', ...data } as CartItem;
-    } catch {
+    } catch (error) {
+      if (UUID_PATTERN.test(id)) {
+        throw new Error(error instanceof Error ? error.message : 'Không thể cập nhật số lượng');
+      }
       await delay(150);
       cartStore = cartStore.map(i => i.id === id ? { ...i, quantity, totalPrice: i.unitPrice * quantity } : i);
       return cartStore.find(i => i.id === id)!;
@@ -731,7 +1002,8 @@ Object.assign(cartApi, {
   removeItem: async (id: string) => {
     try {
       await backendRequest<void>(`/cart/items/${id}`, { method: 'DELETE', headers: getDevUserHeaders() });
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(150);
       cartStore = cartStore.filter(i => i.id !== id);
     }
@@ -739,7 +1011,8 @@ Object.assign(cartApi, {
   clear: async () => {
     try {
       await backendRequest<void>('/cart', { method: 'DELETE', headers: getDevUserHeaders() });
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(150);
       cartStore = [];
     }
@@ -751,7 +1024,8 @@ Object.assign(cartApi, {
         headers: getDevUserHeaders(),
       });
       return data;
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       return { valid: true, issues: [] };
     }
   },
@@ -829,12 +1103,36 @@ export const blogApi = {
 // COMBO API
 // ============================================================
 export const comboApi = {
-  getAll: async () => { await delay(200); return mockCombos.filter(c => c.isActive); },
-  getPaginated: async (params: PaginationParams) => { await delay(200); return paginate(mockCombos, params); },
-  getById: async (id: string) => { await delay(150); return mockCombos.find(c => c.id === id) ?? null; },
+  getAll: async () => {
+    try {
+      const { data } = await backendRequest<BackendProductCombo[]>('/combos');
+      return data.map(mapBackendProductCombo);
+    } catch (error) {
+      assertMockFallbackAllowed(error);
+      return [];
+    }
+  },
+  getPaginated: async (params: PaginationParams) => {
+    const data = await comboApi.getAll();
+    return paginate(data, params);
+  },
+  getById: async (id: string) => {
+    try {
+      const { data } = await backendRequest<BackendProductCombo>(`/combos/${id}`);
+      return mapBackendProductCombo(data);
+    } catch (error) {
+      assertMockFallbackAllowed(error);
+      return null;
+    }
+  },
   getForProduct: async (productId: string) => {
-    await delay(200);
-    return mockCombos.filter(c => c.isActive && c.products.some(p => p.productId === productId));
+    try {
+      const { data } = await backendRequest<BackendProductCombo[]>(`/products/${productId}/combos`);
+      return data.map(mapBackendProductCombo);
+    } catch (error) {
+      assertMockFallbackAllowed(error);
+      return [];
+    }
   },
 };
 
@@ -864,7 +1162,7 @@ const chatbotResponses: { keywords: string[]; reply: string; products?: string[]
   },
   {
     keywords: ['apple', 'iphone', 'ios'],
-    reply: '🍎 Hệ sinh thái Apple rất mượt mà. Hiện tại có:\n\n• **iPhone 16 Pro Max** — Cao cấp nhất, chip A18 Pro, Camera Control\n• **AirPods Pro 3** — Tai nghe tuyệt vời nếu dùng iPhone\n\nBạn đang xài iPhone đời nào? Tôi có thể gợi ý upgrade phù hợp.',
+    reply: '🍎 Hệ sinh thái Apple rất mượt mà. Hiện tại có:\n\n• **iPhone 16 Pro Max** — Cao cấp nhất, chip A18 Pro, Camera Control\n• **AirPods Pro 2 USB-C** — Tai nghe tuyệt vời nếu dùng iPhone\n\nBạn đang xài iPhone đời nào? Tôi có thể gợi ý upgrade phù hợp.',
     products: ['prod-001', 'prod-007'],
   },
   {
@@ -874,7 +1172,7 @@ const chatbotResponses: { keywords: string[]; reply: string; products?: string[]
   },
   {
     keywords: ['phụ kiện', 'ốp lưng', 'tai nghe', 'đồng hồ', 'sạc'],
-    reply: '🎧 Phụ kiện hot nhất hiện tại:\n\n• **AirPods Pro 3** — Chống ồn ANC đỉnh, best cho iPhone\n• **Samsung Galaxy Watch Ultra** — Tracking sức khỏe toàn diện\n• **Anker 65W GaN** — Sạc nhanh nhỏ gọn, đa năng\n• **Ốp Spigen Ultra Hybrid** — Bảo vệ tốt, trong suốt\n\nBạn cần phụ kiện cho máy nào?',
+    reply: '🎧 Phụ kiện hot nhất hiện tại:\n\n• **AirPods Pro 2 USB-C** — Chống ồn ANC đỉnh, best cho iPhone\n• **Samsung Galaxy Watch Ultra** — Tracking sức khỏe toàn diện\n• **Anker 65W GaN** — Sạc nhanh nhỏ gọn, đa năng\n• **Ốp Spigen Ultra Hybrid** — Bảo vệ tốt, trong suốt\n\nBạn cần phụ kiện cho máy nào?',
     products: ['prod-007', 'prod-008', 'prod-009', 'prod-010'],
   },
   {
@@ -988,7 +1286,7 @@ export const stockApi = {
 };
 
 // ============================================================
-// CHAT API (stub — legacy B2B feature, preserved for imports)
+// CHAT API (stub — legacy seller/store feature, preserved for imports)
 // ============================================================
 interface ChatConversationStub { id: string; supplierId: string; supplierName: string; customerId: string; customerName: string; lastMessage: string; unreadCount: number; createdAt: string; }
 interface ChatMessageStub { id: string; conversationId: string; senderId: string; senderName: string; content: string; createdAt: string; isRead: boolean; }
@@ -1032,7 +1330,7 @@ export const chatApi = {
 };
 
 // ============================================================
-// SUPPLIER API (stub — legacy B2B, ProductDetailPage uses it)
+// SUPPLIER API (stub — legacy store contract, ProductDetailPage uses it)
 // ============================================================
 interface SupplierStub { id: string; companyName: string; contactName: string; email: string; phone: string; address: string; rating: number; verified: boolean; }
 export const supplierApi = {
@@ -1064,7 +1362,7 @@ export const certificateSellerApi = {
 };
 
 // ============================================================
-// SUPPLIER SCORECARD API (B2B)
+// SUPPLIER SCORECARD API (legacy store scorecard)
 // ============================================================
 interface SupplierScorecard {
   supplierId: string;
@@ -1090,7 +1388,7 @@ export const supplierScorecardApi = {
     // Generate mock scorecard
     return {
       supplierId,
-      supplierName: 'Nhà cung cấp',
+      supplierName: 'Cửa hàng',
       overallScore: Math.round((3.5 + Math.random() * 1.5) * 10) / 10,
       deliveryScore: Math.round((3 + Math.random() * 2) * 10) / 10,
       qualityScore: Math.round((3.5 + Math.random() * 1.5) * 10) / 10,
@@ -1124,15 +1422,15 @@ export const supplierReviewApi = {
 };
 
 // ============================================================
-// B2B CORE APIs (stubs for Buyer/Seller pages)
+// LEGACY COMMERCE APIs (stubs for Buyer/Seller pages)
 // ============================================================
 
-// RFQ (Yêu cầu báo giá)
+// Quote request (legacy RFQ contract)
 export const rfqApi = {
   getByBuyer: async (_buyerId: string, params?: Record<string, unknown>) => { await delay(250); return { data: [], total: 0, page: params?.page ?? 1, pageSize: params?.pageSize ?? 20 }; },
   getBySeller: async (_supplierId: string, params?: Record<string, unknown>) => { await delay(250); return { data: [], total: 0, page: params?.page ?? 1, pageSize: params?.pageSize ?? 20 }; },
   getById: async (_id: string) => { await delay(200); return null; },
-  create: async (data: Record<string, unknown>) => { await delay(400); return { ...data, id: `rfq-${Date.now()}`, rfqNumber: `RFQ-${Date.now()}`, status: 'Bản nháp', createdAt: new Date().toISOString() }; },
+  create: async (data: Record<string, unknown>) => { await delay(400); return { ...data, id: `quote-${Date.now()}`, rfqNumber: `BG-${Date.now()}`, status: 'Bản nháp', createdAt: new Date().toISOString() }; },
   update: async (id: string, data: Record<string, unknown>) => { await delay(300); return { ...data, id }; },
   submit: async (id: string) => { await delay(300); return { id, status: 'Đã gửi' }; },
   cancel: async (id: string) => { await delay(300); return { id, status: 'Đã huỷ' }; },
@@ -1362,7 +1660,7 @@ export const dashboardApi = {
       topProducts: [
         { name: 'iPhone 16 Pro Max', sales: 15, revenue: 524850000 },
         { name: 'Samsung Galaxy S25 Ultra', sales: 12, revenue: 383880000 },
-        { name: 'AirPods Pro 3', sales: 28, revenue: 181720000 },
+        { name: 'AirPods Pro 2 USB-C', sales: 28, revenue: 153720000 },
       ],
       topCategories: [
         { name: 'Điện thoại', count: 20, revenue: 908730000 },
@@ -1520,6 +1818,7 @@ type BackendCustomerInvoice = {
   customerName: string;
   totalAmount: number;
   taxAmount?: number;
+  discountAmount?: number;
   status: BackendCustomerInvoiceStatus;
   issueDate: string;
   dueDate: string;
@@ -1627,7 +1926,9 @@ function toBackendInvoiceStatus(status?: unknown): BackendCustomerInvoiceStatus 
 
 function mapBackendCustomerInvoice(invoice: BackendCustomerInvoice): Invoice {
   const taxAmount = Number(invoice.taxAmount ?? 0);
-  const subtotal = Math.max(0, Number(invoice.totalAmount ?? 0) - taxAmount);
+  const discountAmount = Number(invoice.discountAmount ?? 0);
+  const totalAmount = Number(invoice.totalAmount ?? 0);
+  const subtotal = Math.max(0, totalAmount + discountAmount - taxAmount);
   return {
     ...invoice,
     status: mapCustomerInvoiceStatus(invoice.status),
@@ -1636,6 +1937,7 @@ function mapBackendCustomerInvoice(invoice: BackendCustomerInvoice): Invoice {
     paidAt: invoice.paidAt ?? undefined,
     paidDate: invoice.paidAt ?? undefined,
     taxAmount,
+    discountAmount,
     subtotal,
     taxRate: subtotal > 0 ? Math.round((taxAmount / subtotal) * 100) : 0,
     type: 'Hoá đơn bán hàng',
@@ -1647,9 +1949,9 @@ function mapBackendCustomerInvoice(invoice: BackendCustomerInvoice): Invoice {
     items: [{
       description: `Đơn hàng ${invoice.orderNumber}`,
       quantity: 1,
-      unitPrice: subtotal || invoice.totalAmount,
+      unitPrice: subtotal || totalAmount,
       taxRate: subtotal > 0 ? Math.round((taxAmount / subtotal) * 100) : 0,
-      amount: invoice.totalAmount,
+      amount: totalAmount,
     }],
     notes: '',
   } as Invoice;
@@ -1713,8 +2015,9 @@ Object.assign(paymentApi, {
         status: toBackendPaymentStatus(rawFilters.status),
         search: search || rawFilters.search as string | undefined,
       });
+      const headerUser = typeof rawFilters.buyerId === 'string' ? { id: rawFilters.buyerId } : undefined;
       const { data, pagination } = await backendRequest<BackendCustomerPayment[]>(`/payments${query}`, {
-        headers: getDevUserHeaders(),
+        headers: getDevUserHeaders(headerUser),
       });
       return {
         data: data.map(mapBackendCustomerPayment),
@@ -1723,34 +2026,45 @@ Object.assign(paymentApi, {
         pageSize: pagination?.pageSize ?? params.pageSize,
         totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(250);
       return { data: [], total: 0, page: params.page, pageSize: params.pageSize, totalPages: 0 };
     }
   },
-  getByBuyer: async (_buyerId: string) => {
-    const page = await paymentApi.getPaginated({ page: 1, pageSize: 100 });
+  getByBuyer: async (buyerId: string) => {
+    const page = await paymentApi.getPaginated({ page: 1, pageSize: 100 }, undefined, { buyerId });
     return page.data;
   },
-  getById: async (id: string) => {
+  getById: async (id: string, user?: { id?: string; fullName?: string; email?: string; phone?: string } | null) => {
     try {
       const { data } = await backendRequest<BackendCustomerPayment>(`/payments/${id}`, {
-        headers: getDevUserHeaders(),
+        headers: getDevUserHeaders(user),
       });
       return mapBackendCustomerPayment(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return null;
     }
   },
-  createGatewaySession: async (paymentId: string, provider: 'MOMO' | 'VNPAY') => {
-    const { data } = await backendRequest(`/payments/${paymentId}/gateway-session`, {
+  createGatewaySession: async (
+    paymentId: string,
+    provider: 'MOMO' | 'VNPAY',
+    user?: { id?: string; fullName?: string; email?: string; phone?: string } | null,
+  ) => {
+    const returnUrl = new URL('/payment-result', window.location.origin);
+    returnUrl.searchParams.set('paymentId', paymentId);
+    returnUrl.searchParams.set('provider', provider);
+    const { data } = await backendRequest<PaymentGatewaySession>(`/payments/${paymentId}/gateway-session`, {
       method: 'POST',
-      headers: getDevUserHeaders(),
+      headers: getDevUserHeaders(user),
       body: JSON.stringify({
         provider,
-        returnUrl: `${window.location.origin}/payments/${paymentId}`,
+        returnUrl: returnUrl.toString(),
         callbackUrl: `${API_BASE_URL}/payments/gateway/callback`,
+        locale: 'vn',
+        orderType: 'other',
       }),
     });
     return data;
@@ -1786,7 +2100,8 @@ Object.assign(invoiceBuyerApi, {
         pageSize: pagination?.pageSize ?? params.pageSize,
         totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(250);
       return { data: [], total: 0, page: params.page, pageSize: params.pageSize, totalPages: 0 };
     }
@@ -1800,7 +2115,8 @@ Object.assign(invoiceBuyerApi, {
         headers: getDevUserHeaders(),
       });
       return mapBackendCustomerInvoice(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return null;
     }
@@ -1811,7 +2127,8 @@ Object.assign(invoiceBuyerApi, {
         headers: getDevUserHeaders(),
       });
       return mapBackendCustomerInvoice(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return null;
     }
@@ -1843,7 +2160,8 @@ Object.assign(shipmentApi, {
         pageSize: pagination?.pageSize ?? params.pageSize,
         totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(250);
       return { data: [], total: 0, page: params.page, pageSize: params.pageSize, totalPages: 0 };
     }
@@ -1858,7 +2176,8 @@ Object.assign(shipmentApi, {
         headers: getDevUserHeaders(),
       });
       return mapBackendCustomerShipment(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return null;
     }
@@ -1869,7 +2188,8 @@ Object.assign(shipmentApi, {
         headers: getDevUserHeaders(),
       });
       return mapBackendCustomerShipment(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return null;
     }
@@ -1956,6 +2276,24 @@ function mapBackendReturn(item: BackendCustomerReturn): ReturnRequest {
   };
 }
 
+function mapBackendProductCombo(combo: BackendProductCombo): ProductCombo {
+  return {
+    id: combo.id,
+    name: combo.name,
+    description: combo.description ?? '',
+    products: combo.products ?? [],
+    totalOriginalPrice: Number(combo.totalOriginalPrice ?? 0),
+    comboPrice: Number(combo.comboPrice ?? 0),
+    savings: Number(combo.savings ?? 0),
+    savingsPercent: Number(combo.savingsPercent ?? 0),
+    isActive: Boolean(combo.isActive),
+    image: combo.image,
+    startDate: combo.startDate,
+    endDate: combo.endDate,
+    createdAt: combo.createdAt,
+  };
+}
+
 function mapTradeInCondition(condition: BackendTradeInCondition): TradeInRequest['condition'] {
   if (condition === 'GOOD') return 'Tốt';
   if (condition === 'FAIR') return 'Khá';
@@ -2036,7 +2374,8 @@ Object.assign(returnApi, {
         pageSize: pagination?.pageSize ?? params.pageSize,
         totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(250);
       return paginate([], params);
     }
@@ -2051,7 +2390,8 @@ Object.assign(returnApi, {
         headers: getDevUserHeaders(),
       });
       return mapBackendReturn(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return null;
     }
@@ -2068,7 +2408,8 @@ Object.assign(returnApi, {
         }),
       });
       return mapBackendReturn(created);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(400);
       return { ...data, id: nextId('ret'), status: 'Chờ duyệt', createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as ReturnRequest;
     }
@@ -2084,8 +2425,16 @@ Object.assign(returnApi, {
       rejected: rows.filter(row => row.status === 'Từ chối').length,
     };
   },
-  delete: async (_id: string) => {
-    await delay(150);
+  delete: async (id: string) => {
+    try {
+      await backendRequest(`/returns/${id}`, {
+        method: 'DELETE',
+        headers: getDevUserHeaders(),
+      });
+    } catch (error) {
+      assertMockFallbackAllowed(error);
+      await delay(150);
+    }
   },
 });
 
@@ -2107,7 +2456,8 @@ Object.assign(tradeInApi, {
         pageSize: pagination?.pageSize ?? params.pageSize,
         totalPages: pagination?.totalPages ?? Math.ceil(data.length / params.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(250);
       return paginate([], params);
     }
@@ -2118,7 +2468,8 @@ Object.assign(tradeInApi, {
         headers: getDevUserHeaders(),
       });
       return mapBackendTradeIn(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return tradeInStore.find(t => t.id === id) ?? null;
     }
@@ -2138,7 +2489,8 @@ Object.assign(tradeInApi, {
         }),
       });
       return mapBackendTradeIn(created);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(400);
       const t = { ...data, id: nextId('ti'), status: 'Chờ định giá' as const, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() } as TradeInRequest;
       tradeInStore = [t, ...tradeInStore];
@@ -2156,7 +2508,8 @@ Object.assign(tradeInApi, {
         headers: getDevUserHeaders(),
       });
       return typeof data === 'number' ? data : data.estimatedValue;
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(600);
       const baseValues: Record<string, number> = { 'iPhone 16 Pro Max': 29000000, 'iPhone 15 Pro Max': 24000000, 'iPhone 14 Pro Max': 18000000, 'Galaxy S25 Ultra': 26000000, 'Galaxy S24 Ultra': 21000000 };
       const conditionMultipliers: Record<string, number> = { 'Tốt': 1, 'Khá': 0.85, 'Trung bình': 0.7, 'Kém': 0.5 };
@@ -2241,11 +2594,13 @@ Object.assign(wishlistApi, {
         headers: getDevUserHeaders({ id: userId }),
       });
       return data.map(mapBackendWishlistItem);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         const { data } = await backendRequest<BackendWishlistItem[]>(`/mock/wishlist/${userId}`);
         return data.map(mapBackendWishlistItem);
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(200);
         return wishStore;
       }
@@ -2262,14 +2617,16 @@ Object.assign(wishlistApi, {
         body: JSON.stringify({ productId }),
       });
       return mapBackendWishlistItem(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         const { data } = await backendRequest<BackendWishlistItem>('/mock/wishlist', {
           method: 'POST',
           body: JSON.stringify({ userId, productId }),
         });
         return mapBackendWishlistItem(data);
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(250);
         const p = productStore.find(x => x.id === productId);
         if (!p) throw new Error('Sản phẩm không tồn tại');
@@ -2285,10 +2642,12 @@ Object.assign(wishlistApi, {
         method: 'DELETE',
         headers: getDevUserHeaders(),
       });
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         await backendRequest(`/mock/wishlist/${id}`, { method: 'DELETE' });
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(150);
         wishStore = wishStore.filter(i => i.id !== id);
       }
@@ -2300,10 +2659,12 @@ Object.assign(wishlistApi, {
         method: 'DELETE',
         headers: getDevUserHeaders({ id: userId }),
       });
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         await backendRequest(`/mock/wishlist/user/${userId}/product/${productId}`, { method: 'DELETE' });
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(150);
         wishStore = wishStore.filter(i => i.productId !== productId);
       }
@@ -2315,7 +2676,8 @@ Object.assign(wishlistApi, {
         method: 'DELETE',
         headers: getDevUserHeaders({ id: userId }),
       });
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(150);
       wishStore = wishStore.filter(i => i.userId !== userId);
     }
@@ -2329,7 +2691,8 @@ Object.assign(addressApi, {
         headers: getDevUserHeaders({ id: userId }),
       });
       return data.map(mapBackendShippingAddress);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
       const effectiveUserId = uuidLike ? userId : DEFAULT_DEV_USER_ID;
@@ -2344,7 +2707,8 @@ Object.assign(addressApi, {
         body: JSON.stringify(toBackendShippingAddress(data)),
       });
       return mapBackendShippingAddress(created);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(300);
       const address = mapBackendShippingAddress({ ...data, id: nextId('addr'), userId: data.userId ?? DEFAULT_DEV_USER_ID });
       if (address.isDefault) {
@@ -2362,7 +2726,8 @@ Object.assign(addressApi, {
         body: JSON.stringify(toBackendShippingAddress(data)),
       });
       return mapBackendShippingAddress(updated);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(250);
       addressStore = addressStore.map(address => address.id === id ? { ...address, ...data, id } : address);
       const updated = addressStore.find(address => address.id === id);
@@ -2376,7 +2741,8 @@ Object.assign(addressApi, {
         method: 'DELETE',
         headers: getDevUserHeaders(),
       });
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       addressStore = addressStore.filter(address => address.id !== id);
     }
@@ -2387,7 +2753,8 @@ Object.assign(addressApi, {
         method: 'PATCH',
         headers: getDevUserHeaders(),
       });
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       const target = addressStore.find(address => address.id === id);
       if (!target) return;
@@ -2437,11 +2804,13 @@ Object.assign(reviewApi, {
     try {
       const { data } = await backendRequest<BackendReview[]>(`/products/${productId}/reviews`);
       return data.map(mapBackendReview);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         const { data } = await backendRequest<BackendReview[]>(`/mock/products/${productId}/reviews`);
         return data.map(mapBackendReview);
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(200);
         return reviewStore.filter(r => r.productId === productId && r.status === 'Hiển thị');
       }
@@ -2467,7 +2836,8 @@ Object.assign(reviewApi, {
         pageSize: pagination?.pageSize ?? params.pageSize,
         totalPages: pagination?.totalPages ?? Math.ceil(mapped.length / params.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       const rows = await reviewApi.getByProduct(productId) as Review[];
       let list = rows;
       if (starFilter > 0) list = list.filter(r => r.rating === starFilter);
@@ -2487,12 +2857,14 @@ Object.assign(reviewApi, {
         headers: getDevUserHeaders({ id: userId }),
       });
       return data.map(mapBackendReview);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         const query = toQuery({ userId, page: 1, pageSize: 100 });
         const { data } = await backendRequest<BackendReview[]>(`/mock/reviews${query}`);
         return data.map(mapBackendReview);
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(200);
         return reviewStore.filter(r => r.userId === userId);
       }
@@ -2505,7 +2877,8 @@ Object.assign(reviewApi, {
         headers: getDevUserHeaders(),
       });
       return data.map(mapBackendReview);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(200);
       return reviewStore.filter(r => r.orderId === orderId);
     }
@@ -2519,14 +2892,16 @@ Object.assign(reviewApi, {
         body: JSON.stringify(data),
       });
       return mapBackendReview(created);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         const { data: created } = await backendRequest<BackendReview>('/mock/reviews', {
           method: 'POST',
           body: JSON.stringify(data),
         });
         return mapBackendReview(created);
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(400);
         const r = { ...data, id: nextId('rev'), status: 'Chờ duyệt' as Review['status'], helpfulCount: 0, images: data.images ?? [], tags: data.tags ?? [], createdAt: new Date().toISOString() } as Review;
         reviewStore = [r, ...reviewStore];
@@ -2542,14 +2917,16 @@ Object.assign(reviewApi, {
         body: JSON.stringify(data),
       });
       return mapBackendReview(updated);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         const { data: updated } = await backendRequest<BackendReview>(`/mock/reviews/${id}`, {
           method: 'PATCH',
           body: JSON.stringify(data),
         });
         return mapBackendReview(updated);
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(300);
         reviewStore = reviewStore.map(r => r.id === id ? { ...r, ...data } : r);
         return reviewStore.find(r => r.id === id)!;
@@ -2562,10 +2939,12 @@ Object.assign(reviewApi, {
         method: 'DELETE',
         headers: getDevUserHeaders(),
       });
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         await backendRequest(`/mock/reviews/${id}`, { method: 'DELETE' });
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(250);
         reviewStore = reviewStore.filter(r => r.id !== id);
       }
@@ -2578,7 +2957,8 @@ Object.assign(reviewApi, {
         headers: getDevUserHeaders(),
       });
       return mapBackendReview(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(150);
       reviewStore = reviewStore.map(r => r.id === id ? { ...r, helpfulCount: r.helpfulCount + 1 } : r);
       return reviewStore.find(r => r.id === id)!;
@@ -2673,7 +3053,8 @@ Object.assign(blogApi, {
         pageSize: pagination?.pageSize ?? params.pageSize,
         totalPages: pagination?.totalPages ?? Math.ceil(mapped.length / params.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         const { data, pagination } = await backendRequest<BackendBlogPost[]>(`/mock/blogs${query}`);
         const mapped = data.map(mapBackendBlogPost);
@@ -2684,7 +3065,8 @@ Object.assign(blogApi, {
           pageSize: pagination?.pageSize ?? params.pageSize,
           totalPages: pagination?.totalPages ?? Math.ceil(mapped.length / params.pageSize),
         };
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(250);
         let list = [...blogStore];
         if (filters?.isPublished !== undefined) list = list.filter(b => b.isPublished === filters.isPublished);
@@ -2698,11 +3080,13 @@ Object.assign(blogApi, {
     try {
       const { data } = await backendRequest<BackendBlogPost>(`/blog/${slug}`);
       return mapBackendBlogPost(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         const { data } = await backendRequest<BackendBlogPost>(`/mock/blogs/slug/${slug}`);
         return mapBackendBlogPost(data);
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(200);
         return blogStore.find(b => b.slug === slug && b.isPublished) ?? null;
       }
@@ -2712,11 +3096,13 @@ Object.assign(blogApi, {
     try {
       const { data } = await backendRequest<BackendBlogPost[]>(`/blog${toQuery({ page: 1, pageSize: limit, isPublished: true })}`);
       return data.map(mapBackendBlogPost).slice(0, limit);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         const { data } = await backendRequest<BackendBlogPost[]>(`/mock/blogs/latest${toQuery({ limit })}`);
         return data.map(mapBackendBlogPost);
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(150);
         return blogStore.filter(b => b.isPublished).sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()).slice(0, limit);
       }
@@ -2729,11 +3115,13 @@ Object.assign(storeApi, {
     try {
       const { data } = await backendRequest<BackendStoreLocation[]>('/stores');
       return data.map(mapBackendStoreLocation);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         const { data } = await backendRequest<BackendStoreLocation[]>('/mock/stores');
         return data.map(mapBackendStoreLocation);
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(200);
         return mockStoreLocations;
       }
@@ -2748,7 +3136,8 @@ Object.assign(storeApi, {
       const query = toQuery({ productId });
       const { data } = await backendRequest<{ stock: number; availableQuantity?: number } | number>(`/stores/${storeId}/availability${query}`);
       return typeof data === 'number' ? data : Number(data.availableQuantity ?? data.stock ?? 0);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(300);
       const p = productStore.find(x => x.id === productId);
       return p ? Math.floor(Math.random() * 10) : 0;
@@ -2764,11 +3153,13 @@ Object.assign(imeiApi, {
         body: JSON.stringify({ imei }),
       });
       return mapBackendImeiResult(data, imei);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       try {
         const { data } = await backendRequest<BackendImeiResult>(`/mock/imei/${imei}`);
         return mapBackendImeiResult(data, imei);
-      } catch {
+      } catch (error) {
+        assertMockFallbackAllowed(error);
         await delay(1500);
         return { imei, brand: 'Apple', model: 'iPhone 16 Pro Max', isLocked: false, warrantyStatus: 'Còn bảo hành', warrantyExpiry: '2026-10-01', purchaseCountry: 'Việt Nam', isBlacklisted: false, activationStatus: 'Đã kích hoạt', checkedAt: new Date().toISOString() };
       }
@@ -2795,10 +3186,19 @@ type BackendNotification = {
   readAt?: string | null;
 };
 
+function mapNotificationPriority(priority?: string): AppNotification['priority'] {
+  const normalized = String(priority ?? 'medium').toLowerCase();
+  if (normalized === 'low' || normalized === 'medium' || normalized === 'high' || normalized === 'urgent') {
+    return normalized;
+  }
+  return 'medium';
+}
+
 function mapNotificationType(type: BackendNotificationType): AppNotification['type'] {
   if (type === 'ORDER') return 'order';
-  if (type === 'PAYMENT') return 'order';
+  if (type === 'PAYMENT') return 'payment';
   if (type === 'PROMOTION') return 'promotion';
+  if (type === 'LOYALTY') return 'loyalty';
   if (type === 'REVIEW') return 'review';
   if (type === 'SYSTEM') return 'system';
   return 'promotion';
@@ -2820,7 +3220,7 @@ function mapBackendNotification(notification: BackendNotification): AppNotificat
     isRead: notification.isRead,
     link: notification.actionUrl,
     createdAt: notification.createdAt,
-    priority: notification.priority ?? 'medium',
+    priority: mapNotificationPriority(notification.priority),
     category: mapNotificationCategory(notification.category),
     actionUrl: notification.actionUrl,
     actionLabel: notification.actionLabel,
@@ -2837,7 +3237,8 @@ Object.assign(notificationApi, {
         headers: getDevUserHeaders(),
       });
       return data.map(mapBackendNotification);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(150);
       return notifStore;
     }
@@ -2848,7 +3249,8 @@ Object.assign(notificationApi, {
         headers: getDevUserHeaders(),
       });
       return data.unreadCount;
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(100);
       return notifStore.filter(n => !n.isRead).length;
     }
@@ -2859,7 +3261,8 @@ Object.assign(notificationApi, {
         method: 'PATCH',
         headers: getDevUserHeaders(),
       });
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(100);
       notifStore = notifStore.map(n => n.id === id ? { ...n, isRead: true } : n);
     }
@@ -2873,7 +3276,8 @@ Object.assign(notificationApi, {
         method: 'PATCH',
         headers: getDevUserHeaders(),
       });
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(150);
       notifStore = notifStore.map(n => ({ ...n, isRead: true }));
     }
@@ -2887,7 +3291,8 @@ Object.assign(notificationApi, {
         method: 'DELETE',
         headers: getDevUserHeaders(),
       });
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(100);
       notifStore = notifStore.filter(n => n.id !== id);
     }

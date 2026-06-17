@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback } from 'react';
-import { useNavigate, useSearchParams, Link } from 'react-router';
+import { useLocation, useNavigate, useParams, useSearchParams, Link } from 'react-router';
 import {
   Star, ShoppingCart, GitCompareArrows, Heart, SlidersHorizontal,
   X, Building2, ChevronDown, LayoutGrid, List, Eye,
@@ -20,13 +20,14 @@ import { DataTable } from '../shared/DataTable';
 import { FilterBar } from '../shared/FilterBar';
 import { StatusBadge } from '../shared/StatusBadge';
 import { AppBreadcrumb } from '../shared/AppBreadcrumb';
-import { productApi, categoryApi } from '../../services/api';
+import { productApi, categoryApi, promotionApi } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
-import type { Product, Category, PaginationParams, SortParams, ActiveFilter, FilterConfig, ColumnConfig } from '../../types';
+import type { Product, Category, Promotion, PaginationParams, SortParams, ActiveFilter, FilterConfig, ColumnConfig } from '../../types';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { toast } from 'sonner';
+import { productDetailPath } from '../../utils/productLinks';
 
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
@@ -74,8 +75,58 @@ const priceRanges = [
   { label: 'Trên 50 triệu', min: 50000000, max: Infinity },
 ];
 
+function getApplicablePromotions(product: Product, promotions: Promotion[]) {
+  return promotions.filter(promotion => {
+    const scopedToAll =
+      promotion.applicableProducts.length === 0
+      && promotion.applicableCategories.length === 0
+      && promotion.applicableBrands.length === 0;
+    if (scopedToAll) return true;
+    return (
+      promotion.applicableProducts.some(id => id.toLowerCase() === product.id.toLowerCase())
+      || promotion.applicableCategories.some(id => id.toLowerCase() === product.categoryId.toLowerCase())
+      || promotion.applicableBrands.some(brand => brand.trim().toLowerCase() === product.brand.trim().toLowerCase())
+    );
+  });
+}
+
+function promotionText(promotion: Promotion) {
+  if (promotion.type === 'Phần trăm') return `Giảm ${promotion.value}%`;
+  if (promotion.type === 'Số tiền') return `Giảm ${formatPrice(promotion.value)}`;
+  if (promotion.type === 'Miễn phí vận chuyển') return 'Miễn phí vận chuyển';
+  return promotion.name;
+}
+
+const urlFilterKeys = ['categoryId', 'categorySlug', 'brand', 'status', 'minPrice', 'maxPrice', 'isNew', 'isHot', 'isFeatured'];
+
+const buildFiltersFromSearchParams = (params: URLSearchParams): ActiveFilter[] => {
+  const filters: ActiveFilter[] = [];
+  const categoryId = params.get('categoryId') ?? params.get('categoryName') ?? params.get('category') ?? '';
+  const categorySlug = params.get('categorySlug') ?? '';
+
+  if (categoryId) {
+    filters.push({ key: 'categoryId', value: categoryId });
+  } else if (categorySlug) {
+    filters.push({ key: 'categorySlug', value: categorySlug });
+  }
+
+  urlFilterKeys.forEach(key => {
+    if (key === 'categoryId' || key === 'categorySlug') return;
+    const value = params.get(key);
+    if (value) filters.push({ key, value });
+  });
+
+  return filters;
+};
+
+const sameFilters = (left: ActiveFilter[], right: ActiveFilter[]) =>
+  JSON.stringify(left.map(filter => [filter.key, String(filter.value)]).sort()) ===
+  JSON.stringify(right.map(filter => [filter.key, String(filter.value)]).sort());
+
 export function ProductListPage() {
   const navigate = useNavigate();
+  const location = useLocation();
+  const { slug: categorySlug } = useParams();
   const { isAuthenticated } = useAuth();
   const { addItem } = useCart();
   const { isInWishlist, addToWishlist, removeFromWishlist } = useWishlist();
@@ -87,23 +138,16 @@ export function ProductListPage() {
   const [showSidebar, setShowSidebar] = useState(true);
 
   const initialPage = Number(searchParams.get('page')) || 1;
-  const initialSearch = searchParams.get('search') ?? '';
-  const initialCategory = searchParams.get('categoryId') ?? searchParams.get('categoryName') ?? searchParams.get('category') ?? '';
-  const initialStatus = searchParams.get('status') ?? '';
-
+  const initialSearch = searchParams.get('search') ?? searchParams.get('q') ?? '';
   const [pagination, setPagination] = useState<PaginationParams>({ page: initialPage, pageSize: 12 });
   const [sort, setSort] = useState<SortParams>({ field: '', direction: 'asc' });
   const [sortString, setSortString] = useState('createdAt:desc');
-  const [filters, setFilters] = useState<ActiveFilter[]>(() => {
-    const f: ActiveFilter[] = [];
-    if (initialCategory) f.push({ key: 'categoryId', value: initialCategory });
-    if (initialStatus) f.push({ key: 'status', value: initialStatus });
-    return f;
-  });
+  const [filters, setFilters] = useState<ActiveFilter[]>(() => buildFiltersFromSearchParams(searchParams));
   const [search, setSearch] = useState(initialSearch);
   const [categoryOptions, setCategoryOptions] = useState<{ label: string; value: string; count?: number }[]>([]);
   const [compareIds, setCompareIds] = useState<string[]>([]);
   const [selectedPriceRange, setSelectedPriceRange] = useState<number | null>(null);
+  const [promotionMap, setPromotionMap] = useState<Record<string, Promotion[]>>({});
 
   // E17.05: Sort dropdown sync
   useEffect(() => {
@@ -114,20 +158,30 @@ export function ProductListPage() {
   useEffect(() => {
     const params: Record<string, string> = {};
     if (pagination.page > 1) params.page = String(pagination.page);
-    if (search) params.search = search;
+    if (search) params[location.pathname === '/search' ? 'q' : 'search'] = search;
     for (const f of filters) {
       if (typeof f.value === 'string' && f.value) params[f.key === 'categoryName' ? 'categoryId' : f.key] = f.value;
     }
     setSearchParams(params, { replace: true });
-  }, [pagination, search, filters, setSearchParams]);
+  }, [pagination, search, filters, location.pathname, setSearchParams]);
 
   useEffect(() => {
     const urlSearch = searchParams.get('search') ?? '';
-    if (urlSearch && urlSearch !== search) {
-      setSearch(urlSearch);
+    const urlQ = searchParams.get('q') ?? '';
+    const nextSearch = urlSearch || urlQ;
+    if (nextSearch !== search) {
+      setSearch(nextSearch);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+    const nextPage = Number(searchParams.get('page')) || 1;
+    if (nextPage !== pagination.page) {
+      setPagination(prev => ({ ...prev, page: nextPage }));
+    }
+    const nextFilters = buildFiltersFromSearchParams(searchParams);
+    if (!sameFilters(nextFilters, filters)) {
+      setFilters(nextFilters);
+      setSelectedPriceRange(null);
+    }
+  }, [searchParams, filters, pagination.page, search]);
 
   useEffect(() => {
     categoryApi.getAll().then(cats =>
@@ -152,6 +206,9 @@ export function ProductListPage() {
     setLoading(true);
     try {
       const allFilters = [...filters];
+      if (categorySlug && !allFilters.some(filter => filter.key === 'categorySlug' || filter.key === 'categoryId')) {
+        allFilters.push({ key: 'categorySlug', value: categorySlug });
+      }
       if (selectedPriceRange !== null) {
         const range = priceRanges[selectedPriceRange];
         allFilters.push({ key: 'minPrice', value: range.min });
@@ -163,9 +220,24 @@ export function ProductListPage() {
     } finally {
       setLoading(false);
     }
-  }, [pagination, sort, filters, search, selectedPriceRange]);
+  }, [pagination, sort, filters, search, selectedPriceRange, categorySlug]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (products.length === 0) {
+      setPromotionMap({});
+      return;
+    }
+    promotionApi.getActiveAll({ page: 1, pageSize: 200 }).then(res => {
+      if (cancelled) return;
+      setPromotionMap(Object.fromEntries(
+        products.map(product => [product.id, getApplicablePromotions(product, res.data)]),
+      ));
+    }).catch(() => setPromotionMap({}));
+    return () => { cancelled = true; };
+  }, [products]);
 
   const toggleCompare = (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -200,6 +272,7 @@ export function ProductListPage() {
     setAddingToCart(product.id);
     try {
       const retailMeta = getProductRetailMeta(product);
+      const variant = product.variants[0];
       await addItem({
         productId: product.id,
         productName: product.name,
@@ -207,9 +280,13 @@ export function ProductListPage() {
         supplierId: retailMeta.storeId,
         supplierName: retailMeta.storeName,
         quantity: retailMeta.minQty,
-        unitPrice: product.price,
+        unitPrice: variant?.price ?? product.price,
+        variantName: variant?.name,
+        variantId: variant?.id,
       });
       toast.success(`Đã thêm "${product.name}" vào giỏ hàng`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể thêm vào giỏ hàng');
     } finally {
       setAddingToCart(null);
     }
@@ -235,6 +312,7 @@ export function ProductListPage() {
     const isCompare = compareIds.includes(product.id);
     const wishlisted = isInWishlist(product.id);
     const retailMeta = getProductRetailMeta(product);
+    const primaryPromotion = promotionMap[product.id]?.[0];
 
     return (
       <Card className="overflow-hidden group hover:shadow-lg hover:-translate-y-1 transition-all duration-300 h-full border-0 shadow-sm relative">
@@ -271,6 +349,13 @@ export function ProductListPage() {
               {formatPrice(product.price)}
             </Badge>
           </div>
+          {primaryPromotion && (
+            <div className="absolute bottom-2 right-2 max-w-[58%]">
+              <Badge className="bg-red-600/95 text-white shadow-sm text-[10px]">
+                {promotionText(primaryPromotion)}
+              </Badge>
+            </div>
+          )}
 
           {/* Quick actions */}
           <div className="absolute top-2 right-2 flex flex-col gap-1.5 opacity-0 group-hover:opacity-100 transition-all duration-200">
@@ -296,7 +381,7 @@ export function ProductListPage() {
             </button>
             <button
               className="h-8 w-8 rounded-full bg-white/90 backdrop-blur-sm shadow-md flex items-center justify-center text-muted-foreground hover:text-primary transition-colors"
-              onClick={e => { e.stopPropagation(); navigate(`/products/${product.id}`); }}
+              onClick={e => { e.stopPropagation(); navigate(productDetailPath(product)); }}
               title="Xem chi tiết"
             >
               <Eye className="h-4 w-4" />
@@ -319,6 +404,20 @@ export function ProductListPage() {
             <p className="text-[#e31837] font-bold text-sm">{formatPrice(product.price)}</p>
             <span className="text-[10px] text-muted-foreground">Từ {retailMeta.minQty} {retailMeta.unit}</span>
           </div>
+          {primaryPromotion && (
+            <button
+              type="button"
+              className="mt-2 w-full rounded-md border border-red-100 bg-red-50 px-2 py-1 text-left text-[11px] text-red-700 hover:bg-red-100"
+              onClick={e => {
+                e.stopPropagation();
+                navigator.clipboard?.writeText(primaryPromotion.code);
+                toast.success(`Đã sao chép mã: ${primaryPromotion.code}`);
+              }}
+              title="Sao chép mã khuyến mãi"
+            >
+              Mã {primaryPromotion.code} · {promotionText(primaryPromotion)}
+            </button>
+          )}
           <p className="text-xs text-muted-foreground mt-1 truncate flex items-center gap-1">
             <Building2 className="h-3 w-3 shrink-0" /> {retailMeta.storeName}
           </p>
@@ -331,6 +430,7 @@ export function ProductListPage() {
     const wishlisted = isInWishlist(product.id);
     const isCompare = compareIds.includes(product.id);
     const retailMeta = getProductRetailMeta(product);
+    const primaryPromotion = promotionMap[product.id]?.[0];
 
     return (
       <Card className="hover:shadow-md transition-all duration-200 border-0 shadow-sm overflow-hidden">
@@ -361,6 +461,20 @@ export function ProductListPage() {
             </div>
             <div className="flex items-center gap-3 mt-2 flex-wrap">
               <span className="text-primary text-sm" style={{ fontWeight: 600 }}>{formatPrice(product.price)}</span>
+              {primaryPromotion && (
+                <button
+                  type="button"
+                  className="rounded-full border border-red-100 bg-red-50 px-2 py-0.5 text-xs text-red-700 hover:bg-red-100"
+                  onClick={e => {
+                    e.stopPropagation();
+                    navigator.clipboard?.writeText(primaryPromotion.code);
+                    toast.success(`Đã sao chép mã: ${primaryPromotion.code}`);
+                  }}
+                  title="Sao chép mã khuyến mãi"
+                >
+                  {primaryPromotion.code} · {promotionText(primaryPromotion)}
+                </button>
+              )}
               <Badge variant="secondary" className="text-[10px]">{product.categoryName}</Badge>
               <span className="text-xs text-muted-foreground">Từ {retailMeta.minQty} {retailMeta.unit}</span>
               <div className="flex items-center gap-1">
@@ -616,7 +730,7 @@ export function ProductListPage() {
             sort={sort}
             onPaginationChange={setPagination}
             onSortChange={setSort}
-            onRowClick={p => navigate(`/products/${p.id}`)}
+            onRowClick={p => navigate(productDetailPath(p))}
             getId={p => p.id}
             renderGridCard={renderGridCard}
             renderListItem={renderListItem}

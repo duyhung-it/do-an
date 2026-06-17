@@ -22,6 +22,7 @@ const CartPage = lazy(() => import('./components/buyer/CartPage').then(m => ({ d
 const OrderListPage = lazy(() => import('./components/buyer/OrderListPage').then(m => ({ default: m.OrderListPage })));
 const OrderDetailPage = lazy(() => import('./components/buyer/OrderDetailPage').then(m => ({ default: m.OrderDetailPage })));
 const OrderConfirmationPage = lazy(() => import('./components/buyer/OrderConfirmationPage').then(m => ({ default: m.OrderConfirmationPage })));
+const PaymentResultPage = lazy(() => import('./components/buyer/PaymentResultPage').then(m => ({ default: m.PaymentResultPage })));
 const BuyerProfilePage = lazy(() => import('./components/buyer/BuyerProfilePage').then(m => ({ default: m.BuyerProfilePage })));
 const BuyerWishlistPage = lazy(() => import('./components/buyer/BuyerWishlistPage').then(m => ({ default: m.BuyerWishlistPage })));
 const BuyerReviewsPage = lazy(() => import('./components/buyer/BuyerReviewsPage').then(m => ({ default: m.BuyerReviewsPage })));
@@ -58,6 +59,7 @@ const AdminPromotionPage = lazy(() => import('./components/admin/AdminPromotionP
 const ReviewManagement = lazy(() => import('./components/admin/ReviewManagement').then(m => ({ default: m.ReviewManagement })));
 const SystemSettings = lazy(() => import('./components/admin/SystemSettings').then(m => ({ default: m.SystemSettings })));
 const AdminReportPage = lazy(() => import('./components/admin/AdminReportPage').then(m => ({ default: m.AdminReportPage })));
+const AdminRevenuePage = lazy(() => import('./components/admin/AdminRevenuePage').then(m => ({ default: m.AdminRevenuePage })));
 const AdminInventoryPage = lazy(() => import('./components/admin/AdminInventoryPage').then(m => ({ default: m.AdminInventoryPage })));
 const AdminTradeInPage = lazy(() => import('./components/admin/AdminTradeInPage').then(m => ({ default: m.AdminTradeInPage })));
 const AdminInvoicePage = lazy(() => import('./components/admin/AdminInvoicePage').then(m => ({ default: m.AdminInvoicePage })));
@@ -69,8 +71,6 @@ const AdminLoyaltyPage = lazy(() => import('./components/admin/AdminLoyaltyPage'
 const AdminAnalyticsPage = lazy(() => import('./components/admin/AdminAnalyticsPage').then(m => ({ default: m.AdminAnalyticsPage })));
 const AdminWarehousePage = lazy(() => import('./components/admin/AdminWarehousePage').then(m => ({ default: m.AdminWarehousePage })));
 const AdminReturnPage = lazy(() => import('./components/admin/AdminReturnPage').then(m => ({ default: m.AdminReturnPage })));
-const AdminDocumentPage = lazy(() => import('./components/shared/DocumentCenterPage').then(m => ({ default: m.DocumentCenterPage })));
-const ReportBuilderPage = lazy(() => import('./components/shared/ReportBuilderPage').then(m => ({ default: m.ReportBuilderPage })));
 const AdminEmailTemplatePage = lazy(() => import('./components/admin/AdminEmailTemplatePage').then(m => ({ default: m.AdminEmailTemplatePage })));
 const AdminBannerPage = lazy(() => import('./components/admin/AdminBannerPage').then(m => ({ default: m.AdminBannerPage })));
 const AdminBlogPage = lazy(() => import('./components/admin/AdminBlogPage').then(m => ({ default: m.AdminBlogPage })));
@@ -102,16 +102,20 @@ export const router = createBrowserRouter([
     Component: BuyerLayout,
     children: [
       { index: true, element: wrap(HomePage) },
+      { path: 'search', element: wrap(ProductListPage) },
+      { path: 'category/:slug', element: wrap(ProductListPage) },
       { path: 'products', element: wrap(ProductListPage) },
       { path: 'products/compare', element: wrap(ProductComparePage) },
       { path: 'products/:id', element: wrap(ProductDetailPage) },
       { path: 'promotions', element: wrap(BuyerPromotionPage) },
       { path: 'trade-in', element: wrap(TradeInPage) },
+      { path: 'check-imei', element: wrap(IMEICheckPage) },
       { path: 'imei-check', element: wrap(IMEICheckPage) },
       { path: 'blog', element: wrap(BlogPage) },
       { path: 'blog/:slug', element: wrap(BlogDetailPage) },
       { path: 'stores', element: wrap(StoreLocatorPage) },
       { path: 'phone-finder', element: wrap(PhoneFinderPage) },
+      { path: 'payment-result', element: wrap(PaymentResultPage) },
 
       // Customer — cần đăng nhập
       {
@@ -120,6 +124,7 @@ export const router = createBrowserRouter([
           { path: 'dashboard', element: wrap(BuyerDashboardPage) },
           { path: 'cart', element: wrap(CartPage) },
           { path: 'orders', element: wrap(OrderListPage) },
+          { path: 'account/orders', element: wrap(OrderListPage) },
           { path: 'orders/:id', element: wrap(OrderDetailPage) },
           { path: 'order-confirmation', element: wrap(OrderConfirmationPage) },
           { path: 'wishlist', element: wrap(BuyerWishlistPage) },
@@ -152,6 +157,7 @@ export const router = createBrowserRouter([
         Component: AdminLayout,
         children: [
           { index: true, element: wrap(AdminDashboard) },
+          { path: 'dashboard', element: wrap(AdminDashboard) },
           { path: 'products', element: wrap(ProductApproval) },
           { path: 'inventory', element: wrap(AdminInventoryPage) },
           { path: 'categories', element: wrap(CategoryManagement) },
@@ -160,9 +166,11 @@ export const router = createBrowserRouter([
           { path: 'reviews', element: wrap(ReviewManagement) },
           { path: 'promotions', element: wrap(AdminPromotionPage) },
           { path: 'trade-in', element: wrap(AdminTradeInPage) },
+          { path: 'reconciliation', element: wrap(AdminPaymentPage) },
           { path: 'payments', element: wrap(AdminPaymentPage) },
           { path: 'invoices', element: wrap(AdminInvoicePage) },
           { path: 'shipments', element: wrap(AdminShipmentPage) },
+          { path: 'revenue', element: wrap(AdminRevenuePage) },
           { path: 'reports', element: wrap(AdminReportPage) },
           { path: 'activity-logs', element: wrap(AdminActivityLog) },
           { path: 'settings', element: wrap(SystemSettings) },
@@ -171,8 +179,6 @@ export const router = createBrowserRouter([
           { path: 'analytics', element: wrap(AdminAnalyticsPage) },
           { path: 'warehouses', element: wrap(AdminWarehousePage) },
           { path: 'returns', element: wrap(AdminReturnPage) },
-          { path: 'documents', element: wrap(AdminDocumentPage) },
-          { path: 'report-builder', element: wrap(ReportBuilderPage) },
           { path: 'email-templates', element: wrap(AdminEmailTemplatePage) },
           { path: 'banners', element: wrap(AdminBannerPage) },
           { path: 'blog', element: wrap(AdminBlogPage) },

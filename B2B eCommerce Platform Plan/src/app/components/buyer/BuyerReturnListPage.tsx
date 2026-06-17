@@ -315,6 +315,16 @@ export function BuyerReturnListPage() {
               <div className="mt-3 pt-3 border-t">
                 <ReturnSteps status={r.status} />
               </div>
+              {r.status === 'Chờ duyệt' && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="mt-3 w-full text-destructive hover:text-destructive"
+                  onClick={(e) => { e.stopPropagation(); handleDelete(r.id); }}
+                >
+                  <Trash2 className="mr-2 h-4 w-4" /> Huỷ yêu cầu
+                </Button>
+              )}
             </CardContent>
           </Card>
         ))}

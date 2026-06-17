@@ -7,7 +7,7 @@ import { ProtectedRoute } from '../shared/ProtectedRoute';
 
 export function AdminGuard() {
   return (
-    <ProtectedRoute allowedRoles={['Quản trị viên']}>
+    <ProtectedRoute allowedRoles={['ADMIN']}>
       <Outlet />
     </ProtectedRoute>
   );

@@ -4,13 +4,14 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router';
-import { Search, Package, Building2, Tag, Clock, TrendingUp, X } from 'lucide-react';
+import { Search, Package, Tag, Clock, TrendingUp, X } from 'lucide-react';
 import { Input } from '../ui/input';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
-import { productApi, supplierApi, categoryApi } from '../../services/api';
-import type { Product, Supplier, Category } from '../../types';
+import { productApi, categoryApi } from '../../services/api';
+import type { Product, Category } from '../../types';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
+import { productDetailPath } from '../../utils/productLinks';
 
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
@@ -39,7 +40,7 @@ function HighlightText({ text, query }: { text: string; query: string }) {
 
 interface SuggestionItem {
   id: string;
-  type: 'category' | 'product' | 'supplier';
+  type: 'category' | 'product';
   path: string;
   label: string;
 }
@@ -53,7 +54,6 @@ export function SearchSuggestions({ className = '' }: SearchSuggestionsProps) {
   const [query, setQuery] = useState('');
   const [open, setOpen] = useState(false);
   const [products, setProducts] = useState<Product[]>([]);
-  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [recentSearches, setRecentSearches] = useState<string[]>([]);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -69,13 +69,10 @@ export function SearchSuggestions({ className = '' }: SearchSuggestionsProps) {
       items.push({ id: c.id, type: 'category', path: `/products?categoryName=${encodeURIComponent(c.name)}`, label: c.name }),
     );
     products.forEach(p =>
-      items.push({ id: p.id, type: 'product', path: `/products/${p.id}`, label: p.name }),
-    );
-    suppliers.forEach(s =>
-      items.push({ id: s.id, type: 'supplier', path: `/stores/${s.id}`, label: s.companyName }),
+      items.push({ id: p.id, type: 'product', path: productDetailPath(p), label: p.name }),
     );
     return items;
-  }, [categories, products, suppliers]);
+  }, [categories, products]);
 
   // Load recent searches
   useEffect(() => {
@@ -91,7 +88,6 @@ export function SearchSuggestions({ className = '' }: SearchSuggestionsProps) {
 
     if (!query.trim()) {
       setProducts([]);
-      setSuppliers([]);
       setCategories([]);
       setIsSearching(false);
       return;
@@ -100,13 +96,11 @@ export function SearchSuggestions({ className = '' }: SearchSuggestionsProps) {
     setIsSearching(true);
     debounceRef.current = setTimeout(async () => {
       try {
-        const [prodRes, suppRes, catRes] = await Promise.all([
+        const [prodRes, catRes] = await Promise.all([
           productApi.getPaginated({ page: 1, pageSize: 5 }, undefined, undefined, query),
-          supplierApi.getPaginated({ page: 1, pageSize: 3 }, undefined, undefined, query),
           categoryApi.getAll(),
         ]);
         setProducts(prodRes.data);
-        setSuppliers(suppRes.data);
         setCategories(catRes.filter(c => c.name.toLowerCase().includes(query.toLowerCase())).slice(0, 3));
       } finally {
         setIsSearching(false);
@@ -193,7 +187,7 @@ export function SearchSuggestions({ className = '' }: SearchSuggestionsProps) {
     }
   };
 
-  const hasResults = products.length > 0 || suppliers.length > 0 || categories.length > 0;
+  const hasResults = products.length > 0 || categories.length > 0;
   const showDefault = !query.trim();
 
   // Track cumulative index for highlighting
@@ -332,7 +326,7 @@ export function SearchSuggestions({ className = '' }: SearchSuggestionsProps) {
                         className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center gap-3 ${
                           activeIndex === idx ? 'bg-muted' : 'hover:bg-muted/50'
                         }`}
-                        onClick={() => handleNavigate(`/products/${product.id}`)}
+                        onClick={() => handleNavigate(productDetailPath(product))}
                         onMouseEnter={() => setActiveIndex(idx)}
                       >
                         <div className="w-10 h-10 rounded-lg overflow-hidden shrink-0">
@@ -343,37 +337,6 @@ export function SearchSuggestions({ className = '' }: SearchSuggestionsProps) {
                           <p className="text-muted-foreground text-xs">{product.categoryName}</p>
                         </div>
                         <span className="text-primary shrink-0">{formatPrice(product.price)}</span>
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Cửa hàng */}
-              {suppliers.length > 0 && (
-                <div className="p-2">
-                  <p className="px-2 py-1 text-muted-foreground text-xs flex items-center gap-1">
-                    <Building2 className="h-3 w-3" /> Cửa hàng
-                  </p>
-                  {suppliers.map(sup => {
-                    itemIdx++;
-                    const idx = itemIdx;
-                    return (
-                      <button
-                        key={sup.id}
-                        role="option"
-                        aria-selected={activeIndex === idx}
-                        className={`w-full text-left px-3 py-2 rounded-md transition-colors flex items-center gap-3 ${
-                          activeIndex === idx ? 'bg-muted' : 'hover:bg-muted/50'
-                        }`}
-                        onClick={() => handleNavigate(`/stores/${sup.id}`)}
-                        onMouseEnter={() => setActiveIndex(idx)}
-                      >
-                        <Building2 className="h-5 w-5 text-muted-foreground shrink-0" />
-                        <div className="flex-1 min-w-0">
-                          <p className="truncate"><HighlightText text={sup.companyName} query={query} /></p>
-                          <p className="text-muted-foreground text-xs">{sup.city} &bull; {sup.productCount} sản phẩm</p>
-                        </div>
                       </button>
                     );
                   })}

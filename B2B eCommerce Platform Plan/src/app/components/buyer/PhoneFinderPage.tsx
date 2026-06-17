@@ -18,6 +18,7 @@ import { useAuth } from '../../context/AuthContext';
 import type { Product } from '../../types';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { toast } from 'sonner';
+import { productDetailPath } from '../../utils/productLinks';
 
 const formatPrice = (p: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(p);
@@ -58,7 +59,7 @@ function ProductCard({ product }: { product: Product }) {
   };
 
   return (
-    <Link to={`/products/${product.id}`}>
+    <Link to={productDetailPath(product)}>
       <Card className="border-0 shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300 group bg-white h-full">
         <div className="aspect-square overflow-hidden relative bg-gray-50 rounded-t-xl">
           <ImageWithFallback

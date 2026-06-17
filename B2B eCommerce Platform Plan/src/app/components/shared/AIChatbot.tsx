@@ -6,6 +6,7 @@ import { Link } from 'react-router';
 import { MessageCircle, X, Send, Bot, Minimize2, Maximize2, ShoppingCart } from 'lucide-react';
 import { chatbotApi, productApi } from '../../services/api';
 import type { Product } from '../../types';
+import { productDetailPath } from '../../utils/productLinks';
 
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
@@ -158,7 +159,7 @@ export function AIChatbot() {
                       {msg.products && msg.products.length > 0 && (
                         <div className="chatbot-products">
                           {msg.products.slice(0, 3).map(p => (
-                            <Link key={p.id} to={`/products/${p.id}`} className="chatbot-product-card" onClick={() => setOpen(false)}>
+                            <Link key={p.id} to={productDetailPath(p)} className="chatbot-product-card" onClick={() => setOpen(false)}>
                               <img src={p.images[0]} alt={p.name} className="chatbot-product-img" />
                               <div className="chatbot-product-info">
                                 <p className="chatbot-product-name">{p.name}</p>

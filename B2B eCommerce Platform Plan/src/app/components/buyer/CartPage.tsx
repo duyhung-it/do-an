@@ -25,10 +25,11 @@ import { AppBreadcrumb } from '../shared/AppBreadcrumb';
 import { TableSkeleton } from '../shared/PageSkeleton';
 import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
-import { orderApi, promotionApi, productApi } from '../../services/api';
+import { orderApi, paymentApi, promotionApi, productApi, type OrderCreateResult } from '../../services/api';
 import type { CartItem, Promotion, Product } from '../../types';
 import { toast } from 'sonner';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
+import { productDetailPath } from '../../utils/productLinks';
 
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
@@ -121,8 +122,10 @@ export function CartPage() {
       supplierGroups.map(([sid, sitems]) => [sid, estimateShipping(sid, sitems.length)]),
     ), [supplierGroups]);
   const totalShipping = Object.values(shippingBySupplier).reduce((s, v) => s + v, 0);
+  const isFreeShippingPromotion = appliedPromotion?.type === 'Miễn phí vận chuyển' || appliedPromotion?.code === 'FREESHIP';
+  const effectiveShipping = isFreeShippingPromotion ? 0 : totalShipping;
   const tax = Math.floor(subtotal * 0.1);
-  const total = subtotal + totalShipping + tax - discountAmount;
+  const total = subtotal + effectiveShipping + tax - discountAmount;
 
   const buildShippingAddress = () => {
     const parts = shippingAddress.split(',').map(part => part.trim()).filter(Boolean);
@@ -141,11 +144,16 @@ export function CartPage() {
     setApplyingCoupon(true);
     setCouponError('');
     try {
-      const result = await promotionApi.validate(couponCode.trim(), subtotal);
-      if (result.valid && result.promotion && result.discount) {
+      const result = await promotionApi.validate(couponCode.trim(), subtotal, items);
+      if (result.valid && result.promotion) {
+        const discount = Number(result.discount ?? 0);
         setAppliedPromotion(result.promotion);
-        setDiscountAmount(result.discount);
-        toast.success(`Áp dụng thành công: giảm ${formatPrice(result.discount)}`);
+        setDiscountAmount(discount);
+        if (result.promotion.type === 'Miễn phí vận chuyển' || result.promotion.code === 'FREESHIP') {
+          toast.success('Áp dụng thành công: miễn phí vận chuyển');
+        } else {
+          toast.success(`Áp dụng thành công: giảm ${formatPrice(discount)}`);
+        }
       } else {
         setCouponError(result.error ?? 'Mã giảm giá không hợp lệ');
         setAppliedPromotion(null);
@@ -163,6 +171,14 @@ export function CartPage() {
   const handleRemoveItem = async (id: string) => {
     await removeItem(id);
     toast.success('Đã xoá khỏi giỏ hàng');
+  };
+
+  const handleUpdateQuantity = async (id: string, quantity: number) => {
+    try {
+      await updateQuantity(id, quantity);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể cập nhật số lượng');
+    }
   };
 
   const handleRemoveSupplierItems = async (supplierId: string) => {
@@ -186,7 +202,7 @@ export function CartPage() {
       const createdOrders = [];
       for (const [supplierId, supplierItems] of supplierGroups) {
         const groupSubtotal = supplierItems.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-        const groupShipping = shippingBySupplier[supplierId] ?? 0;
+        const groupShipping = isFreeShippingPromotion ? 0 : shippingBySupplier[supplierId] ?? 0;
         const groupTax = Math.floor(groupSubtotal * 0.1);
         const order = await orderApi.create({
           buyerId: user.id, buyerName: user.fullName, buyerEmail: user.email,
@@ -237,7 +253,7 @@ export function CartPage() {
           paymentMethod: string;
           promotionCode?: string;
           notes?: string;
-        }, user?: typeof user) => ReturnType<typeof orderApi.create>;
+        }, user?: typeof user) => Promise<OrderCreateResult>;
       }).create({
         items: items.map(item => ({
           productId: item.productId,
@@ -249,12 +265,25 @@ export function CartPage() {
         promotionCode: appliedPromotion?.code,
         notes: [notes, ...Object.values(supplierNotes)].filter(Boolean).join(' | '),
       }, user);
+      if (backendPaymentMethod === 'VNPAY') {
+        const paymentId = order.paymentId ?? order.payment?.id;
+        if (!paymentId) {
+          throw new Error('BE chua tra paymentId cho don hang VNPAY');
+        }
+        const session = await paymentApi.createGatewaySession(paymentId, 'VNPAY', user);
+        if (!session.paymentUrl) {
+          throw new Error('BE chua tra link thanh toan VNPay');
+        }
+        toast.success('Dang chuyen sang cong thanh toan VNPay');
+        window.location.assign(session.paymentUrl);
+        return;
+      }
       await clearCart();
       navigate('/order-confirmation', {
         state: { orders: [{ ...order, supplierName: 'CELLPHONES' }], poNumber, paymentMethod: backendPaymentMethod, shippingAddress, discount: discountAmount },
       });
-    } catch {
-      toast.error('Co loi xay ra khi dat hang. Vui long thu lai.');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Có lỗi xảy ra khi đặt hàng. Vui lòng thử lại.');
     } finally {
       setPlacingOrder(false);
     }
@@ -291,7 +320,7 @@ export function CartPage() {
               <h3 className="mb-4 text-center" style={{ fontFamily: 'var(--font-heading)' }}>Sản phẩm gợi ý</h3>
               <div className="grid grid-cols-2 gap-3">
                 {recommendations.slice(0, 4).map(p => (
-                  <Link key={p.id} to={`/products/${p.id}`}>
+                  <Link key={p.id} to={productDetailPath(p)}>
                     <Card className="overflow-hidden hover:shadow-md transition-shadow border-0 shadow-sm">
                       <div className="aspect-[4/3] overflow-hidden">
                         <ImageWithFallback src={p.images[0]} alt={p.name} className="w-full h-full object-cover" />
@@ -392,7 +421,7 @@ export function CartPage() {
                             {/* E18.02: Better stepper */}
                             <QuantityStepper
                               value={item.quantity}
-                              onChange={v => updateQuantity(item.id, v)}
+                              onChange={v => { void handleUpdateQuantity(item.id, v); }}
                               min={1}
                               disabled={isOOS}
                             />
@@ -480,7 +509,7 @@ export function CartPage() {
               <h3 className="mb-3 text-sm" style={{ fontFamily: 'var(--font-heading)' }}>Bạn cũng có thể thích</h3>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {recommendations.slice(0, 4).map(p => (
-                  <Link key={p.id} to={`/products/${p.id}`}>
+                  <Link key={p.id} to={productDetailPath(p)}>
                     <Card className="overflow-hidden hover:shadow-md transition-all duration-200 border-0 shadow-sm group">
                       <div className="aspect-[4/3] overflow-hidden">
                         <ImageWithFallback src={p.images[0]} alt={p.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
@@ -511,7 +540,9 @@ export function CartPage() {
                 <div className="flex items-center justify-between p-3 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl">
                   <div>
                     <p className="text-sm text-emerald-700 dark:text-emerald-400" style={{ fontWeight: 600 }}>{appliedPromotion.code}</p>
-                    <p className="text-xs text-emerald-600 dark:text-emerald-500">Giảm {formatPrice(discountAmount)}</p>
+                    <p className="text-xs text-emerald-600 dark:text-emerald-500">
+                      {isFreeShippingPromotion ? 'Miễn phí vận chuyển' : `Giảm ${formatPrice(discountAmount)}`}
+                    </p>
                   </div>
                   <button className="h-7 w-7 rounded-full hover:bg-destructive/10 flex items-center justify-center" onClick={handleRemoveCoupon}>
                     <XIcon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -562,14 +593,14 @@ export function CartPage() {
                     {supplierGroups.map(([sid, sitems]) => (
                       <div key={sid} className="flex justify-between text-xs text-muted-foreground">
                         <span className="truncate max-w-[200px]">Vận chuyển: {getCartStoreName(sitems[0])}</span>
-                        <span>{formatPrice(shippingBySupplier[sid] ?? 0)}</span>
+                        <span>{isFreeShippingPromotion ? formatPrice(0) : formatPrice(shippingBySupplier[sid] ?? 0)}</span>
                       </div>
                     ))}
                   </div>
                 ) : (
                   <div className="flex justify-between text-sm">
                     <span className="text-muted-foreground">Phí vận chuyển</span>
-                    <span>{formatPrice(totalShipping)}</span>
+                    <span>{formatPrice(effectiveShipping)}</span>
                   </div>
                 )}
 
@@ -580,8 +611,8 @@ export function CartPage() {
 
                 {appliedPromotion && (
                   <div className="flex justify-between text-sm text-emerald-600">
-                    <span>Giảm giá ({appliedPromotion.code})</span>
-                    <span>-{formatPrice(discountAmount)}</span>
+                    <span>{isFreeShippingPromotion ? 'Miễn phí vận chuyển' : `Giảm giá (${appliedPromotion.code})`}</span>
+                    <span>{isFreeShippingPromotion ? 'Đã áp dụng' : `-${formatPrice(discountAmount)}`}</span>
                   </div>
                 )}
               </div>
@@ -698,10 +729,13 @@ export function CartPage() {
             <Separator />
             <div className="space-y-1 text-sm">
               <div className="flex justify-between"><span>Tạm tính</span><span>{formatPrice(subtotal)}</span></div>
-              <div className="flex justify-between"><span>Vận chuyển</span><span>{formatPrice(totalShipping)}</span></div>
+              <div className="flex justify-between"><span>Vận chuyển</span><span>{formatPrice(effectiveShipping)}</span></div>
               <div className="flex justify-between"><span>Thuế GTGT</span><span>{formatPrice(tax)}</span></div>
-              {discountAmount > 0 && (
-                <div className="flex justify-between text-emerald-600"><span>Giảm giá</span><span>-{formatPrice(discountAmount)}</span></div>
+              {appliedPromotion && (
+                <div className="flex justify-between text-emerald-600">
+                  <span>{isFreeShippingPromotion ? 'Miễn phí vận chuyển' : 'Giảm giá'}</span>
+                  <span>{isFreeShippingPromotion ? 'Đã áp dụng' : `-${formatPrice(discountAmount)}`}</span>
+                </div>
               )}
               <Separator />
               <div className="flex justify-between" style={{ fontWeight: 600 }}>

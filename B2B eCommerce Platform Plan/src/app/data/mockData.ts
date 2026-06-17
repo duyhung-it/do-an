@@ -5,17 +5,17 @@ import type { Category, Product, Order, User, Review, Promotion, BlogPost, Trade
 
 // === IMAGES ===
 export const IMG = {
-  iphone16pm: 'https://images.unsplash.com/photo-1695048133142-1a20484d2569?w=600',
-  samsung_s25: 'https://images.unsplash.com/photo-1610945264803-c22b62831622?w=600',
-  xiaomi15: 'https://images.unsplash.com/photo-1574944985070-8f3ebc6b79d2?w=600',
-  oppo: 'https://images.unsplash.com/photo-1511707171634-5f897ff02aa9?w=600',
-  accessory: 'https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?w=600',
-  earbuds: 'https://images.unsplash.com/photo-1590658268037-6bf12165a8df?w=600',
-  smartwatch: 'https://images.unsplash.com/photo-1544117519-31a4b719223d?w=600',
-  charger: 'https://images.unsplash.com/photo-1609091839311-d5365f9ff1c5?w=600',
-  case: 'https://images.unsplash.com/photo-1601784551446-20c9e07cdbdb?w=600',
-  banner1: 'https://images.unsplash.com/photo-1592750475338-74b7b21085ab?w=1200',
-  banner2: 'https://images.unsplash.com/photo-1580910051074-3eb694886505?w=1200',
+  iphone16pm: 'https://fdn2.gsmarena.com/vv/pics/apple/apple-iphone-15-pro-max-1.jpg',
+  samsung_s25: 'https://fdn2.gsmarena.com/vv/pics/samsung/samsung-galaxy-s24-ultra-5g-sm-s928-1.jpg',
+  xiaomi15: 'https://fdn2.gsmarena.com/vv/pics/xiaomi/xiaomi-14-1.jpg',
+  oppo: 'https://fdn2.gsmarena.com/vv/pics/oppo/oppo-reno12-1.jpg',
+  accessory: 'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/MHJA3?wid=800&hei=800&fmt=jpeg&qlt=90&.v=1602179319000',
+  earbuds: 'https://www.apple.com/newsroom/images/product/airpods/standard/Apple-AirPods-Pro-2nd-gen-hero-220907_big.jpg.large.jpg',
+  smartwatch: 'https://fdn2.gsmarena.com/vv/pics/samsung/samsung-galaxy-watch-ultra-1.jpg',
+  charger: 'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/MHJA3?wid=800&hei=800&fmt=jpeg&qlt=90&.v=1602179319000',
+  case: 'https://store.storeimages.cdn-apple.com/1/as-images.apple.com/is/MQKJ3?wid=800&hei=800&fmt=jpeg&qlt=90&.v=1692730462265',
+  banner1: 'https://fdn2.gsmarena.com/vv/pics/apple/apple-iphone-15-pro-max-1.jpg',
+  banner2: 'https://fdn2.gsmarena.com/vv/pics/samsung/samsung-galaxy-s24-ultra-5g-sm-s928-1.jpg',
   avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100',
 };
 
@@ -164,9 +164,9 @@ export const mockProducts: Product[] = [
     createdAt: '2024-11-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z',
   },
   {
-    id: 'prod-007', name: 'AirPods Pro 3 (USB-C)', slug: 'airpods-pro-3-usb-c',
-    description: 'AirPods Pro 3 với chip H2, chống ồn ANC chủ động thế hệ 3, âm thanh Spatial Audio, pin 6h nghe nhạc + 30h với hộp sạc, kháng nước IPX4.',
-    shortDescription: 'Chip H2 | ANC thế hệ 3 | Spatial Audio | Pin 30h | IPX4',
+    id: 'prod-007', name: 'AirPods Pro 2 USB-C', slug: 'airpods-pro-2-usb-c',
+    description: 'AirPods Pro 2 USB-C với chip H2, chống ồn chủ động ANC, âm thanh Spatial Audio, hộp sạc USB-C và MagSafe, kháng bụi nước IP54.',
+    shortDescription: 'Chip H2 | ANC chủ động | Spatial Audio | USB-C | IP54',
     categoryId: 'cat-03', categoryName: 'Tai nghe', brand: 'Apple',
     images: [IMG.earbuds],
     price: 6490000, originalPrice: 7190000, discountPercent: 10,
@@ -233,7 +233,7 @@ export const mockUsers: User[] = [
   { id: 'user-001', fullName: 'Nguyễn Văn An', email: 'admin@cellphones.vn', phone: '0901234567', role: 'Quản trị viên', status: 'Hoạt động', avatarUrl: IMG.avatar, loyaltyPoints: 0, totalOrders: 0, totalSpent: 0, emailVerified: true, createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' },
   { id: 'user-002', fullName: 'Trần Thị Minh', email: 'khachhang@gmail.com', phone: '0912345678', role: 'Khách hàng', status: 'Hoạt động', avatarUrl: IMG.avatar, loyaltyPoints: 2500, totalOrders: 8, totalSpent: 85000000, emailVerified: true, createdAt: '2024-03-15T00:00:00Z', updatedAt: '2025-01-15T00:00:00Z' },
   { id: 'user-003', fullName: 'Lê Hoàng Đức', email: 'lehoanhduc@gmail.com', phone: '0923456789', role: 'Khách hàng', status: 'Hoạt động', avatarUrl: IMG.avatar, loyaltyPoints: 1200, totalOrders: 4, totalSpent: 42000000, emailVerified: true, createdAt: '2024-05-20T00:00:00Z', updatedAt: '2025-02-10T00:00:00Z' },
-  { id: 'user-004', fullName: 'Phương Nam Tech', email: 'ncc@cellphones.vn', phone: '0934567890', role: 'Nhà cung cấp', status: 'Hoạt động', avatarUrl: IMG.avatar, loyaltyPoints: 0, totalOrders: 0, totalSpent: 0, emailVerified: true, createdAt: '2024-02-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z' },
+  { id: 'user-004', fullName: 'CELLPHONES Partner', email: 'nguonhang@cellphones.vn', phone: '0934567890', role: 'Nhà cung cấp', status: 'Hoạt động', avatarUrl: IMG.avatar, loyaltyPoints: 0, totalOrders: 0, totalSpent: 0, emailVerified: true, createdAt: '2024-02-01T00:00:00Z', updatedAt: '2025-01-01T00:00:00Z' },
 ];
 
 // === ORDERS ===
@@ -263,7 +263,7 @@ export const mockOrders: Order[] = [
     id: 'ord-003', orderNumber: 'CP2025032001', customerId: 'user-002',
     customerName: 'Trần Thị Minh', customerEmail: 'khachhang@gmail.com', customerPhone: '0912345678',
     items: [
-      { id: 'oi-003', productId: 'prod-007', productName: 'AirPods Pro 3 (USB-C)', productImage: IMG.earbuds, brand: 'Apple', quantity: 1, unitPrice: 6490000, totalPrice: 6490000, variantName: 'Trắng', sku: 'APP3-WHT' },
+      { id: 'oi-003', productId: 'prod-007', productName: 'AirPods Pro 2 USB-C', productImage: IMG.earbuds, brand: 'Apple', quantity: 1, unitPrice: 6490000, totalPrice: 6490000, variantName: 'Trắng', sku: 'APP2-USBC-WHT' },
       { id: 'oi-004', productId: 'prod-010', productName: 'Ốp lưng iPhone 16 Pro Max Spigen', productImage: IMG.case, brand: 'Spigen', quantity: 1, unitPrice: 390000, totalPrice: 390000, variantName: 'Trong suốt', sku: 'SP-IP16PM-CL' },
     ],
     subtotal: 6880000, shippingFee: 30000, discount: 0, totalAmount: 6910000,
@@ -316,10 +316,10 @@ export const mockStoreLocations: StoreLocation[] = [
 // === COMBOS ===
 export const mockCombos: ProductCombo[] = [
   {
-    id: 'combo-001', name: 'Combo iPhone 16 Pro Max + AirPods Pro 3 + Ốp lưng Spigen', description: 'Bộ 3 sản phẩm Apple + phụ kiện cao cấp, tiết kiệm hơn mua lẻ.',
+    id: 'combo-001', name: 'Combo iPhone 16 Pro Max + AirPods Pro 2 USB-C + Ốp lưng Spigen', description: 'Bộ 3 sản phẩm Apple + phụ kiện cao cấp, tiết kiệm hơn mua lẻ.',
     products: [
       { productId: 'prod-001', productName: 'iPhone 16 Pro Max 256GB', productImage: IMG.iphone16pm, originalPrice: 34990000, comboPrice: 33490000, quantity: 1 },
-      { productId: 'prod-007', productName: 'AirPods Pro 3', productImage: IMG.earbuds, originalPrice: 6490000, comboPrice: 5990000, quantity: 1 },
+      { productId: 'prod-007', productName: 'AirPods Pro 2 USB-C', productImage: IMG.earbuds, originalPrice: 6490000, comboPrice: 5990000, quantity: 1 },
       { productId: 'prod-010', productName: 'Ốp Spigen Ultra Hybrid', productImage: IMG.case, originalPrice: 390000, comboPrice: 290000, quantity: 1 },
     ],
     totalOriginalPrice: 41870000, comboPrice: 39770000, savings: 2100000, savingsPercent: 5,
@@ -335,13 +335,13 @@ export const mockWishlistItems: WishlistItem[] = [
 // === CART ITEMS ===
 export const mockCartItems: CartItem[] = [];
 
-// === WISHLIST FOLDERS (B2B feature: organize wishlists into groups) ===
+// === WISHLIST FOLDERS (organize wishlists into groups) ===
 export const mockWishlistFolders: { id: string; userId: string; name: string; description: string; itemCount: number; createdAt: string }[] = [
   { id: 'wf-001', userId: 'user-002', name: 'Điện thoại yêu thích', description: 'Các model đang cân nhắc mua', itemCount: 1, createdAt: '2025-03-01T00:00:00Z' },
   { id: 'wf-002', userId: 'user-002', name: 'Phụ kiện cần mua', description: 'Phụ kiện cho iPhone mới', itemCount: 0, createdAt: '2025-03-05T00:00:00Z' },
 ];
 
-// === B2B MOCK DATA (for backward compatibility with legacy B2B API files) ===
+// === LEGACY MOCK DATA (for backward compatibility with older API files) ===
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export const mockShipments: any[] = [
   { id: 'shp-001', buyerId: 'user-002', supplierId: 's1', orderId: 'ord-001', orderNumber: 'CP2025031501', trackingCode: 'GHN12345678', carrier: 'GHN', status: 'Đã giao', estimatedDate: '2025-03-17T00:00:00Z', actualDate: '2025-03-16T00:00:00Z', createdAt: '2025-03-15T10:30:00Z' },

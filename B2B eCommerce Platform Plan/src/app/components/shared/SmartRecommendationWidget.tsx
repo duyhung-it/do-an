@@ -19,6 +19,7 @@ import { useCart } from '../../context/CartContext';
 import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import type { Product } from '../../types';
+import { productDetailPath } from '../../utils/productLinks';
 
 export type RecommendationType =
   | 'similar'        // Sản phẩm tương tự (cùng category)
@@ -134,7 +135,7 @@ function MiniProductCard({ product, compact = false }: { product: Product; compa
   };
 
   return (
-    <Link to={`/products/${product.id}`}>
+    <Link to={productDetailPath(product)}>
       <div className={`group bg-white dark:bg-card rounded-xl border hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 overflow-hidden ${compact ? '' : 'h-full'}`}>
         {/* Image */}
         <div className={`relative bg-gray-50 overflow-hidden ${compact ? 'aspect-square' : 'aspect-[4/3]'}`}>

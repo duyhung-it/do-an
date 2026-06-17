@@ -26,6 +26,7 @@ import { StatusBadge } from '../shared/StatusBadge';
 import { AppBreadcrumb } from '../shared/AppBreadcrumb';
 import { IconWrapper } from '../shared/IconWrapper';
 import { paymentApi } from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import { toast } from 'sonner';
 import type { Payment } from '../../types';
 
@@ -45,6 +46,7 @@ function getDaysUntilDue(dueDate: string): number {
 export function BuyerPaymentDetail() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [payment, setPayment] = useState<Payment | null>(null);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
@@ -55,12 +57,12 @@ export function BuyerPaymentDetail() {
     if (!id) return;
     setLoading(true);
     try {
-      const p = await paymentApi.getById(id);
+      const p = await paymentApi.getById(id, user);
       setPayment(p ?? null);
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, user]);
 
   useEffect(() => { fetchData(); }, [fetchData]);
 

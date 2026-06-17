@@ -20,6 +20,7 @@ import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { AnimatedNumber } from '../shared/AnimatedNumber';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
 import { toast } from 'sonner';
+import { productDetailPath } from '../../utils/productLinks';
 
 const formatPrice = (p: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(p);
 
@@ -82,7 +83,7 @@ function ProductCard({ product }: { product: Product }) {
   };
 
   return (
-    <Link to={`/products/${product.id}`}>
+    <Link to={productDetailPath(product)}>
       <Card className="group overflow-hidden card-interactive h-full border-0 shadow-sm bg-white dark:bg-card">
         <div className="aspect-square overflow-hidden relative bg-gray-50 dark:bg-muted/30">
           <ImageWithFallback src={product.images[0]} alt={product.name} className="w-full h-full object-cover img-zoom" />
@@ -126,12 +127,12 @@ function ProductCard({ product }: { product: Product }) {
 
 
 const BRANDS = [
-  { name: 'Apple', img: 'https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg' },
-  { name: 'Samsung', img: 'https://upload.wikimedia.org/wikipedia/commons/2/24/Samsung_Logo.svg' },
-  { name: 'Xiaomi', img: 'https://upload.wikimedia.org/wikipedia/commons/a/ae/Xiaomi_logo_%282021-%29.svg' },
-  { name: 'OPPO', img: 'https://upload.wikimedia.org/wikipedia/commons/6/63/OPPO_LOGO_2019.svg' },
-  { name: 'Vivo', img: 'https://upload.wikimedia.org/wikipedia/commons/9/9d/Vivo_logo_2019.svg' },
-  { name: 'Realme', img: 'https://upload.wikimedia.org/wikipedia/commons/3/31/Realme_Logo.svg' },
+  { name: 'Apple', mark: 'A', bg: 'bg-neutral-950', fg: 'text-white' },
+  { name: 'Samsung', mark: 'S', bg: 'bg-blue-700', fg: 'text-white' },
+  { name: 'Xiaomi', mark: 'MI', bg: 'bg-orange-500', fg: 'text-white' },
+  { name: 'OPPO', mark: 'O', bg: 'bg-emerald-700', fg: 'text-white' },
+  { name: 'Vivo', mark: 'V', bg: 'bg-indigo-600', fg: 'text-white' },
+  { name: 'Realme', mark: 'R', bg: 'bg-yellow-400', fg: 'text-neutral-950' },
 ];
 
 const CAT_ICONS: Record<string, React.ElementType> = { 'Điện thoại': Smartphone, 'Phụ kiện': Award, 'Tai nghe': Headphones, 'Đồng hồ thông minh': Watch, 'Sạc & Pin dự phòng': Battery, 'Thiết bị công nghệ': Cpu };
@@ -300,9 +301,11 @@ export function HomePage() {
         <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
           {BRANDS.map(b => (
             <Link key={b.name} to={`/products?brand=${b.name}`}>
-              <Card className="border hover:border-[#e31837]/40 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 bg-white group">
-                <CardContent className="p-4 flex flex-col items-center gap-2">
-                  <img src={b.img} alt={b.name} className="h-8 object-contain grayscale group-hover:grayscale-0 transition-all" onError={e => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              <Card className="border hover:border-[#e31837]/40 hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 bg-white group h-full">
+                <CardContent className="p-4 min-h-[96px] flex flex-col items-center justify-center gap-2.5">
+                  <div className={`h-10 w-10 rounded-full ${b.bg} ${b.fg} flex items-center justify-center text-sm font-extrabold shadow-sm ring-1 ring-black/5 transition-transform group-hover:scale-110`}>
+                    {b.mark}
+                  </div>
                   <span className="text-xs font-medium text-muted-foreground group-hover:text-[#e31837] transition-colors">{b.name}</span>
                 </CardContent>
               </Card>
@@ -475,7 +478,7 @@ export function HomePage() {
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
             {recentItems.map(item => (
-              <Link key={item.id} to={`/products/${item.id}`}>
+              <Link key={item.id} to={productDetailPath(item)}>
                 <Card className="card-interactive border-0 shadow-sm bg-white overflow-hidden">
                   <div className="aspect-square overflow-hidden relative bg-gray-50">
                     <img

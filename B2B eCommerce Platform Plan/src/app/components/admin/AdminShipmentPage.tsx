@@ -14,23 +14,29 @@ import { toast } from 'sonner';
 import type { ActiveFilter, ColumnConfig, FilterConfig, PaginationParams, Shipment, SortParams } from '../../types';
 
 const SHIPMENT_STATUSES = ['AWAITING_PICKUP', 'IN_TRANSIT', 'DELIVERED', 'FAILED'];
+const SHIPMENT_STATUS_LABELS: Record<string, string> = {
+  AWAITING_PICKUP: 'Chờ lấy hàng',
+  IN_TRANSIT: 'Đang vận chuyển',
+  DELIVERED: 'Đã giao',
+  FAILED: 'Giao thất bại',
+};
 
 const columns: (ColumnConfig & { render?: (item: Shipment) => React.ReactNode })[] = [
-  { key: 'trackingNumber', label: 'Tracking', visible: true, sortable: true },
-  { key: 'orderNumber', label: 'Order', visible: true, sortable: true },
-  { key: 'carrierName', label: 'Carrier', visible: true, sortable: true },
-  { key: 'status', label: 'Status', visible: true, sortable: true, render: shipment => <StatusBadge status={shipment.status} /> },
-  { key: 'estimatedDelivery', label: 'ETA', visible: true, sortable: true },
-  { key: 'actualDelivery', label: 'Delivered at', visible: true, sortable: true },
-  { key: 'createdAt', label: 'Created', visible: true, sortable: true },
+  { key: 'trackingNumber', label: 'Mã vận đơn', visible: true, sortable: true },
+  { key: 'orderNumber', label: 'Đơn hàng', visible: true, sortable: true },
+  { key: 'carrierName', label: 'Đơn vị vận chuyển', visible: true, sortable: true },
+  { key: 'status', label: 'Trạng thái', visible: true, sortable: true, render: shipment => <StatusBadge status={shipment.status} /> },
+  { key: 'estimatedDelivery', label: 'Dự kiến giao', visible: true, sortable: true },
+  { key: 'actualDelivery', label: 'Đã giao lúc', visible: true, sortable: true },
+  { key: 'createdAt', label: 'Ngày tạo', visible: true, sortable: true },
 ];
 
 const filterConfigs: FilterConfig[] = [
   {
     key: 'status',
-    label: 'Status',
+    label: 'Trạng thái',
     type: 'select',
-    options: SHIPMENT_STATUSES.map(status => ({ label: status, value: status })),
+    options: SHIPMENT_STATUSES.map(status => ({ label: SHIPMENT_STATUS_LABELS[status], value: status })),
   },
 ];
 
@@ -64,7 +70,7 @@ export function AdminShipmentPage() {
       setShipments(pageRes.data as Shipment[]);
       setTotal(pageRes.total);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Cannot load shipments');
+      toast.error(err instanceof Error ? err.message : 'Không tải được vận đơn');
     } finally {
       setLoading(false);
     }
@@ -96,7 +102,7 @@ export function AdminShipmentPage() {
       setSelectedShipment(detail as Shipment);
       syncShipment(detail as Shipment);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Cannot load shipment detail');
+      toast.error(err instanceof Error ? err.message : 'Không tải được chi tiết vận đơn');
     }
   };
 
@@ -108,16 +114,16 @@ export function AdminShipmentPage() {
       syncShipment(updated as Shipment);
       setNextStatus('');
       await fetchData();
-      toast.success('Shipment status updated');
+      toast.success('Đã cập nhật trạng thái vận chuyển');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Cannot update shipment status');
+      toast.error(err instanceof Error ? err.message : 'Không thể cập nhật trạng thái vận chuyển');
     } finally {
       setSavingStatus(false);
     }
   };
 
   const handleExportCSV = () => {
-    const headers = ['Tracking', 'Order', 'Carrier', 'Status', 'ETA', 'Delivered at', 'Created'];
+    const headers = ['Mã vận đơn', 'Đơn hàng', 'Đơn vị vận chuyển', 'Trạng thái', 'Dự kiến giao', 'Đã giao lúc', 'Ngày tạo'];
     const rows = allShipments.map(shipment => [
       shipment.trackingNumber,
       shipment.orderNumber,
@@ -147,9 +153,9 @@ export function AdminShipmentPage() {
               <span className="font-medium">{shipment.trackingNumber}</span>
             </div>
             <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
-              <span>Order: {shipment.orderNumber}</span>
-              <span>Carrier: {shipment.carrierName}</span>
-              <span>ETA: {shipment.estimatedDelivery ?? '-'}</span>
+              <span>Đơn hàng: {shipment.orderNumber}</span>
+              <span>Đơn vị vận chuyển: {shipment.carrierName}</span>
+              <span>Dự kiến: {shipment.estimatedDelivery ?? '-'}</span>
             </div>
           </div>
           <StatusBadge status={shipment.status} />
@@ -160,29 +166,29 @@ export function AdminShipmentPage() {
 
   return (
     <div className="space-y-4">
-      <AppBreadcrumb items={[{ label: 'Admin', href: '/admin' }, { label: 'Shipments' }]} />
+      <AppBreadcrumb items={[{ label: 'Quản trị', href: '/admin' }, { label: 'Vận chuyển' }]} />
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1>Shipment management</h1>
-          <p className="text-muted-foreground">Real admin shipment data from BE shipment contract.</p>
+          <h1>Quản lý vận chuyển</h1>
+          <p className="text-muted-foreground">Theo dõi vận đơn và cập nhật trạng thái giao hàng từ BE.</p>
         </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm" onClick={fetchData}>
-            <RefreshCw className="mr-1 h-4 w-4" /> Refresh
+            <RefreshCw className="mr-1 h-4 w-4" /> Làm mới
           </Button>
           <Button variant="outline" size="sm" onClick={handleExportCSV} disabled={allShipments.length === 0}>
-            <Download className="mr-1 h-4 w-4" /> Export CSV
+            <Download className="mr-1 h-4 w-4" /> Xuất CSV
           </Button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <Card><CardContent className="p-4"><Package className="mb-2 h-4 w-4 text-blue-500" /><p className="text-muted-foreground">Total</p><p className="text-xl">{stats.total}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><Clock className="mb-2 h-4 w-4 text-amber-500" /><p className="text-muted-foreground">Awaiting</p><p className="text-xl">{stats.awaiting}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><Truck className="mb-2 h-4 w-4 text-indigo-500" /><p className="text-muted-foreground">In transit</p><p className="text-xl">{stats.transit}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><CheckCircle2 className="mb-2 h-4 w-4 text-green-500" /><p className="text-muted-foreground">Delivered</p><p className="text-xl">{stats.delivered}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><XCircle className="mb-2 h-4 w-4 text-red-500" /><p className="text-muted-foreground">Failed</p><p className="text-xl">{stats.failed}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><Package className="mb-2 h-4 w-4 text-blue-500" /><p className="text-muted-foreground">Tổng vận đơn</p><p className="text-xl">{stats.total}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><Clock className="mb-2 h-4 w-4 text-amber-500" /><p className="text-muted-foreground">Chờ lấy hàng</p><p className="text-xl">{stats.awaiting}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><Truck className="mb-2 h-4 w-4 text-indigo-500" /><p className="text-muted-foreground">Đang vận chuyển</p><p className="text-xl">{stats.transit}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><CheckCircle2 className="mb-2 h-4 w-4 text-green-500" /><p className="text-muted-foreground">Đã giao</p><p className="text-xl">{stats.delivered}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><XCircle className="mb-2 h-4 w-4 text-red-500" /><p className="text-muted-foreground">Thất bại</p><p className="text-xl">{stats.failed}</p></CardContent></Card>
       </div>
 
       <FilterBar
@@ -191,7 +197,7 @@ export function AdminShipmentPage() {
         onFilterChange={next => { setFilters(next); setPagination(current => ({ ...current, page: 1 })); }}
         searchValue={search}
         onSearchChange={value => { setSearch(value); setPagination(current => ({ ...current, page: 1 })); }}
-        searchPlaceholder="Search tracking, order, customer..."
+        searchPlaceholder="Tìm mã vận đơn, đơn hàng, khách hàng..."
       />
 
       <DataTable
@@ -207,10 +213,10 @@ export function AdminShipmentPage() {
         renderListItem={renderListItem}
         loading={loading}
         viewModes={['table', 'list']}
-        emptyTitle="No shipments"
-        emptyDescription="No admin shipments matched the current filters."
+        emptyTitle="Chưa có vận đơn"
+        emptyDescription="Không có vận đơn nào khớp bộ lọc hiện tại."
         renderActions={(shipment: Shipment) => (
-          <Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); openShipment(shipment); }} title="View">
+          <Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); openShipment(shipment); }} title="Xem chi tiết">
             <Eye className="h-3.5 w-3.5" />
           </Button>
         )}
@@ -232,12 +238,12 @@ export function AdminShipmentPage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div><p className="text-muted-foreground">Order</p><p>{selectedShipment.orderNumber}</p></div>
-                <div><p className="text-muted-foreground">Tracking</p><p>{selectedShipment.trackingNumber}</p></div>
-                <div><p className="text-muted-foreground">ETA</p><p>{selectedShipment.estimatedDelivery ?? '-'}</p></div>
-                <div><p className="text-muted-foreground">Delivered at</p><p>{selectedShipment.actualDelivery ?? '-'}</p></div>
-                <div><p className="text-muted-foreground">Created</p><p>{selectedShipment.createdAt ?? '-'}</p></div>
-                <div><p className="text-muted-foreground">Updated</p><p>{(selectedShipment as unknown as { updatedAt?: string }).updatedAt ?? '-'}</p></div>
+                <div><p className="text-muted-foreground">Đơn hàng</p><p>{selectedShipment.orderNumber}</p></div>
+                <div><p className="text-muted-foreground">Mã vận đơn</p><p>{selectedShipment.trackingNumber}</p></div>
+                <div><p className="text-muted-foreground">Dự kiến giao</p><p>{selectedShipment.estimatedDelivery ?? '-'}</p></div>
+                <div><p className="text-muted-foreground">Đã giao lúc</p><p>{selectedShipment.actualDelivery ?? '-'}</p></div>
+                <div><p className="text-muted-foreground">Ngày tạo</p><p>{selectedShipment.createdAt ?? '-'}</p></div>
+                <div><p className="text-muted-foreground">Cập nhật</p><p>{(selectedShipment as unknown as { updatedAt?: string }).updatedAt ?? '-'}</p></div>
               </div>
 
               <Separator />
@@ -245,15 +251,15 @@ export function AdminShipmentPage() {
               {nextShipmentStatuses(selectedShipment.status).length > 0 && (
                 <div className="flex gap-2">
                   <Select value={nextStatus} onValueChange={setNextStatus}>
-                    <SelectTrigger className="flex-1"><SelectValue placeholder="Update status..." /></SelectTrigger>
+                    <SelectTrigger className="flex-1"><SelectValue placeholder="Cập nhật trạng thái..." /></SelectTrigger>
                     <SelectContent>
                       {nextShipmentStatuses(selectedShipment.status).map(status => (
-                        <SelectItem key={status} value={status}>{status}</SelectItem>
+                        <SelectItem key={status} value={status}>{SHIPMENT_STATUS_LABELS[status]}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                   <Button onClick={handleStatusUpdate} disabled={!nextStatus || savingStatus}>
-                    {savingStatus ? 'Updating...' : 'Update'}
+                    {savingStatus ? 'Đang cập nhật...' : 'Cập nhật'}
                   </Button>
                 </div>
               )}

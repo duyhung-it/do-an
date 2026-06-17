@@ -297,7 +297,7 @@ export function CategoryManagement() {
                         <button
                           type="button"
                           className="h-5 w-5 flex items-center justify-center shrink-0"
-                          aria-label={isExpanded ? 'Thu gon danh muc' : 'Mo rong danh muc'}
+                          aria-label={isExpanded ? 'Thu gọn danh mục' : 'Mở rộng danh mục'}
                           onClick={e => {
                             e.preventDefault();
                             e.stopPropagation();
@@ -437,7 +437,7 @@ export function CategoryManagement() {
           <CategoryCombobox
             value={form.parentId ?? ''}
             onChange={(id) => setForm(p => ({ ...p, parentId: id || null }))}
-            placeholder="Chon danh muc cha..."
+            placeholder="Chọn danh mục cha..."
             allowCreate={false}
             allowRoot
             excludeId={editingCat?.id}

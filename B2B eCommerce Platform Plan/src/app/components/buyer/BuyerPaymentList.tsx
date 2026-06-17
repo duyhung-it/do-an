@@ -4,7 +4,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { useNavigate } from 'react-router';
+import { useNavigate, useSearchParams } from 'react-router';
 import {
   CreditCard, Clock, CheckCircle2, AlertTriangle, DollarSign,
   Download, BarChart3, Upload, Ban,
@@ -276,12 +276,13 @@ function PaymentCard({ p, onClick }: { p: Payment; onClick: () => void }) {
 export function BuyerPaymentList() {
   const { user } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [data, setData] = useState<Payment[]>([]);
   const [totalItems, setTotalItems] = useState(0);
   const [allPayments, setAllPayments] = useState<Payment[]>([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState<ActiveFilter[]>([]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const [pagination, setPagination] = useState<PaginationParams>({ page: 1, pageSize: 10 });
   const [sort, setSort] = useState<SortParams>({});
   const [viewMode, setViewMode] = useState<PaymentViewMode>('list');

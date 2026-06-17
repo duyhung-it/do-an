@@ -30,12 +30,25 @@ type InventoryReport = { productId: string; productName: string; brand: string; 
 type StatusCount = { status: string; count: number };
 
 const COLORS = ['#e31837', '#2563eb', '#059669', '#d97706', '#7c3aed', '#0891b2'];
+const EXPORT_TYPE_LABELS: Record<string, string> = {
+  revenue: 'Doanh thu',
+  returns: 'Hoàn trả',
+  inventory: 'Tồn kho',
+};
+const RETURN_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Chờ xử lý',
+  APPROVED: 'Đã duyệt',
+  PROCESSING: 'Đang xử lý',
+  REFUNDED: 'Đã hoàn tiền',
+  CLOSED: 'Đã đóng',
+  REJECTED: 'Từ chối',
+};
 
 const money = (value: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(Number(value || 0));
 
 const shortMoney = (value: number) => {
-  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)} ty`;
+  if (value >= 1_000_000_000) return `${(value / 1_000_000_000).toFixed(1)} tỷ`;
   if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)} tr`;
   return value.toLocaleString('vi-VN');
 };
@@ -71,7 +84,7 @@ export function AdminReportPage() {
       setInventory(inventoryRows as InventoryReport[]);
       setReturns(returnRows as StatusCount[]);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Khong tai duoc bao cao');
+      toast.error(error instanceof Error ? error.message : 'Không tải được báo cáo');
     } finally {
       setLoading(false);
     }
@@ -101,34 +114,34 @@ export function AdminReportPage() {
       anchor.click();
       URL.revokeObjectURL(url);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Xuat bao cao that bai');
+      toast.error(error instanceof Error ? error.message : 'Xuất báo cáo thất bại');
     }
   };
 
   return (
     <div className="space-y-5">
-      <AppBreadcrumb items={[{ label: 'Admin', href: '/admin' }, { label: 'Bao cao' }]} />
+      <AppBreadcrumb items={[{ label: 'Quản trị', href: '/admin' }, { label: 'Báo cáo' }]} />
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div>
           <h1 className="flex items-center gap-2">
             <BarChart3 className="h-6 w-6 text-primary" />
-            Bao cao he thong
+            Báo cáo hệ thống
           </h1>
-          <p className="text-muted-foreground">Doc truc tiep tu cac endpoint report BE da document.</p>
+          <p className="text-muted-foreground">Đọc trực tiếp từ các endpoint báo cáo BE đã document.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Input className="w-40" type="date" value={from} onChange={event => setFrom(event.target.value)} />
           <Input className="w-40" type="date" value={to} onChange={event => setTo(event.target.value)} />
           <Button variant="outline" onClick={loadReports} disabled={loading}>
-            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Lam moi
+            <RefreshCw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} /> Làm mới
           </Button>
           <Select value={exportType} onValueChange={setExportType}>
             <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
             <SelectContent>
-              <SelectItem value="revenue">Revenue</SelectItem>
-              <SelectItem value="returns">Returns</SelectItem>
-              <SelectItem value="inventory">Inventory</SelectItem>
+              <SelectItem value="revenue">{EXPORT_TYPE_LABELS.revenue}</SelectItem>
+              <SelectItem value="returns">{EXPORT_TYPE_LABELS.returns}</SelectItem>
+              <SelectItem value="inventory">{EXPORT_TYPE_LABELS.inventory}</SelectItem>
             </SelectContent>
           </Select>
           <Button onClick={downloadReport}>
@@ -139,18 +152,18 @@ export function AdminReportPage() {
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Card><CardContent className="p-4"><ShoppingCart className="mb-2 h-5 w-5 text-blue-600" /><p className="text-muted-foreground">Doanh thu</p><p className="text-xl font-semibold">{shortMoney(stats.totalRevenue)}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><PackageSearch className="mb-2 h-5 w-5 text-emerald-600" /><p className="text-muted-foreground">Don hang</p><p className="text-xl font-semibold">{stats.totalOrders}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><Boxes className="mb-2 h-5 w-5 text-violet-600" /><p className="text-muted-foreground">SP da ban</p><p className="text-xl font-semibold">{stats.soldCount}</p></CardContent></Card>
-        <Card><CardContent className="p-4"><RotateCcw className="mb-2 h-5 w-5 text-amber-600" /><p className="text-muted-foreground">Low-stock variants</p><p className="text-xl font-semibold">{stats.lowStock}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><PackageSearch className="mb-2 h-5 w-5 text-emerald-600" /><p className="text-muted-foreground">Đơn hàng</p><p className="text-xl font-semibold">{stats.totalOrders}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><Boxes className="mb-2 h-5 w-5 text-violet-600" /><p className="text-muted-foreground">SP đã bán</p><p className="text-xl font-semibold">{stats.soldCount}</p></CardContent></Card>
+        <Card><CardContent className="p-4"><RotateCcw className="mb-2 h-5 w-5 text-amber-600" /><p className="text-muted-foreground">Biến thể sắp hết</p><p className="text-xl font-semibold">{stats.lowStock}</p></CardContent></Card>
       </div>
 
       {loading ? (
-        <Card><CardContent className="p-8 text-center text-muted-foreground">Dang tai bao cao...</CardContent></Card>
+        <Card><CardContent className="p-8 text-center text-muted-foreground">Đang tải báo cáo...</CardContent></Card>
       ) : (
         <>
           <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
             <Card>
-              <CardHeader><CardTitle>Doanh thu theo ngay</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Doanh thu theo ngày</CardTitle></CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
                   <LineChart data={revenue}>
@@ -159,14 +172,14 @@ export function AdminReportPage() {
                     <YAxis tick={{ fontSize: 11 }} tickFormatter={shortMoney} />
                     <Tooltip formatter={(value: number, name) => name === 'revenue' ? money(value) : value} />
                     <Line type="monotone" dataKey="revenue" stroke="#e31837" strokeWidth={2.5} dot={false} name="Doanh thu" />
-                    <Line type="monotone" dataKey="orderCount" stroke="#2563eb" strokeWidth={2} dot={false} name="Don hang" />
+                    <Line type="monotone" dataKey="orderCount" stroke="#2563eb" strokeWidth={2} dot={false} name="Đơn hàng" />
                   </LineChart>
                 </ResponsiveContainer>
               </CardContent>
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>Trang thai hoan tra</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Trạng thái hoàn trả</CardTitle></CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
                   <PieChart>
@@ -179,7 +192,7 @@ export function AdminReportPage() {
                 <div className="mt-3 flex flex-wrap gap-2">
                   {returns.map((row, index) => (
                     <Badge key={row.status} variant="outline" style={{ borderColor: COLORS[index % COLORS.length] }}>
-                      {row.status}: {row.count}
+                      {RETURN_STATUS_LABELS[row.status] ?? row.status}: {row.count}
                     </Badge>
                   ))}
                 </div>
@@ -189,7 +202,7 @@ export function AdminReportPage() {
 
           <div className="grid gap-5 xl:grid-cols-2">
             <Card>
-              <CardHeader><CardTitle>Top san pham</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Top sản phẩm</CardTitle></CardHeader>
               <CardContent>
                 <ResponsiveContainer width="100%" height={300}>
                   <BarChart data={topProducts} layout="vertical" margin={{ left: 35 }}>
@@ -204,16 +217,16 @@ export function AdminReportPage() {
             </Card>
 
             <Card>
-              <CardHeader><CardTitle>Ton kho can chu y</CardTitle></CardHeader>
+              <CardHeader><CardTitle>Tồn kho cần chú ý</CardTitle></CardHeader>
               <CardContent>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="text-muted-foreground">
                       <tr>
-                        <th className="py-2 text-left">San pham</th>
-                        <th className="py-2 text-left">Brand</th>
-                        <th className="py-2 text-right">Stock</th>
-                        <th className="py-2 text-right">Low</th>
+                        <th className="py-2 text-left">Sản phẩm</th>
+                        <th className="py-2 text-left">Hãng</th>
+                        <th className="py-2 text-right">Tồn kho</th>
+                        <th className="py-2 text-right">Sắp hết</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y">
@@ -233,16 +246,16 @@ export function AdminReportPage() {
           </div>
 
           <Card>
-            <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-4 w-4" /> Top khach hang</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><Users className="h-4 w-4" /> Top khách hàng</CardTitle></CardHeader>
             <CardContent>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted/50 text-muted-foreground">
                     <tr>
-                      <th className="px-3 py-2 text-left">Khach hang</th>
-                      <th className="px-3 py-2 text-left">Dien thoai</th>
-                      <th className="px-3 py-2 text-right">Don hang</th>
-                      <th className="px-3 py-2 text-right">Tong chi</th>
+                      <th className="px-3 py-2 text-left">Khách hàng</th>
+                      <th className="px-3 py-2 text-left">Điện thoại</th>
+                      <th className="px-3 py-2 text-right">Đơn hàng</th>
+                      <th className="px-3 py-2 text-right">Tổng chi</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y">

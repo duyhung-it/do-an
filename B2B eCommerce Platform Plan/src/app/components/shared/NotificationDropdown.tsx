@@ -7,30 +7,28 @@ import { useState, useMemo } from 'react';
 import { useNavigate, Link } from 'react-router';
 import {
   Bell, Check, CheckCheck, Trash2, Package,
-  ClipboardList, Settings, MessageCircle, Filter,
-  FileText, ScrollText, CreditCard, Truck, ShieldCheck,
-  Star, RotateCcw, AlertCircle, ArrowRight, Wallet,
+  ClipboardList, Settings, Filter,
+  CreditCard, Truck, Star, RotateCcw, AlertCircle, ArrowRight, Gift,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
-import { ScrollArea } from '../ui/scroll-area';
 import { Separator } from '../ui/separator';
 import { useNotifications } from '../../context/NotificationContext';
+import { formatVietnamDateTime } from '../../utils/dateTime';
 import type { AppNotification, NotificationType, NotificationPriority } from '../../types';
 
 const typeIcon: Record<NotificationType, React.ReactNode> = {
   order: <ClipboardList className="h-4 w-4 text-blue-500" />,
   product: <Package className="h-4 w-4 text-purple-500" />,
   system: <Settings className="h-4 w-4 text-gray-500" />,
-  message: <MessageCircle className="h-4 w-4 text-green-500" />,
-  rfq: <FileText className="h-4 w-4 text-indigo-500" />,
-  contract: <ScrollText className="h-4 w-4 text-cyan-500" />,
+  promotion: <Gift className="h-4 w-4 text-red-500" />,
+  loyalty: <Gift className="h-4 w-4 text-pink-500" />,
+  warranty: <Settings className="h-4 w-4 text-cyan-500" />,
+  price_drop: <Package className="h-4 w-4 text-green-500" />,
   payment: <CreditCard className="h-4 w-4 text-amber-500" />,
   shipment: <Truck className="h-4 w-4 text-orange-500" />,
-  approval: <ShieldCheck className="h-4 w-4 text-red-500" />,
   review: <Star className="h-4 w-4 text-yellow-500" />,
-  credit: <Wallet className="h-4 w-4 text-teal-500" />,
   return: <RotateCcw className="h-4 w-4 text-pink-500" />,
 };
 
@@ -38,14 +36,13 @@ const typeLabel: Record<NotificationType, string> = {
   order: 'Đơn hàng',
   product: 'Sản phẩm',
   system: 'Hệ thống',
-  message: 'Tin nhắn',
-  rfq: 'Báo giá',
-  contract: 'Thỏa thuận',
+  promotion: 'Khuyến mãi',
+  loyalty: 'Thành viên',
+  warranty: 'Bảo hành',
+  price_drop: 'Giảm giá',
   payment: 'Thanh toán',
   shipment: 'Vận chuyển',
-  approval: 'Phê duyệt',
   review: 'Đánh giá',
-  credit: 'Tín dụng',
   return: 'Trả hàng',
 };
 
@@ -124,8 +121,8 @@ export function NotificationDropdown() {
     { key: 'unread', label: 'Chưa đọc' },
     { key: 'order', label: 'Đơn hàng' },
     { key: 'payment', label: 'Thanh toán' },
-    { key: 'rfq', label: 'Báo giá' },
-    { key: 'message', label: 'Tin nhắn' },
+    { key: 'promotion', label: 'Khuyến mãi' },
+    { key: 'review', label: 'Đánh giá' },
     { key: 'system', label: 'Hệ thống' },
   ];
 
@@ -141,9 +138,12 @@ export function NotificationDropdown() {
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-96 p-0" align="end">
+      <PopoverContent
+        className="flex max-h-[min(640px,calc(100vh-5rem))] w-[min(24rem,calc(100vw-1rem))] flex-col overflow-hidden p-0"
+        align="end"
+      >
         {/* Header */}
-        <div className="flex items-center justify-between p-3 border-b">
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b p-3">
           <h4 className="flex items-center gap-2">
             Thông báo
             {unreadCount > 0 && (
@@ -159,7 +159,7 @@ export function NotificationDropdown() {
         </div>
 
         {/* Filter tabs */}
-        <div className="flex items-center gap-1 p-2 border-b overflow-x-auto">
+        <div className="flex shrink-0 items-center gap-1 overflow-x-auto border-b p-2">
           {filters.map(f => {
             const count = f.key === 'all'
               ? unreadCount
@@ -188,7 +188,7 @@ export function NotificationDropdown() {
         </div>
 
         {/* Content */}
-        <ScrollArea className="max-h-[400px]">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
           {filtered.length === 0 ? (
             <div className="py-10 text-center">
               <Filter className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
@@ -205,26 +205,28 @@ export function NotificationDropdown() {
                 {group.items.map(noti => (
                   <div key={noti.id}>
                     <div
-                      className={`flex gap-3 p-3 cursor-pointer hover:bg-muted/50 transition-colors ${
+                      className={`grid grid-cols-[2rem_minmax(0,1fr)_1rem] gap-3 p-3 cursor-pointer hover:bg-muted/50 transition-colors ${
                         !noti.isRead ? 'bg-primary/5' : ''
                       }`}
                       onClick={() => handleClick(noti)}
                     >
-                      <div className="mt-0.5 shrink-0">
+                      <div className="mt-0.5">
                         <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
                           {typeIcon[noti.type] ?? <Bell className="h-4 w-4" />}
                         </div>
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <p className={!noti.isRead ? 'font-medium' : ''}>{noti.title}</p>
+                        <div className="flex min-w-0 items-start gap-2">
+                          <p className={`min-w-0 flex-1 truncate text-sm leading-5 ${!noti.isRead ? 'font-medium' : ''}`}>
+                            {noti.title}
+                          </p>
                           {!noti.isRead && (
-                            <span className="h-2 w-2 rounded-full bg-primary shrink-0" />
+                            <span className="mt-1.5 h-2 w-2 rounded-full bg-primary shrink-0" />
                           )}
                         </div>
-                        <p className="text-muted-foreground line-clamp-2">{noti.message}</p>
+                        <p className="mt-0.5 line-clamp-2 break-words text-sm leading-5 text-muted-foreground">{noti.message}</p>
                         <div className="flex items-center gap-2 mt-1 flex-wrap">
-                          <span className="text-muted-foreground text-xs">{noti.createdAt}</span>
+                          <span className="text-muted-foreground text-xs">{formatVietnamDateTime(noti.createdAt)}</span>
                           <Badge variant="outline" className="text-xs px-1.5 py-0">
                             {typeLabel[noti.type] ?? noti.type}
                           </Badge>
@@ -238,17 +240,17 @@ export function NotificationDropdown() {
                           <Button
                             size="sm"
                             variant="outline"
-                            className="mt-1.5 h-6 text-xs"
+                            className="mt-2 h-7 text-xs"
                             onClick={e => { e.stopPropagation(); handleClick(noti); }}
                           >
                             {noti.actionLabel}
                           </Button>
                         )}
                       </div>
-                      <div className="flex flex-col gap-1 shrink-0">
+                      <div className="flex flex-col items-center gap-1">
                         {!noti.isRead && (
                           <button
-                            className="text-muted-foreground hover:text-foreground"
+                            className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
                             onClick={e => { e.stopPropagation(); markAsRead(noti.id); }}
                             title="Đánh dấu đã đọc"
                           >
@@ -256,7 +258,7 @@ export function NotificationDropdown() {
                           </button>
                         )}
                         <button
-                          className="text-muted-foreground hover:text-destructive"
+                          className="rounded p-0.5 text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
                           onClick={e => { e.stopPropagation(); deleteNotification(noti.id); }}
                           title="Xoá"
                         >
@@ -270,10 +272,10 @@ export function NotificationDropdown() {
               </div>
             ))
           )}
-        </ScrollArea>
+        </div>
 
         {/* Footer — Xem tất cả (28C.02) */}
-        <div className="p-2 border-t">
+        <div className="shrink-0 border-t bg-background p-2">
           <Link to="/notifications" onClick={() => setOpen(false)}>
             <Button variant="ghost" size="sm" className="w-full justify-center">
               Xem tất cả thông báo <ArrowRight className="ml-1 h-3 w-3" />

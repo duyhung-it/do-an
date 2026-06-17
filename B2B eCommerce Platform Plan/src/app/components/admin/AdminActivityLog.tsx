@@ -78,12 +78,9 @@ function getEntityPath(entity: string): string | null {
   const map: Record<string, string> = {
     'Sản phẩm': '/admin/products',
     'Đơn hàng': '/admin/orders',
-    'Người dùng': '/admin/users',
-    'RFQ': '/admin/rfq',
-    'Hợp đồng': '/admin/contracts',
+    'Người dùng': '/admin/customers',
     'Khuyến mãi': '/admin/promotions',
     'Cấu hình': '/admin/settings',
-    'Chứng chỉ': '/admin/certificates',
     'Danh mục': '/admin/categories',
   };
   return map[entity] || null;

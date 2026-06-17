@@ -102,6 +102,23 @@ const statusColorMap: Record<string, { badge: string; dot: string }> = {
 
 const defaultColors = { badge: 'bg-slate-50 text-slate-700 border-slate-200', dot: 'bg-slate-400' };
 
+const statusLabelMap: Record<string, string> = {
+  PENDING: 'Chờ xác nhận',
+  CONFIRMED: 'Đã xác nhận',
+  SHIPPING: 'Đang giao',
+  DELIVERED: 'Đã giao',
+  CANCELLED: 'Đã hủy',
+  RETURNED: 'Hoàn trả',
+  UNPAID: 'Chưa thanh toán',
+  PAID: 'Đã thanh toán',
+  FAILED: 'Thất bại',
+  REFUNDED: 'Đã hoàn tiền',
+  PARTIALLY_REFUNDED: 'Hoàn một phần',
+  OVERDUE: 'Quá hạn',
+  AWAITING_PICKUP: 'Chờ lấy hàng',
+  IN_TRANSIT: 'Đang vận chuyển',
+};
+
 interface StatusBadgeProps {
   status: string;
   className?: string;
@@ -118,7 +135,7 @@ export function StatusBadge({ status, className = '', size = 'md', showDot = tru
       {showDot && (
         <span className={`inline-block h-1.5 w-1.5 rounded-full mr-1.5 shrink-0 ${colors.dot}`} />
       )}
-      {status}
+      {statusLabelMap[status] ?? status}
     </Badge>
   );
 }

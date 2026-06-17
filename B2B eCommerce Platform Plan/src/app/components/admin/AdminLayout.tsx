@@ -7,10 +7,10 @@ import { useState, Suspense, useCallback, type ElementType } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router';
 import {
   LayoutDashboard, Users, FolderTree, PackageCheck, ClipboardList, Settings,
-  Menu, X, ChevronLeft, ShieldCheck, LogOut, Star, FileText, BarChart3,
+  Menu, X, ChevronLeft, ShieldCheck, LogOut, Star,
   Truck, Wallet, Activity, Receipt, ChevronDown, PanelLeftClose, PanelLeft,
-  Shield, Award, RotateCcw, Warehouse, FolderOpen, FileBarChart,
-  Mail, LayoutGrid, Tag, Building2,
+  Shield, RotateCcw, Warehouse, FileBarChart, Banknote,
+  Mail, LayoutGrid, Building2,
 } from 'lucide-react';
 import { Button } from '../ui/button';
 // Badge replaced with <span> for sidebar items
@@ -45,10 +45,8 @@ const adminSections: SidebarSection[] = [
     key: 'overview',
     label: 'Tổng quan',
     items: [
-      { path: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-      { path: '/admin/analytics', label: 'Phân tích & BI', icon: BarChart3 },
+      { path: '/admin', label: 'Tổng quan', icon: LayoutDashboard, exact: true },
       { path: '/admin/reports', label: 'Báo cáo', icon: FileBarChart },
-      { path: '/admin/report-builder', label: 'Tạo báo cáo tùy chỉnh', icon: FileBarChart },
     ],
   },
   {
@@ -58,8 +56,6 @@ const adminSections: SidebarSection[] = [
       { path: '/admin/products', label: 'Quản lý sản phẩm', icon: PackageCheck },
       { path: '/admin/categories', label: 'Danh mục', icon: FolderTree },
       { path: '/admin/inventory', label: 'Kho hàng & IMEI', icon: Warehouse },
-      { path: '/admin/warehouses', label: 'Kho hàng', icon: Warehouse },
-      { path: '/admin/combos', label: 'Combo sản phẩm', icon: Tag },
     ],
   },
   {
@@ -70,7 +66,6 @@ const adminSections: SidebarSection[] = [
       { path: '/admin/returns', label: 'Trả hàng', icon: RotateCcw },
       { path: '/admin/shipments', label: 'Vận chuyển', icon: Truck },
       { path: '/admin/promotions', label: 'Khuyến mãi', icon: Star },
-      { path: '/admin/installments', label: 'Trả góp', icon: Receipt },
       { path: '/admin/trade-in', label: 'Thu cũ đổi mới', icon: Truck, badgeCount: 3 },
       { path: '/admin/banners', label: 'Banner quảng cáo', icon: LayoutGrid },
     ],
@@ -81,7 +76,6 @@ const adminSections: SidebarSection[] = [
     items: [
       { path: '/admin/customers', label: 'Danh sách khách hàng', icon: Users },
       { path: '/admin/reviews', label: 'Đánh giá', icon: Star },
-      { path: '/admin/loyalty', label: 'Khách hàng thân thiết', icon: Award },
       { path: '/admin/warranty', label: 'Bảo hành', icon: Shield },
     ],
   },
@@ -89,9 +83,7 @@ const adminSections: SidebarSection[] = [
     key: 'content',
     label: 'Nội dung',
     items: [
-      { path: '/admin/blog', label: 'Blog & Bài viết', icon: FileText },
-      { path: '/admin/email-templates', label: 'Email Templates', icon: Mail },
-      { path: '/admin/documents', label: 'Tài liệu', icon: FolderOpen },
+      { path: '/admin/email-templates', label: 'Mẫu email', icon: Mail },
     ],
   },
   {
@@ -100,13 +92,14 @@ const adminSections: SidebarSection[] = [
     items: [
       { path: '/admin/stores', label: 'Cửa hàng', icon: Building2 },
       { path: '/admin/staff', label: 'Nhân viên', icon: Users },
-      { path: '/admin/suppliers', label: 'Nguồn hàng', icon: Building2 },
     ],
   },
   {
     key: 'finance',
     label: 'Tài chính',
     items: [
+      { path: '/admin/revenue', label: 'Doanh thu', icon: Banknote },
+      { path: '/admin/reconciliation', label: 'Đối soát thanh toán', icon: Wallet },
       { path: '/admin/payments', label: 'Thanh toán', icon: Wallet },
       { path: '/admin/invoices', label: 'Hoá đơn', icon: Receipt },
     ],

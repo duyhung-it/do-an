@@ -205,7 +205,13 @@ export interface OrderStatusHistory {
 }
 
 // --- Người dùng ---
-export type UserRole = 'Khách hàng' | 'Quản trị viên' | 'Nhà cung cấp';
+export type UserRole =
+  | 'CUSTOMER'
+  | 'ADMIN'
+  | 'SUPPLIER'
+  | 'Khách hàng'
+  | 'Quản trị viên'
+  | 'Nhà cung cấp';
 export type UserStatus = 'Hoạt động' | 'Bị khoá' | 'Chờ xác minh';
 
 export interface User {
@@ -273,7 +279,18 @@ export interface Review {
 export type ReviewTag = 'Chất lượng' | 'Giao hàng' | 'Đóng gói' | 'Giá cả' | 'Dịch vụ';
 
 // --- Thông báo ---
-export type NotificationType = 'order' | 'product' | 'system' | 'promotion' | 'warranty' | 'price_drop' | 'review';
+export type NotificationType =
+  | 'order'
+  | 'product'
+  | 'system'
+  | 'promotion'
+  | 'loyalty'
+  | 'warranty'
+  | 'price_drop'
+  | 'review'
+  | 'payment'
+  | 'shipment'
+  | 'return';
 export type NotificationPriority = 'low' | 'medium' | 'high' | 'urgent';
 export type NotificationCategory = 'giao_dich' | 'he_thong' | 'tuong_tac' | 'canh_bao';
 
@@ -403,8 +420,11 @@ export interface RegisterData {
   email: string;
   password: string;
   phone: string;
-  role?: 'Khách hàng';
+  role?: UserRole | 'Người mua';
+  companyName?: string;
+  taxCode?: string;
   address?: string;
+  city?: string;
 }
 
 // --- Khuyến mãi ---
@@ -849,6 +869,7 @@ export interface Invoice {
   dueDate: string;
   paidAt?: string;
   taxAmount?: number;
+  discountAmount?: number;
 }
 
 // ============================================================

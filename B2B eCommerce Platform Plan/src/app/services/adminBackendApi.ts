@@ -1,4 +1,4 @@
-import type { ActiveFilter, PaginationParams, PaginatedResponse, Product, SortParams } from '../types';
+import type { ActiveFilter, PaginationParams, PaginatedResponse, Product, SortParams, User } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api/v1';
 
@@ -144,6 +144,17 @@ function mapOrder(raw: any) {
         .filter(Boolean)
         .join(', ')
     : '';
+  const items = Array.isArray(raw.items)
+    ? raw.items
+    : raw.items?.firstItem
+      ? [{
+          ...raw.items.firstItem,
+          id: raw.items.firstItem.productId,
+          quantity: raw.items.count ?? 1,
+          unitPrice: raw.subtotal ?? raw.totalAmount ?? 0,
+          totalPrice: raw.subtotal ?? raw.totalAmount ?? 0,
+        }]
+      : [];
 
   return {
     ...raw,
@@ -151,11 +162,15 @@ function mapOrder(raw: any) {
     supplierName: 'CELLPHONES',
     shippingAddress,
     notes: raw.internalNotes ?? raw.notes ?? '',
+    promotionCode: raw.promotionCode ?? '',
+    discountAmount: Number(raw.discountAmount ?? raw.discount ?? 0),
+    discount: Number(raw.discount ?? raw.discountAmount ?? 0),
     paymentMethod: paymentMethodLabel(raw.paymentMethod),
-    items: (raw.items ?? []).map((item: any) => ({
+    itemCount: raw.items?.count ?? items.length,
+    items: items.map((item: any) => ({
       ...item,
       productImage: item.productImage ?? '',
-      totalPrice: item.totalPrice ?? item.lineTotal ?? item.unitPrice * item.quantity,
+      totalPrice: item.totalPrice ?? item.lineTotal ?? (item.unitPrice ?? 0) * (item.quantity ?? 1),
     })),
     tax: raw.tax ?? 0,
   };
@@ -164,6 +179,7 @@ function mapOrder(raw: any) {
 function mapPayment(raw: any) {
   return {
     ...raw,
+    paymentNumber: raw.paymentNumber ?? raw.id,
     invoiceNumber: raw.invoiceNumber ?? '-',
     buyerName: raw.customerName ?? raw.customerId,
     supplierName: 'CELLPHONES',
@@ -183,6 +199,9 @@ function mapPayment(raw: any) {
 }
 
 function mapInvoice(raw: any) {
+  const totalAmount = Number(raw.totalAmount ?? 0);
+  const taxAmount = Number(raw.taxAmount ?? 0);
+  const discountAmount = Number(raw.discountAmount ?? 0);
   return {
     ...raw,
     issueDate: raw.issueDate,
@@ -194,7 +213,10 @@ function mapInvoice(raw: any) {
     buyerTaxCode: '',
     supplierTaxCode: '',
     type: 'Ban hang',
-    subtotal: raw.totalAmount - (raw.taxAmount ?? 0),
+    totalAmount,
+    taxAmount,
+    discountAmount,
+    subtotal: Math.max(0, totalAmount + discountAmount - taxAmount),
     taxRate: 0,
     items: [],
   };
@@ -206,6 +228,60 @@ function mapShipment(raw: any) {
     carrier: raw.carrierName,
     estimatedDate: raw.estimatedDelivery,
     actualDate: raw.actualDelivery,
+  };
+}
+
+const adminUserRoleToFe: Record<string, string> = {
+  CUSTOMER: 'Khách hàng',
+  STAFF: 'Nhà cung cấp',
+  ADMIN: 'Quản trị viên',
+};
+
+const adminUserRoleToBe: Record<string, string> = {
+  'Khách hàng': 'CUSTOMER',
+  'Người mua': 'CUSTOMER',
+  'Nhà cung cấp': 'STAFF',
+  'Đối tác': 'STAFF',
+  'Quản trị viên': 'ADMIN',
+  CUSTOMER: 'CUSTOMER',
+  STAFF: 'STAFF',
+  ADMIN: 'ADMIN',
+};
+
+const adminUserStatusToFe: Record<string, string> = {
+  ACTIVE: 'Hoạt động',
+  INACTIVE: 'Chờ xác minh',
+  LOCKED: 'Bị khoá',
+};
+
+const adminUserStatusToBe: Record<string, string> = {
+  'Hoạt động': 'ACTIVE',
+  'Chờ xác minh': 'INACTIVE',
+  'Bị khoá': 'LOCKED',
+  ACTIVE: 'ACTIVE',
+  INACTIVE: 'INACTIVE',
+  LOCKED: 'LOCKED',
+};
+
+function mapAdminUser(raw: any): User & { companyName?: string; address?: string } {
+  return {
+    ...raw,
+    role: (adminUserRoleToFe[raw.role] ?? raw.role ?? 'Khách hàng') as User['role'],
+    status: (adminUserStatusToFe[raw.status] ?? raw.status ?? 'Hoạt động') as User['status'],
+    avatarUrl: raw.avatarUrl ?? '',
+    companyName: raw.role === 'STAFF' ? 'Đối tác vận hành' : '',
+    address: raw.address ?? '',
+  };
+}
+
+function toAdminUserRequest(user: Partial<User> & { companyName?: string }) {
+  return {
+    fullName: user.fullName ?? '',
+    email: user.email ?? '',
+    phone: user.phone ?? '',
+    role: adminUserRoleToBe[String(user.role ?? 'Khách hàng')] ?? String(user.role ?? 'CUSTOMER'),
+    status: adminUserStatusToBe[String(user.status ?? 'Hoạt động')] ?? String(user.status ?? 'ACTIVE'),
+    avatarUrl: user.avatarUrl ?? '',
   };
 }
 
@@ -227,14 +303,18 @@ function mapCategory(raw: any) {
 }
 
 const productStatusToFe: Record<string, string> = {
-  ACTIVE: 'Dang ban',
-  OUT_OF_STOCK: 'Het hang',
-  DISCONTINUED: 'Ngung kinh doanh',
-  COMING_SOON: 'Sap ra mat',
-  INACTIVE: 'Ngung kinh doanh',
+  ACTIVE: 'Đang bán',
+  OUT_OF_STOCK: 'Hết hàng',
+  DISCONTINUED: 'Ngừng kinh doanh',
+  COMING_SOON: 'Sắp ra mắt',
+  INACTIVE: 'Ngừng kinh doanh',
 };
 
 const productStatusToBe: Record<string, string> = {
+  'Đang bán': 'ACTIVE',
+  'Hết hàng': 'OUT_OF_STOCK',
+  'Ngừng kinh doanh': 'DISCONTINUED',
+  'Sắp ra mắt': 'COMING_SOON',
   'Dang ban': 'ACTIVE',
   'Het hang': 'OUT_OF_STOCK',
   'Ngung kinh doanh': 'DISCONTINUED',
@@ -246,13 +326,15 @@ const productStatusToBe: Record<string, string> = {
 };
 
 const productConditionToFe: Record<string, string> = {
-  NEW: 'Moi',
+  NEW: 'Mới',
   LIKE_NEW: 'Like New',
-  USED: 'Qua su dung',
+  USED: 'Qua sử dụng',
   REFURBISHED: 'Like New',
 };
 
 const productConditionToBe: Record<string, string> = {
+  'Mới': 'NEW',
+  'Qua sử dụng': 'USED',
   Moi: 'NEW',
   'Like New': 'LIKE_NEW',
   'Qua su dung': 'USED',
@@ -393,7 +475,7 @@ export const adminProductApi = {
     const page = await requestPage<any>(`/products${toQuery({
       page: pagination.page,
       pageSize: pagination.pageSize,
-      sortBy: sort?.field || 'createdAt',
+      sortBy: sort?.field || 'updatedAt',
       sortDir: sort?.direction || 'desc',
       search,
       status: toBeStatus(getFilter(filters, 'status'), productStatusToBe),
@@ -406,6 +488,10 @@ export const adminProductApi = {
 
   async getById(id: string) {
     return mapProduct(await request<any>(`/products/${id}`));
+  },
+
+  async getBySlug(slug: string) {
+    return mapProduct(await request<any>(`/products/${encodeURIComponent(slug)}/by-slug`));
   },
 
   async create(data: Record<string, unknown>) {
@@ -915,6 +1001,58 @@ export const adminBannerApi = {
 
   async delete(id: string) {
     await request<void>(`/admin/banners/${id}`, { method: 'DELETE' });
+  },
+};
+
+export const adminUserApi = {
+  async getPaginated(
+    pagination: PaginationParams,
+    sort?: SortParams,
+    filters?: ActiveFilter[],
+    search?: string,
+  ): Promise<PaginatedResponse<User & { companyName?: string; address?: string }>> {
+    const params: Record<string, unknown> = {
+      page: pagination.page,
+      pageSize: pagination.pageSize,
+      ...(search ? { search } : {}),
+    };
+    const role = getFilter(filters, 'role');
+    const status = getFilter(filters, 'status');
+    if (role) params.role = adminUserRoleToBe[String(role)] ?? String(role);
+    if (status) params.status = adminUserStatusToBe[String(status)] ?? String(status);
+
+    const page = await requestPage<any>(`/admin/users${toQuery(params)}`);
+    let data = page.data.map(mapAdminUser);
+    if (sort?.field) {
+      data = [...data].sort((a: any, b: any) => {
+        const left = String(a[sort.field] ?? '');
+        const right = String(b[sort.field] ?? '');
+        return sort.direction === 'desc' ? right.localeCompare(left) : left.localeCompare(right);
+      });
+    }
+    return { ...page, data };
+  },
+
+  async getById(id: string): Promise<User & { companyName?: string; address?: string }> {
+    return mapAdminUser(await request<any>(`/admin/users/${id}`));
+  },
+
+  async update(id: string, current: User, patch: Partial<User>): Promise<User & { companyName?: string; address?: string }> {
+    return mapAdminUser(await request<any>(`/admin/users/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(toAdminUserRequest({ ...current, ...patch })),
+    }));
+  },
+
+  async updateStatus(id: string, status: User['status'] | string): Promise<User & { companyName?: string; address?: string }> {
+    return mapAdminUser(await request<any>(`/admin/users/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status: adminUserStatusToBe[String(status)] ?? String(status) }),
+    }));
+  },
+
+  async delete(id: string): Promise<void> {
+    await request<void>(`/admin/users/${id}`, { method: 'DELETE' });
   },
 };
 

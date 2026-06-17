@@ -5,6 +5,7 @@
 import { Navigate, useLocation } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
 import type { UserRole } from '../../types';
+import { normalizeRole } from '../../utils/roles';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -27,7 +28,7 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
     return <Navigate to="/login" state={{ from: location.pathname }} replace />;
   }
 
-  if (allowedRoles && user && !allowedRoles.includes(user.role)) {
+  if (allowedRoles && user && !allowedRoles.some(role => normalizeRole(role) === normalizeRole(user.role))) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4">
         <div className="text-center space-y-4">

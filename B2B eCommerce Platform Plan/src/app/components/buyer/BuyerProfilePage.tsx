@@ -6,7 +6,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate } from 'react-router';
 import {
-  User, MapPin, Lock, ShoppingBag, Star, MessageSquare,
+  User, MapPin, Lock, ShoppingBag, Star,
   Save, Eye, EyeOff, AlertCircle, Check, Package, Plus, Trash2,
   Edit2, BarChart3, Shield, ShieldCheck, Upload, Building2,
   Camera, CheckCircle2, Circle, Mail, Phone, CreditCard,
@@ -640,7 +640,6 @@ export function BuyerProfilePage() {
         <CardContent className="p-4">
           <div className="flex flex-wrap gap-3 justify-center">
             <Button variant="outline" onClick={() => navigate('/orders')}><ShoppingBag className="mr-2 h-4 w-4" /> Xem đơn hàng</Button>
-            <Button variant="outline" onClick={() => navigate('/chat')}><MessageSquare className="mr-2 h-4 w-4" /> Tin nhắn</Button>
             <Button variant="outline" onClick={() => navigate('/products')}><Package className="mr-2 h-4 w-4" /> Tiếp tục mua sắm</Button>
           </div>
         </CardContent>

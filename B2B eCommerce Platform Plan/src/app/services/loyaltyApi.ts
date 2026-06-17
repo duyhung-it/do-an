@@ -10,6 +10,7 @@ import type {
 
 const delay = (ms = 200) => new Promise<void>(r => setTimeout(r, ms));
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api/v1';
+const USE_MOCK_FALLBACKS = import.meta.env.VITE_USE_MOCK_FALLBACKS === 'true';
 const DEFAULT_DEV_USER_ID = '00000000-0000-4000-8000-000000000199';
 
 type ApiEnvelope<T> = {
@@ -44,6 +45,11 @@ async function backendRequest<T>(path: string, init?: RequestInit): Promise<{ da
     throw new Error(payload.error?.message ?? payload.message ?? `API error ${response.status}`);
   }
   return { data: payload.data, pagination: payload.pagination };
+}
+
+function assertMockFallbackAllowed(error: unknown): void {
+  if (USE_MOCK_FALLBACKS) return;
+  throw error instanceof Error ? error : new Error('Backend API failed and mock fallback is disabled');
 }
 
 // ─── Mock Programs (4 khách hàng tiêu biểu) ────────────────
@@ -300,7 +306,8 @@ Object.assign(loyaltyApi, {
     try {
       const { data } = await backendRequest<BackendProgram>('/loyalty/me');
       return mapBackendProgram(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay();
       return mockPrograms.find(p => p.customerId === _customerId) ?? mockPrograms[0] ?? null;
     }
@@ -324,7 +331,8 @@ Object.assign(loyaltyApi, {
         pageSize: meta?.pageSize ?? pagination.pageSize,
         totalPages: meta?.totalPages ?? Math.ceil(data.length / pagination.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay();
       const program = mockPrograms.find(p => p.customerId === customerId) ?? mockPrograms[0];
       let items = mockTransactions.filter(t => t.programId === program?.id);
@@ -347,7 +355,8 @@ Object.assign(loyaltyApi, {
         pageSize: meta?.pageSize ?? pagination.pageSize,
         totalPages: meta?.totalPages ?? Math.ceil(data.length / pagination.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay();
       const items = mockRewards.filter(r => r.available);
       const total = items.length;
@@ -361,7 +370,8 @@ Object.assign(loyaltyApi, {
         method: 'POST',
       });
       return { success: true, code: data.rewardCode, newPoints: data.newPoints };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(400);
       const reward = mockRewards.find(r => r.id === rewardId);
       const program = mockPrograms.find(p => p.id === programId);
@@ -387,7 +397,8 @@ Object.assign(loyaltyApi, {
           })
           : [],
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay();
       const program = mockPrograms.find(p => p.customerId === customerId) ?? mockPrograms[0];
       return {

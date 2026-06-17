@@ -8,9 +8,8 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router';
 import {
   Bell, Check, CheckCheck, Trash2, Package, Search,
-  ClipboardList, Settings, MessageCircle, Filter,
-  FileText, ScrollText, CreditCard, Truck, ShieldCheck,
-  Star, RotateCcw, AlertCircle, Download, Wallet,
+  ClipboardList, Settings, Filter,
+  CreditCard, Truck, Star, RotateCcw, AlertCircle, Download, Gift,
   ChevronRight, BellOff, Inbox,
 } from 'lucide-react';
 import { Card, CardContent } from '../ui/card';
@@ -33,14 +32,13 @@ const typeIcon: Record<NotificationType, React.ReactNode> = {
   order: <ClipboardList className="h-4 w-4 text-blue-500" />,
   product: <Package className="h-4 w-4 text-purple-500" />,
   system: <Settings className="h-4 w-4 text-gray-500" />,
-  message: <MessageCircle className="h-4 w-4 text-green-500" />,
-  rfq: <FileText className="h-4 w-4 text-indigo-500" />,
-  contract: <ScrollText className="h-4 w-4 text-cyan-500" />,
+  promotion: <Gift className="h-4 w-4 text-red-500" />,
+  loyalty: <Gift className="h-4 w-4 text-pink-500" />,
+  warranty: <Settings className="h-4 w-4 text-cyan-500" />,
+  price_drop: <Package className="h-4 w-4 text-green-500" />,
   payment: <CreditCard className="h-4 w-4 text-amber-500" />,
   shipment: <Truck className="h-4 w-4 text-orange-500" />,
-  approval: <ShieldCheck className="h-4 w-4 text-red-500" />,
   review: <Star className="h-4 w-4 text-yellow-500" />,
-  credit: <Wallet className="h-4 w-4 text-teal-500" />,
   return: <RotateCcw className="h-4 w-4 text-pink-500" />,
 };
 
@@ -48,14 +46,13 @@ const typeBgColor: Record<NotificationType, string> = {
   order: 'bg-blue-50',
   product: 'bg-purple-50',
   system: 'bg-gray-50',
-  message: 'bg-green-50',
-  rfq: 'bg-indigo-50',
-  contract: 'bg-cyan-50',
+  promotion: 'bg-red-50',
+  loyalty: 'bg-pink-50',
+  warranty: 'bg-cyan-50',
+  price_drop: 'bg-green-50',
   payment: 'bg-amber-50',
   shipment: 'bg-orange-50',
-  approval: 'bg-red-50',
   review: 'bg-yellow-50',
-  credit: 'bg-teal-50',
   return: 'bg-pink-50',
 };
 
@@ -63,14 +60,13 @@ const typeLabel: Record<NotificationType, string> = {
   order: 'Đơn hàng',
   product: 'Sản phẩm',
   system: 'Hệ thống',
-  message: 'Tin nhắn',
-  rfq: 'Báo giá',
-  contract: 'Thỏa thuận',
+  promotion: 'Khuyến mãi',
+  loyalty: 'Thành viên',
+  warranty: 'Bảo hành',
+  price_drop: 'Giảm giá',
   payment: 'Thanh toán',
   shipment: 'Vận chuyển',
-  approval: 'Phê duyệt',
   review: 'Đánh giá',
-  credit: 'Tín dụng',
   return: 'Trả hàng',
 };
 
@@ -81,10 +77,14 @@ const priorityConfig: Record<NotificationPriority, { label: string; className: s
   urgent: { label: 'Khẩn cấp', className: 'text-red-600', dot: 'bg-red-500' },
 };
 
-const ALL_TYPES: NotificationType[] = ['order', 'product', 'system', 'message', 'rfq', 'contract', 'payment', 'shipment', 'approval', 'review', 'credit', 'return'];
+const ALL_TYPES: NotificationType[] = ['order', 'payment', 'promotion', 'loyalty', 'system', 'shipment', 'return', 'warranty', 'review', 'product', 'price_drop'];
 const ALL_PRIORITIES: NotificationPriority[] = ['low', 'medium', 'high', 'urgent'];
 
 type TabKey = 'all' | 'unread' | 'important';
+
+function getPriorityConfig(priority?: string) {
+  return priorityConfig[priority as NotificationPriority] ?? priorityConfig.medium;
+}
 
 /** Group notifications by relative time (28B.07) */
 function groupByTime(items: AppNotification[]): { label: string; items: AppNotification[] }[] {
@@ -378,7 +378,7 @@ function NotificationCard({
                       noti.priority === 'urgent' ? 'bg-red-50 text-red-600 border-red-200' : 'bg-orange-50 text-orange-600 border-orange-200'
                     }`}
                   >
-                    {priorityConfig[noti.priority].label}
+                    {getPriorityConfig(noti.priority).label}
                   </Badge>
                 )}
               </div>
@@ -394,8 +394,8 @@ function NotificationCard({
                 </Badge>
                 {noti.priority && (
                   <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                    <span className={`h-1.5 w-1.5 rounded-full ${priorityConfig[noti.priority].dot}`} />
-                    {priorityConfig[noti.priority].label}
+                    <span className={`h-1.5 w-1.5 rounded-full ${getPriorityConfig(noti.priority).dot}`} />
+                    {getPriorityConfig(noti.priority).label}
                   </span>
                 )}
               </div>

@@ -6,8 +6,8 @@
 import { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router';
 import {
-  MapPin, CreditCard, FileText, MessageSquare, XCircle,
-  RefreshCw, CheckCircle2, Circle, Printer, Save, Receipt,
+  MapPin, CreditCard, FileText, XCircle,
+  RefreshCw, CheckCircle2, Circle, Printer, Receipt,
   Truck, Package, Star, RotateCcw, Clock, ShoppingCart, PackageCheck,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/card';
@@ -22,14 +22,15 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Input } from '../ui/input';
 import { Textarea } from '../ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
-import { orderApi, chatApi, templateApi, invoiceBuyerApi, shipmentApi, reviewApi, returnApi } from '../../services/api';
+import { orderApi, invoiceBuyerApi, shipmentApi, reviewApi, returnApi, paymentApi } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
-import type { Order, Invoice, Shipment, Review, ReturnReason, ReturnItem } from '../../types';
+import type { Order, Invoice, Shipment, Review, ReturnReason, ReturnItem, ReturnRequest, Payment } from '../../types';
 import { Badge } from '../ui/badge';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { toast } from 'sonner';
 import { WriteReviewDialog } from '../shared/ReviewComponents';
+import { formatVietnamDateTime } from '../../utils/dateTime';
 
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
@@ -122,6 +123,7 @@ export function OrderDetailPage() {
   const [reordering, setReordering] = useState(false);
 
   const [relatedInvoices, setRelatedInvoices] = useState<Invoice[]>([]);
+  const [relatedPayment, setRelatedPayment] = useState<Payment | null>(null);
   const [showInvoice, setShowInvoice] = useState(false);
   const [selectedInvoice, setSelectedInvoice] = useState<Invoice | null>(null);
   const [relatedShipments, setRelatedShipments] = useState<Shipment[]>([]);
@@ -138,7 +140,7 @@ export function OrderDetailPage() {
   const [returnRefundMethod, setReturnRefundMethod] = useState<typeof REFUND_METHODS[number]>('Hoàn tiền gốc');
   const [returnItems, setReturnItems] = useState<{ productId: string; quantity: number; note: string }[]>([]);
   const [submittingReturn, setSubmittingReturn] = useState(false);
-  const [existingReturns, setExistingReturns] = useState<string[]>([]);
+  const [existingReturns, setExistingReturns] = useState<ReturnRequest[]>([]);
 
   useEffect(() => {
     if (id) {
@@ -160,12 +162,25 @@ export function OrderDetailPage() {
     }
   }, [order, user]);
 
+  useEffect(() => {
+    if (order && user) {
+      paymentApi.getPaginated(
+        { page: 1, pageSize: 1 },
+        undefined,
+        { buyerId: user.id },
+        order.orderNumber,
+      ).then(res => setRelatedPayment(res.data[0] ?? null));
+    }
+  }, [order, user]);
+
   useEffect(() => { if (order) reviewApi.getByOrder(order.id).then(setOrderReviews); }, [order]);
-  useEffect(() => { if (order) returnApi.getByOrderId(order.id).then(rets => setExistingReturns(rets.map(r => r.id))); }, [order]);
+  useEffect(() => { if (order) returnApi.getByOrderId(order.id).then(setExistingReturns); }, [order]);
 
   const canCancel = order && ['Chờ xác nhận', 'Đã xác nhận'].includes(order.status);
   const isCompleted = order && ['Đã giao', 'Đã huỷ', 'Hoàn trả'].includes(order.status);
-  const canReturn = order?.status === 'Đã giao' && existingReturns.length === 0;
+  const isDelivered = order?.status === 'Đã giao';
+  const activeReturn = existingReturns[0];
+  const canCreateReturn = isDelivered && !activeReturn;
 
   const handleCancel = async () => {
     if (!order) return;
@@ -174,12 +189,6 @@ export function OrderDetailPage() {
       const updated = await orderApi.cancel(order.id, 'Khach hang huy don');
       setOrder(updated); setShowCancelConfirm(false); toast.success('Đã huỷ đơn hàng');
     } catch { toast.error('Không thể huỷ đơn hàng'); } finally { setCancelling(false); }
-  };
-
-  const handleChat = async () => {
-    if (!isAuthenticated || !user || !order) { toast.error('Vui lòng đăng nhập để nhắn tin'); return; }
-    const conv = await chatApi.createConversation(user.id, user.fullName, order.supplierId, order.supplierName);
-    navigate(`/chat?conv=${conv.id}`);
   };
 
   const handleReorder = async () => {
@@ -211,8 +220,8 @@ export function OrderDetailPage() {
         return { productId: si.productId, productName: oi.productName, productImage: oi.productImage, quantity: si.quantity, unitPrice: oi.unitPrice, reason: returnReason, note: si.note };
       });
       const refundAmount = items.reduce((s, i) => s + i.unitPrice * i.quantity, 0);
-      await returnApi.create({ orderId: order.id, orderNumber: order.orderNumber, buyerId: user.id, buyerName: user.fullName, buyerCompany: user.companyName ?? '', supplierId: order.supplierId, supplierName: order.supplierName, items, reason: returnReason, description: returnDescription, refundAmount, refundMethod: returnRefundMethod, images: [] });
-      setShowReturnDialog(false); setExistingReturns(prev => [...prev, 'new']); toast.success('Đã gửi yêu cầu trả hàng');
+      const created = await returnApi.create({ orderId: order.id, orderNumber: order.orderNumber, buyerId: user.id, buyerName: user.fullName, buyerCompany: user.companyName ?? '', supplierId: order.supplierId, supplierName: order.supplierName, items, reason: returnReason, description: returnDescription, refundAmount, refundMethod: returnRefundMethod, images: [] });
+      setShowReturnDialog(false); setExistingReturns(prev => [created, ...prev]); toast.success('Đã gửi yêu cầu trả hàng');
     } catch { toast.error('Không thể gửi yêu cầu trả hàng'); } finally { setSubmittingReturn(false); }
   };
 
@@ -240,7 +249,7 @@ export function OrderDetailPage() {
             {order.isUrgent && <Badge variant="destructive">Gấp</Badge>}
           </div>
           <p className="text-muted-foreground text-sm ml-11">
-            Ngày tạo: {order.createdAt}
+            Ngày tạo: {formatVietnamDateTime(order.createdAt)}
             {order.expectedDeliveryDate && <> · Giao dự kiến: <span className="text-foreground font-medium">{order.expectedDeliveryDate}</span></>}
           </p>
         </div>
@@ -248,9 +257,6 @@ export function OrderDetailPage() {
           <StatusBadge status={order.status} />
           <Button variant="outline" size="sm" onClick={() => window.print()}>
             <Printer className="mr-1 h-4 w-4" /> In
-          </Button>
-          <Button variant="outline" size="sm" onClick={handleChat}>
-            <MessageSquare className="mr-1 h-4 w-4" /> Nhắn tin
           </Button>
           {canCancel && (
             <Button variant="destructive" size="sm" onClick={() => setShowCancelConfirm(true)}>
@@ -262,19 +268,16 @@ export function OrderDetailPage() {
               <Button size="sm" onClick={handleReorder} disabled={reordering}>
                 <RefreshCw className={`mr-1 h-4 w-4 ${reordering ? 'animate-spin' : ''}`} /> Đặt lại
               </Button>
-              {order.status === 'Đã giao' && (
-                <Button size="sm" variant="outline" onClick={async () => {
-                  await templateApi.create({ userId: user?.id ?? 'user-001', name: `Danh sách mua từ ${order.orderNumber}`, description: `Tạo từ đơn hàng ${order.orderNumber}`, items: order.items.map(i => ({ productId: i.productId, productName: i.productName, productImage: i.productImage, quantity: i.quantity, unitPrice: i.unitPrice, unit: 'cái' })), supplierId: order.supplierId, supplierName: order.supplierName });
-                  toast.success('Đã lưu danh sách mua');
-                }}>
-                  <Save className="mr-1 h-4 w-4" /> Lưu danh sách
-                </Button>
-              )}
             </>
           )}
-          {canReturn && (
+          {canCreateReturn && (
             <Button size="sm" variant="outline" onClick={handleOpenReturnDialog}>
-              <RotateCcw className="mr-1 h-4 w-4" /> Trả hàng
+              <RotateCcw className="mr-1 h-4 w-4" /> Trả hàng & hoàn tiền
+            </Button>
+          )}
+          {isDelivered && activeReturn && (
+            <Button size="sm" variant="outline" onClick={() => navigate(`/returns/${activeReturn.id}`)}>
+              <RotateCcw className="mr-1 h-4 w-4" /> Xem yêu cầu hoàn trả
             </Button>
           )}
         </div>
@@ -348,7 +351,36 @@ export function OrderDetailPage() {
             </Card>
             <Card className="border-0 shadow-sm">
               <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2" style={{ fontFamily: 'var(--font-heading)' }}><CreditCard className="h-4 w-4 text-primary" /> Thanh toán</CardTitle></CardHeader>
-              <CardContent className="text-sm"><p>Phương thức: {order.paymentMethod}</p>{order.notes && <p className="text-muted-foreground mt-1">Ghi chú: {order.notes}</p>}</CardContent>
+              <CardContent className="text-sm space-y-2">
+                <p>Phương thức: {order.paymentMethod}</p>
+                {relatedPayment && (
+                  <div className="rounded-lg border bg-muted/20 p-3 space-y-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">Trạng thái</span>
+                      <StatusBadge status={relatedPayment.status} />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-muted-foreground">Số tiền</span>
+                      <span className="font-medium">{formatPrice(relatedPayment.amount)}</span>
+                    </div>
+                    {relatedPayment.remainingAmount > 0 && (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-muted-foreground">Còn lại</span>
+                        <span className="font-medium text-red-600">{formatPrice(relatedPayment.remainingAmount)}</span>
+                      </div>
+                    )}
+                    <Button size="sm" variant="outline" className="w-full mt-2" onClick={() => navigate(`/payments/${relatedPayment.id}`)}>
+                      <CreditCard className="mr-1 h-3.5 w-3.5" /> Xem thanh toán
+                    </Button>
+                  </div>
+                )}
+                {!relatedPayment && (
+                  <Button size="sm" variant="outline" onClick={() => navigate(`/payments?search=${encodeURIComponent(order.orderNumber)}`)}>
+                    <CreditCard className="mr-1 h-3.5 w-3.5" /> Tìm thanh toán
+                  </Button>
+                )}
+                {order.notes && <p className="text-muted-foreground mt-1">Ghi chú: {order.notes}</p>}
+              </CardContent>
             </Card>
           </div>
 
@@ -371,7 +403,7 @@ export function OrderDetailPage() {
               <CardHeader className="pb-2"><CardTitle className="text-sm flex items-center gap-2" style={{ fontFamily: 'var(--font-heading)' }}><Truck className="h-4 w-4 text-primary" /> Vận chuyển ({relatedShipments.length})</CardTitle></CardHeader>
               <CardContent><div className="space-y-2">{relatedShipments.map(ship => (
                 <div key={ship.id} className="flex items-center justify-between p-3 rounded-xl border hover:bg-muted/50 cursor-pointer transition-colors" onClick={() => { setSelectedShipment(ship); setShowShipment(true); }}>
-                  <div><p className="text-sm" style={{ fontWeight: 500 }}>{ship.trackingNumber}</p><p className="text-xs text-muted-foreground">{ship.carrierName} — {ship.createdAt}</p></div>
+                  <div><p className="text-sm" style={{ fontWeight: 500 }}>{ship.trackingNumber}</p><p className="text-xs text-muted-foreground">{ship.carrierName} — {formatVietnamDateTime(ship.createdAt)}</p></div>
                   <div className="text-right"><StatusBadge status={ship.status} /><p className="text-xs text-muted-foreground mt-0.5">Dự kiến: {ship.estimatedDelivery}</p></div>
                 </div>
               ))}</div></CardContent>

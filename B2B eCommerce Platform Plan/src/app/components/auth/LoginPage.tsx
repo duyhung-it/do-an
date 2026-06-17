@@ -8,6 +8,7 @@ import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { toast } from 'sonner';
 import { useAuth } from '../../context/AuthContext';
+import { isAdminRole } from '../../utils/roles';
 import { Button } from '../ui/button';
 import { Checkbox } from '../ui/checkbox';
 import { Input } from '../ui/input';
@@ -35,7 +36,7 @@ export function LoginPage() {
   const from = (location.state as { from?: string })?.from;
 
   const getDefaultRedirect = (role: string): string => {
-    if (role === 'Quản trị viên') return '/admin';
+    if (isAdminRole(role)) return '/admin';
     return '/';
   };
 

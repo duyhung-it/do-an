@@ -172,6 +172,12 @@ function InvoicePrintPreview({ invoice, onClose }: { invoice: Invoice; onClose: 
                 <span className="text-muted-foreground">Thuế GTGT ({invoice.taxRate}%):</span>
                 <span>{new Intl.NumberFormat('vi-VN').format(invoice.taxAmount)} ₫</span>
               </div>
+              {(invoice.discountAmount ?? 0) > 0 && (
+                <div className="flex justify-between text-sm text-emerald-600">
+                  <span>Khuyến mãi:</span>
+                  <span>-{new Intl.NumberFormat('vi-VN').format(invoice.discountAmount ?? 0)} ₫</span>
+                </div>
+              )}
               <Separator />
               <div className="flex justify-between">
                 <span style={{ fontFamily: 'var(--font-heading)' }}>Tổng cộng:</span>

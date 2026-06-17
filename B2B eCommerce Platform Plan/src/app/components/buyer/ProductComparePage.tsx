@@ -21,6 +21,7 @@ import { useWishlist } from '../../context/WishlistContext';
 import type { Product } from '../../types';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
 import { toast } from 'sonner';
+import { productDetailPath } from '../../utils/productLinks';
 
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(price);
@@ -153,7 +154,7 @@ export function ProductComparePage() {
                       <ImageWithFallback src={product.images[0]} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
                     </div>
                     <CardContent className="p-3 text-center">
-                      <Link to={`/products/${product.id}`} className="hover:underline text-sm line-clamp-2" style={{ fontFamily: 'var(--font-heading)' }}>
+                      <Link to={productDetailPath(product)} className="hover:underline text-sm line-clamp-2" style={{ fontFamily: 'var(--font-heading)' }}>
                         {product.name}
                       </Link>
                       {/* P3.09: Price highlight */}
@@ -302,7 +303,7 @@ export function ProductComparePage() {
                       <Heart className={`mr-1 h-3.5 w-3.5 ${isInWishlist(p.id) ? 'fill-current' : ''}`} />
                       {isInWishlist(p.id) ? 'Đã thích' : 'Yêu thích'}
                     </Button>
-                    <Link to={`/products/${p.id}`}>
+                    <Link to={productDetailPath(p)}>
                       <Button size="sm" variant="outline" className="w-full">Chi tiết</Button>
                     </Link>
                   </div>

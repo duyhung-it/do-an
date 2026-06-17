@@ -8,6 +8,7 @@ import { CheckCircle, Globe, Lock, Shield, Star, TrendingUp, Zap } from 'lucide-
 import { useEffect, useState } from 'react';
 import { Link, Navigate, Outlet } from 'react-router';
 import { useAuth } from '../../context/AuthContext';
+import { isAdminRole, normalizeRole } from '../../utils/roles';
 
 const slides = [
   {
@@ -72,8 +73,8 @@ export function AuthLayout() {
 
   if (isAuthenticated && user) {
     const redirectTo =
-      user.role === 'Quản trị viên' ? '/admin' :
-      user.role === 'Nhà cung cấp' ? '/seller' : '/';
+      isAdminRole(user.role) ? '/admin' :
+      normalizeRole(user.role) === 'SUPPLIER' ? '/dashboard' : '/';
     return <Navigate to={redirectTo} replace />;
   }
 

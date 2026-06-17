@@ -40,7 +40,7 @@ const QUICK_ACTIONS = [
   { icon: Smartphone, label: 'Tìm điện thoại', path: '/phone-finder', color: 'from-violet-500 to-purple-600' },
   { icon: Heart, label: 'Yêu thích', path: '/wishlist', color: 'from-pink-500 to-rose-500' },
   { icon: Package, label: 'Đơn hàng', path: '/orders', color: 'from-cyan-500 to-blue-500' },
-  { icon: Award, label: 'Điểm thưởng', path: '/loyalty', color: 'from-yellow-500 to-amber-500' },
+  { icon: Award, label: 'Hạng thành viên', path: '/loyalty', color: 'from-yellow-500 to-amber-500' },
 ];
 
 function DashboardSkeleton() {
@@ -110,11 +110,22 @@ export function BuyerDashboardPage() {
               {loyalty && <> · Bạn đang là khách hàng <span className="font-semibold text-yellow-200">{loyalty.tier}</span></>}
             </p>
           </div>
-          <Link to="/products">
-            <Button variant="secondary" className="bg-white text-[#e31837] hover:bg-red-50">
-              <ShoppingCart className="h-4 w-4 mr-2" /> Mua sắm ngay
-            </Button>
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            {loyalty && (
+              <Button
+                variant="secondary"
+                className="bg-yellow-100 text-amber-800 hover:bg-yellow-50"
+                onClick={() => navigate('/loyalty')}
+              >
+                <Award className="h-4 w-4 mr-2" /> Xem hạng hiện tại
+              </Button>
+            )}
+            <Link to="/products">
+              <Button variant="secondary" className="bg-white text-[#e31837] hover:bg-red-50">
+                <ShoppingCart className="h-4 w-4 mr-2" /> Mua sắm ngay
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -197,6 +208,9 @@ export function BuyerDashboardPage() {
               <div className="bg-muted/50 rounded-lg p-3 text-xs text-muted-foreground">
                 <p>Tích điểm với mỗi đơn hàng để nhận ưu đãi đặc biệt!</p>
               </div>
+              <Button className="w-full" variant="outline" onClick={() => navigate('/loyalty')}>
+                <Award className="mr-2 h-4 w-4" /> Xem hạng hiện tại
+              </Button>
             </div>
           </DashboardWidget>
         )}

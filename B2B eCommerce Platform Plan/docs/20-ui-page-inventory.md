@@ -153,6 +153,7 @@
 | `AdminShipmentPage` | `components/admin/AdminShipmentPage.tsx` | `/admin/shipments` | Quản lý vận chuyển |
 | `AdminPaymentPage` | `components/admin/AdminPaymentPage.tsx` | `/admin/payments` | Quản lý thanh toán |
 | `AdminInvoicePage` | `components/admin/AdminInvoicePage.tsx` | `/admin/invoices` | Quản lý hoá đơn |
+| `AdminRevenuePage` | `components/admin/AdminRevenuePage.tsx` | `/admin/revenue` | Theo dõi doanh thu |
 | `RFQManagement` | `components/admin/RFQManagement.tsx` | `/admin/rfqs` | Giám sát RFQ marketplace |
 | `ContractManagement` | `components/admin/ContractManagement.tsx` | `/admin/contracts` | Quản lý hợp đồng |
 | `ReviewManagement` | `components/admin/ReviewManagement.tsx` | `/admin/reviews` | Duyệt/ẩn reviews |

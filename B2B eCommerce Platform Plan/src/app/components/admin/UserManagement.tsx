@@ -5,18 +5,15 @@
 
 import { DataTable } from '../shared/DataTable';
 import { FilterBar } from '../shared/FilterBar';
-import { FormDialog } from '../shared/FormDialog';
 import { AppBreadcrumb } from '../shared/AppBreadcrumb';
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Plus, Trash2, Eye, AlertCircle, Users, ShieldCheck, Download,
-  Upload, Mail, KeyRound, Ban, UserCheck,
+  Trash2, Eye, AlertCircle, Users, ShieldCheck, Download,
+  Ban, UserCheck,
 } from 'lucide-react';
 import { Button } from '../ui/button';
-import { Input } from '../ui/input';
 import { Label } from '../ui/label';
 import { Textarea } from '../ui/textarea';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Badge } from '../ui/badge';
 import { Separator } from '../ui/separator';
@@ -24,12 +21,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/tabs';
 import { Avatar, AvatarFallback } from '../ui/avatar';
 import { Card, CardContent } from '../ui/card';
 import { StatusBadge } from '../shared/StatusBadge';
-import { userApi, orderApi, reviewApi } from '../../services/api';
-import { activityApi } from '../../services/adminApi';
+import { adminActivityLogApi, adminUserApi } from '../../services/adminBackendApi';
 import { toast } from 'sonner';
 import type {
   User, Order, Review, ActivityLog,
-  PaginationParams, SortParams, ActiveFilter, FilterConfig, ColumnConfig, UserRole, UserStatus,
+  PaginationParams, SortParams, ActiveFilter, FilterConfig, ColumnConfig,
 } from '../../types';
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, PieChart, Pie, Cell,
@@ -61,23 +57,6 @@ const filterConfigs: FilterConfig[] = [
   ]},
 ];
 
-type NewUser = {
-  fullName: string; email: string; phone: string;
-  role: UserRole; status: UserStatus; avatarUrl: string;
-  companyName: string; address: string;
-};
-type FormErrors = Partial<Record<keyof NewUser, string>>;
-
-const defaultNewUser: NewUser = {
-  fullName: '', email: '', phone: '', role: 'Người mua',
-  status: 'Hoạt động', avatarUrl: '', companyName: '', address: '',
-};
-
-function FieldError({ error }: { error?: string }) {
-  if (!error) return null;
-  return <p className="text-destructive flex items-center gap-1 mt-1"><AlertCircle className="h-3 w-3 shrink-0" />{error}</p>;
-}
-
 export function UserManagement() {
   const [users, setUsers] = useState<User[]>([]);
   const [allUsers, setAllUsers] = useState<User[]>([]);
@@ -88,11 +67,6 @@ export function UserManagement() {
   const [filters, setFilters] = useState<ActiveFilter[]>([]);
   const [search, setSearch] = useState('');
   const [roleTab, setRoleTab] = useState<'all' | 'buyer' | 'seller'>('all');
-
-  // Create
-  const [showCreate, setShowCreate] = useState(false);
-  const [newUser, setNewUser] = useState<NewUser>(defaultNewUser);
-  const [formErrors, setFormErrors] = useState<FormErrors>({});
 
   // Detail
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -116,23 +90,14 @@ export function UserManagement() {
       if (roleTab === 'seller') activeFilters.push({ key: 'role', value: 'Nhà cung cấp' });
 
       const [allRes, pageRes] = await Promise.all([
-        userApi.getPaginated({ page: 1, pageSize: 1000 }),
-        userApi.getPaginated(pagination, sort.field ? sort : undefined, activeFilters),
+        adminUserApi.getPaginated({ page: 1, pageSize: 1000 }),
+        adminUserApi.getPaginated(pagination, sort.field ? sort : undefined, activeFilters, search),
       ]);
 
       let data = pageRes.data;
-      if (search) {
-        const s = search.toLowerCase();
-        data = data.filter(u =>
-          u.fullName.toLowerCase().includes(s) ||
-          u.email.toLowerCase().includes(s) ||
-          (u.companyName || '').toLowerCase().includes(s) ||
-          (u.phone || '').includes(s),
-        );
-      }
       setAllUsers(allRes.data);
       setUsers(data);
-      setTotal(search ? data.length : pageRes.total);
+      setTotal(pageRes.total);
     } finally {
       setLoading(false);
     }
@@ -161,33 +126,11 @@ export function UserManagement() {
 
   // --- Inline edit ---
   const handleInlineEdit = async (id: string, field: string, value: unknown) => {
-    await userApi.update(id, { [field]: value } as Partial<User>);
-    setUsers(prev => prev.map(u => u.id === id ? { ...u, [field]: value } : u));
+    const current = users.find(u => u.id === id);
+    if (!current) return;
+    const updated = await adminUserApi.update(id, current, { [field]: value } as Partial<User>);
+    setUsers(prev => prev.map(u => u.id === id ? updated : u));
     toast.success('Đã cập nhật');
-  };
-
-  // --- Create ---
-  const clearFormError = (key: keyof FormErrors) => {
-    setFormErrors(prev => { const next = { ...prev }; delete next[key]; return next; });
-  };
-  const validateForm = (): boolean => {
-    const errs: FormErrors = {};
-    if (!newUser.fullName.trim()) errs.fullName = 'Vui lòng nhập họ tên';
-    else if (newUser.fullName.trim().length < 3) errs.fullName = 'Họ tên phải có ít nhất 3 ký tự';
-    if (!newUser.email.trim()) errs.email = 'Vui lòng nhập email';
-    else if (!/\S+@\S+\.\S+/.test(newUser.email)) errs.email = 'Email không hợp lệ';
-    if (newUser.phone && !/^[0-9]{9,11}$/.test(newUser.phone.replace(/\s/g, ''))) errs.phone = 'Số điện thoại không hợp lệ';
-    setFormErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
-  const handleCreate = async () => {
-    if (!validateForm()) { toast.error('Vui lòng kiểm tra lại thông tin'); return; }
-    await userApi.create(newUser);
-    setShowCreate(false);
-    setNewUser(defaultNewUser);
-    setFormErrors({});
-    fetchData();
-    toast.success('Đã tạo người dùng mới');
   };
 
   // --- View detail ---
@@ -195,20 +138,16 @@ export function UserManagement() {
     setSelectedUser(user);
     setDetailTab('info');
     setShowDetail(true);
-    const [orders, reviews, logs] = await Promise.all([
-      orderApi.getByBuyer(user.id).catch(() => [] as Order[]),
-      reviewApi.getByUser(user.id).catch(() => [] as Review[]),
-      activityApi.getByUser(user.id, 20).catch(() => [] as ActivityLog[]),
-    ]);
-    setUserOrders(orders);
-    setUserReviews(reviews);
-    setUserLogs(logs);
+    const logsPage = await adminActivityLogApi.getPaginated({ page: 1, pageSize: 20 }, { userId: user.id });
+    setUserOrders([]);
+    setUserReviews([]);
+    setUserLogs(logsPage.data as ActivityLog[]);
   };
 
   // --- Delete with warning ---
   const handleDelete = async () => {
     if (!deleteConfirm) return;
-    await userApi.delete(deleteConfirm.id);
+    await adminUserApi.delete(deleteConfirm.id);
     setDeleteConfirm(null);
     fetchData();
     toast.success('Đã xoá người dùng');
@@ -217,8 +156,8 @@ export function UserManagement() {
   // --- Ban ---
   const handleBan = async () => {
     if (!banDialog || !banReason.trim()) { toast.error('Vui lòng nhập lý do'); return; }
-    await userApi.update(banDialog.id, { status: 'Bị khoá' });
-    setUsers(prev => prev.map(u => u.id === banDialog.id ? { ...u, status: 'Bị khoá' } : u));
+    const updated = await adminUserApi.updateStatus(banDialog.id, 'Bị khoá');
+    setUsers(prev => prev.map(u => u.id === banDialog.id ? updated : u));
     setBanDialog(null);
     setBanReason('');
     toast.success(`Đã khoá tài khoản ${banDialog.fullName}`);
@@ -235,11 +174,6 @@ export function UserManagement() {
     a.href = url; a.download = `nguoi-dung-${new Date().toISOString().slice(0, 10)}.csv`; a.click();
     URL.revokeObjectURL(url);
     toast.success('Đã xuất file CSV');
-  };
-
-  // --- CSV Import (giả lập) ---
-  const handleImportCSV = () => {
-    toast.info('Tính năng nhập từ CSV đang được phát triển (giả lập)');
   };
 
   // --- Card view ---
@@ -292,14 +226,8 @@ export function UserManagement() {
           <p className="text-muted-foreground">Quản lý tất cả người dùng trên hệ thống ({stats.total} người dùng)</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm" onClick={handleImportCSV}>
-            <Upload className="mr-1 h-4 w-4" /> Nhập CSV
-          </Button>
           <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <Download className="mr-1 h-4 w-4" /> Xuất CSV
-          </Button>
-          <Button onClick={() => setShowCreate(true)}>
-            <Plus className="mr-2 h-4 w-4" /> Thêm
           </Button>
         </div>
       </div>
@@ -383,49 +311,6 @@ export function UserManagement() {
         renderListItem={renderListItem}
       />
 
-      {/* --- Dialog tạo mới --- */}
-      <FormDialog
-        open={showCreate}
-        onClose={() => { setShowCreate(false); setFormErrors({}); }}
-        title="Thêm người dùng mới"
-        onSubmit={handleCreate}
-        submitLabel="Tạo mới"
-      >
-        <div className="grid gap-2">
-          <Label>Họ tên *</Label>
-          <Input value={newUser.fullName} onChange={e => { setNewUser(p => ({ ...p, fullName: e.target.value })); clearFormError('fullName'); }}
-            className={formErrors.fullName ? 'border-destructive' : ''} />
-          <FieldError error={formErrors.fullName} />
-        </div>
-        <div className="grid gap-2">
-          <Label>Email *</Label>
-          <Input type="email" value={newUser.email} onChange={e => { setNewUser(p => ({ ...p, email: e.target.value })); clearFormError('email'); }}
-            className={formErrors.email ? 'border-destructive' : ''} />
-          <FieldError error={formErrors.email} />
-        </div>
-        <div className="grid gap-2">
-          <Label>Số điện thoại</Label>
-          <Input value={newUser.phone} onChange={e => { setNewUser(p => ({ ...p, phone: e.target.value })); clearFormError('phone'); }}
-            className={formErrors.phone ? 'border-destructive' : ''} />
-          <FieldError error={formErrors.phone} />
-        </div>
-        <div className="grid gap-2">
-          <Label>Vai trò</Label>
-          <Select value={newUser.role} onValueChange={v => setNewUser(p => ({ ...p, role: v as UserRole }))}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="Người mua">Người mua</SelectItem>
-              <SelectItem value="Nhà cung cấp">Đối tác</SelectItem>
-              <SelectItem value="Quản trị viên">Quản trị viên</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="grid gap-2">
-          <Label>Đơn vị</Label>
-          <Input value={newUser.companyName} onChange={e => setNewUser(p => ({ ...p, companyName: e.target.value }))} />
-        </div>
-      </FormDialog>
-
       {/* --- Dialog chi tiết (tabs) --- */}
       <Dialog open={showDetail} onOpenChange={setShowDetail}>
         <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -452,12 +337,6 @@ export function UserManagement() {
 
               {/* Quick actions */}
               <div className="flex flex-wrap gap-2">
-                <Button size="sm" variant="outline" onClick={() => toast.info('Đã gửi email đặt lại mật khẩu (giả lập)')}>
-                  <KeyRound className="mr-1 h-3.5 w-3.5" /> Đổi mật khẩu
-                </Button>
-                <Button size="sm" variant="outline" onClick={() => toast.info('Đã gửi email thông báo (giả lập)')}>
-                  <Mail className="mr-1 h-3.5 w-3.5" /> Gửi email
-                </Button>
                 {selectedUser.status !== 'Bị khoá' && (
                   <Button size="sm" variant="outline" className="text-orange-600" onClick={() => { setBanDialog(selectedUser); setShowDetail(false); }}>
                     <Ban className="mr-1 h-3.5 w-3.5" /> Khoá tài khoản
@@ -465,9 +344,9 @@ export function UserManagement() {
                 )}
                 {selectedUser.status === 'Bị khoá' && (
                   <Button size="sm" variant="outline" className="text-green-600" onClick={async () => {
-                    await userApi.update(selectedUser.id, { status: 'Hoạt động' });
-                    setSelectedUser(prev => prev ? { ...prev, status: 'Hoạt động' } : null);
-                    setUsers(prev => prev.map(u => u.id === selectedUser.id ? { ...u, status: 'Hoạt động' } : u));
+                    const updated = await adminUserApi.updateStatus(selectedUser.id, 'Hoạt động');
+                    setSelectedUser(updated);
+                    setUsers(prev => prev.map(u => u.id === selectedUser.id ? updated : u));
                     toast.success('Đã mở khoá tài khoản');
                   }}>
                     <ShieldCheck className="mr-1 h-3.5 w-3.5" /> Mở khoá

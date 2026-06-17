@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Download, Eye, Pencil, Plus, Power, Tag, Trash2 } from 'lucide-react';
+import { Download, Eye, Pencil, Plus, Power, Tag, Trash2, X } from 'lucide-react';
 import { DataTable } from '../shared/DataTable';
 import { FilterBar } from '../shared/FilterBar';
 import { StatusBadge } from '../shared/StatusBadge';
@@ -9,10 +9,11 @@ import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '../ui/dialog';
 import { Input } from '../ui/input';
 import { Label } from '../ui/label';
+import { Badge } from '../ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '../ui/select';
 import { Textarea } from '../ui/textarea';
 import { Separator } from '../ui/separator';
-import { adminPromotionApi } from '../../services/adminBackendApi';
+import { adminCategoryApi, adminProductApi, adminPromotionApi } from '../../services/adminBackendApi';
 import { toast } from 'sonner';
 import type { ActiveFilter, ColumnConfig, FilterConfig, PaginationParams, Promotion, SortParams } from '../../types';
 
@@ -37,6 +38,12 @@ type PromotionForm = {
   applicableCategories: string;
   applicableBrands: string;
   isActive: boolean;
+};
+
+type ComboOption = {
+  value: string;
+  label: string;
+  description?: string;
 };
 
 const PROMOTION_STATUSES = ['ACTIVE', 'INACTIVE', 'SCHEDULED', 'EXPIRED'];
@@ -78,6 +85,136 @@ function toOffset(value: string) {
 
 function csvToArray(value: string) {
   return value.split(',').map(item => item.trim()).filter(Boolean);
+}
+
+function arrayToCsv(values: string[]) {
+  return values.map(item => item.trim()).filter(Boolean).join(', ');
+}
+
+function flattenCategoryOptions(categories: any[], depth = 0): ComboOption[] {
+  return categories.flatMap(category => [
+    {
+      value: String(category.id),
+      label: `${'  '.repeat(depth)}${category.name}`,
+      description: category.slug || category.categoryName,
+    },
+    ...flattenCategoryOptions(category.children ?? [], depth + 1),
+  ]);
+}
+
+function MultiCsvCombobox({
+  label,
+  value,
+  options,
+  placeholder,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  options: ComboOption[];
+  placeholder: string;
+  onChange: (value: string) => void;
+}) {
+  const [query, setQuery] = useState('');
+  const selected = useMemo(() => csvToArray(value), [value]);
+  const optionByValue = useMemo(() => new Map(options.map(option => [option.value.toLowerCase(), option])), [options]);
+  const listId = useMemo(() => `promotion-combo-${label.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`, [label]);
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = query.trim().toLowerCase();
+    const selectedSet = new Set(selected.map(item => item.toLowerCase()));
+    return options
+      .filter(option => !selectedSet.has(option.value.toLowerCase()))
+      .filter(option => !normalizedQuery
+        || option.label.toLowerCase().includes(normalizedQuery)
+        || option.value.toLowerCase().includes(normalizedQuery)
+        || option.description?.toLowerCase().includes(normalizedQuery))
+      .slice(0, 8);
+  }, [options, query, selected]);
+
+  const selectedLabel = (item: string) => {
+    const option = optionByValue.get(item.toLowerCase());
+    return option ? option.label.trim() : item;
+  };
+
+  const addValue = (rawValue: string) => {
+    const rawItems = rawValue.split(',').map(item => item.trim()).filter(Boolean);
+    if (rawItems.length > 1) {
+      const next = [...selected];
+      rawItems.forEach(item => {
+        const match = options.find(option =>
+          option.value.toLowerCase() === item.toLowerCase()
+          || option.label.trim().toLowerCase() === item.toLowerCase()
+        );
+        const nextValue = match?.value ?? item;
+        if (!next.some(existing => existing.toLowerCase() === nextValue.toLowerCase())) next.push(nextValue);
+      });
+      onChange(arrayToCsv(next));
+      setQuery('');
+      return;
+    }
+
+    const trimmed = rawValue.trim();
+    if (!trimmed) return;
+    const match = options.find(option =>
+      option.value.toLowerCase() === trimmed.toLowerCase()
+      || option.label.trim().toLowerCase() === trimmed.toLowerCase()
+    ) ?? filteredOptions[0];
+    const nextValue = match?.value ?? trimmed;
+    if (!selected.some(item => item.toLowerCase() === nextValue.toLowerCase())) {
+      onChange(arrayToCsv([...selected, nextValue]));
+    }
+    setQuery('');
+  };
+
+  const removeValue = (item: string) => {
+    onChange(arrayToCsv(selected.filter(existing => existing !== item)));
+  };
+
+  return (
+    <div className="grid gap-2">
+      <Label>{label}</Label>
+      <div className="rounded-md border bg-background p-2">
+        <div className="flex flex-wrap gap-1.5">
+          {selected.length === 0 ? (
+            <span className="px-1 py-0.5 text-sm text-muted-foreground">Áp dụng tất cả nếu để trống</span>
+          ) : selected.map(item => (
+            <Badge key={item} variant="secondary" className="max-w-full gap-1">
+              <span className="max-w-[12rem] truncate">{selectedLabel(item)}</span>
+              <button type="button" onClick={() => removeValue(item)} aria-label={`Xóa ${selectedLabel(item)}`}>
+                <X className="h-3 w-3" />
+              </button>
+            </Badge>
+          ))}
+        </div>
+        <div className="mt-2 flex gap-2">
+          <Input
+            list={listId}
+            value={query}
+            onChange={event => setQuery(event.target.value)}
+            onKeyDown={event => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                addValue(query);
+              }
+            }}
+            onBlur={() => {
+              if (query.includes(',')) addValue(query);
+            }}
+            placeholder={placeholder}
+          />
+          <Button type="button" variant="outline" size="sm" onClick={() => addValue(query)}>
+            <Plus className="mr-1 h-4 w-4" />
+            Thêm
+          </Button>
+        </div>
+        <datalist id={listId}>
+          {filteredOptions.map(option => (
+            <option key={option.value} value={option.label.trim()} label={option.description ? `${option.value} - ${option.description}` : option.value} />
+          ))}
+        </datalist>
+      </div>
+    </div>
+  );
 }
 
 function getPromoStatus(promotion: AdminPromotion) {
@@ -162,6 +299,8 @@ export function AdminPromotionPage() {
   const [selectedPromotion, setSelectedPromotion] = useState<AdminPromotion | null>(null);
   const [editingPromotion, setEditingPromotion] = useState<AdminPromotion | null>(null);
   const [form, setForm] = useState<PromotionForm>(emptyForm);
+  const [productOptions, setProductOptions] = useState<ComboOption[]>([]);
+  const [categoryOptions, setCategoryOptions] = useState<ComboOption[]>([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -184,6 +323,27 @@ export function AdminPromotionPage() {
     fetchData();
   }, [fetchData]);
 
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([
+      adminProductApi.getPaginated({ page: 1, pageSize: 1000 }, { field: 'updatedAt', direction: 'desc' }),
+      adminCategoryApi.getAll(),
+    ])
+      .then(([productPage, categories]) => {
+        if (cancelled) return;
+        setProductOptions(productPage.data.map((product: any) => ({
+          value: String(product.id),
+          label: String(product.name),
+          description: [product.brand, product.categoryName].filter(Boolean).join(' - '),
+        })));
+        setCategoryOptions(flattenCategoryOptions(categories));
+      })
+      .catch(error => {
+        toast.error(error instanceof Error ? error.message : 'Cannot load promotion target options');
+      });
+    return () => { cancelled = true; };
+  }, []);
+
   const stats = useMemo(() => ({
     total: allPromotions.length,
     active: allPromotions.filter(item => getPromoStatus(item) === 'ACTIVE').length,
@@ -191,6 +351,17 @@ export function AdminPromotionPage() {
     expired: allPromotions.filter(item => getPromoStatus(item) === 'EXPIRED').length,
     used: allPromotions.reduce((sum, item) => sum + Number(item.usedCount ?? 0), 0),
   }), [allPromotions]);
+
+  const brandOptions = useMemo<ComboOption[]>(() => {
+    const values = [
+      ...productOptions.map(option => option.description?.split(' - ')[0]),
+      ...allPromotions.flatMap(item => item.applicableBrands ?? []),
+      ...csvToArray(form.applicableBrands),
+    ];
+    return [...new Set(values.map(value => String(value ?? '').trim()).filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, 'vi'))
+      .map(brand => ({ value: brand, label: brand }));
+  }, [allPromotions, form.applicableBrands, productOptions]);
 
   const openCreate = () => {
     setEditingPromotion(null);
@@ -392,9 +563,27 @@ export function AdminPromotionPage() {
             </div>
             <div className="grid gap-2"><Label>Description</Label><Textarea rows={3} value={form.description} onChange={e => setForm(current => ({ ...current, description: e.target.value }))} /></div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-              <div className="grid gap-2"><Label>Product ids CSV</Label><Input value={form.applicableProducts} onChange={e => setForm(current => ({ ...current, applicableProducts: e.target.value }))} /></div>
-              <div className="grid gap-2"><Label>Category ids CSV</Label><Input value={form.applicableCategories} onChange={e => setForm(current => ({ ...current, applicableCategories: e.target.value }))} /></div>
-              <div className="grid gap-2"><Label>Brands CSV</Label><Input value={form.applicableBrands} onChange={e => setForm(current => ({ ...current, applicableBrands: e.target.value }))} /></div>
+              <MultiCsvCombobox
+                label="Sản phẩm áp dụng"
+                value={form.applicableProducts}
+                options={productOptions}
+                placeholder="Gõ tên sản phẩm hoặc dán product IDs..."
+                onChange={value => setForm(current => ({ ...current, applicableProducts: value }))}
+              />
+              <MultiCsvCombobox
+                label="Danh mục áp dụng"
+                value={form.applicableCategories}
+                options={categoryOptions}
+                placeholder="Gõ tên danh mục hoặc dán category IDs..."
+                onChange={value => setForm(current => ({ ...current, applicableCategories: value }))}
+              />
+              <MultiCsvCombobox
+                label="Brand áp dụng"
+                value={form.applicableBrands}
+                options={brandOptions}
+                placeholder="Gõ brand hoặc dán danh sách brand..."
+                onChange={value => setForm(current => ({ ...current, applicableBrands: value }))}
+              />
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => { setEditingPromotion(null); setForm(emptyForm); }}>Cancel</Button>

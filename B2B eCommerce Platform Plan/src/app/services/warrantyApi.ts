@@ -10,6 +10,7 @@ import type {
 
 const delay = (ms = 200) => new Promise<void>(r => setTimeout(r, ms));
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:8080/api/v1';
+const USE_MOCK_FALLBACKS = import.meta.env.VITE_USE_MOCK_FALLBACKS === 'true';
 const DEFAULT_DEV_USER_ID = '00000000-0000-4000-8000-000000000199';
 
 type ApiEnvelope<T> = {
@@ -47,6 +48,11 @@ async function backendRequest<T>(path: string, init?: RequestInit): Promise<{ da
     throw new Error(payload.error?.message ?? payload.message ?? `API error ${response.status}`);
   }
   return { data: payload.data, pagination: payload.pagination };
+}
+
+function assertMockFallbackAllowed(error: unknown): void {
+  if (USE_MOCK_FALLBACKS) return;
+  throw error instanceof Error ? error : new Error('Backend API failed and mock fallback is disabled');
 }
 
 // ─── Mock Warranties ───────────────────────────────────────
@@ -355,7 +361,8 @@ Object.assign(warrantyApi, {
         pageSize: meta?.pageSize ?? pagination.pageSize,
         totalPages: meta?.totalPages ?? Math.ceil(data.length / pagination.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       return warrantyApi.getPaginated(pagination, { customerId: _buyerId, status: rawFilters.status as WarrantyStatus, search });
     }
   },
@@ -365,7 +372,8 @@ Object.assign(warrantyApi, {
         headers: getDevUserHeaders(),
       });
       return mapBackendWarranty(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay();
       return mockWarranties.find(w => w.id === id) ?? null;
     }
@@ -406,7 +414,8 @@ Object.assign(warrantyClaimApi, {
         pageSize: meta?.pageSize ?? pagination.pageSize,
         totalPages: meta?.totalPages ?? Math.ceil(data.length / pagination.pageSize),
       };
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       return warrantyClaimApi.getPaginated(pagination, { customerId: _buyerId, status: rawFilters.status as ClaimStatus });
     }
   },
@@ -416,7 +425,8 @@ Object.assign(warrantyClaimApi, {
         headers: getDevUserHeaders(),
       });
       return mapBackendClaim(data);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay();
       return mockClaims.find(c => c.id === id) ?? null;
     }
@@ -432,7 +442,8 @@ Object.assign(warrantyClaimApi, {
         }),
       });
       return mapBackendClaim(created);
-    } catch {
+    } catch (error) {
+      assertMockFallbackAllowed(error);
       await delay(300);
       const claim: WarrantyClaim = {
         ...data,

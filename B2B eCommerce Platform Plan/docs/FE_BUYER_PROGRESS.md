@@ -1,5 +1,249 @@
 # FE Buyer Progress
 
+## Done - Buyer Delete Pending Return Request - 2026-05-28
+
+Scope:
+
+- Buyer return list `/returns`.
+- Buyer return API adapter.
+
+Files changed:
+
+- `src/app/components/buyer/BuyerReturnListPage.tsx`
+- `src/app/services/api.ts`
+
+Implemented behavior:
+
+- `returnApi.delete(id)` now calls backend `DELETE /api/v1/returns/{id}` with buyer dev ownership headers.
+- Desktop table keeps the delete action for `Chờ duyệt` rows.
+- Mobile return cards now also show `Huỷ yêu cầu` for `Chờ duyệt` rows.
+
+Verification:
+
+- `npx.cmd vite build --outDir dist-codex-check --emptyOutDir`: passed.
+
+Data:
+
+- No new seed data required.
+
+Next action:
+
+- Manual smoke in browser: create a return request, open `/returns`, click `Huỷ yêu cầu`, verify it disappears from the list and the delivered order can create a return again.
+
+## Done - Buyer Return Detail Missing Array Guard - 2026-05-28
+
+Scope:
+
+- Buyer return detail `/returns/:id`.
+
+Files changed:
+
+- `src/app/components/buyer/BuyerReturnDetail.tsx`
+
+Implemented behavior:
+
+- Return detail no longer crashes when BE response omits `items` or `images`.
+- Missing `items` and `images` are treated as empty arrays.
+- Missing `refundAmount` is treated as `0`; missing `refundMethod` falls back to `ORIGINAL_PAYMENT`.
+
+Verification:
+
+- `npx.cmd vite build --outDir dist-codex-check --emptyOutDir`: passed.
+
+Data:
+
+- No new seed data required.
+
+Next action:
+
+- Manual smoke in browser: refresh `/returns/cc000006-0199-4000-8000-000000000003` and verify the page renders, then check whether BE should backfill `items[]` for this seeded return detail.
+
+## Done - Buyer Delivered Order Return Button Visibility - 2026-05-28
+
+Scope:
+
+- Buyer order detail `/orders/:id`.
+
+Files changed:
+
+- `src/app/components/buyer/OrderDetailPage.tsx`
+
+Implemented behavior:
+
+- Delivered orders now always show a return/refund-related action.
+- If the delivered order has no return request, the action is `Trả hàng & hoàn tiền` and opens the create-return dialog.
+- If the delivered order already has a return request, the action is `Xem yêu cầu hoàn trả` and navigates to `/returns/{id}`.
+- Existing return requests are stored as full return DTOs instead of only ids so FE can navigate to the correct detail page.
+
+Verification:
+
+- `npx.cmd vite build --outDir dist-codex-check --emptyOutDir`: passed.
+
+Data:
+
+- No new seed data required. The QA order case can reuse existing delivered orders and seeded return requests.
+
+Next action:
+
+- Manual smoke in browser: refresh delivered order detail, verify either `Trả hàng & hoàn tiền` or `Xem yêu cầu hoàn trả` appears next to order actions.
+
+## Done - Buyer Cancel And Return Entry Points - 2026-05-28
+
+Scope:
+
+- Buyer order list `/orders`.
+- Buyer account menu in shared buyer layout.
+
+Files changed:
+
+- `src/app/components/buyer/OrderListPage.tsx`
+- `src/app/components/buyer/BuyerLayout.tsx`
+
+Implemented behavior:
+
+- `/orders` now has a visible `Trả hàng & hoàn tiền` shortcut to `/returns`.
+- Account dropdown now includes `Trả hàng & hoàn tiền`.
+- Customer cancellation remains in order detail `/orders/:id` and is visible only for cancellable order statuses.
+- Customer return request remains in order detail `/orders/:id` and is visible only for delivered orders with no active return request.
+
+Verification:
+
+- `npx.cmd vite build --outDir dist-codex-check --emptyOutDir`: passed.
+
+Data:
+
+- No new seed data required. Feature reuses existing order and return data.
+
+Next action:
+
+- Manual smoke in browser: open `/orders`, click a pending/confirmed order and verify `Huỷ đơn` appears; open a delivered order and verify `Trả hàng` appears; open `/returns` from the new shortcut and account menu.
+
+## Done - Buyer Current Rank CTA - 2026-05-28
+
+Scope:
+
+- Buyer dashboard `/dashboard`.
+- Buyer account menu in shared buyer layout.
+
+Files changed:
+
+- `src/app/components/buyer/BuyerDashboardPage.tsx`
+- `src/app/components/buyer/BuyerLayout.tsx`
+
+Implemented behavior:
+
+- Dashboard welcome banner now has a visible `Xem hạng hiện tại` button when loyalty data is available.
+- Loyalty widget now has a full-width `Xem hạng hiện tại` action that navigates to `/loyalty`.
+- Quick action label changed from `Điểm thưởng` to `Hạng thành viên` to better match the rank use case.
+- Account dropdown now includes `Hạng thành viên` so buyer can open current tier/rank from the header.
+
+Verification:
+
+- `npx.cmd vite build --outDir dist-codex-check --emptyOutDir`: passed.
+
+Data:
+
+- No new seed data required. Feature reuses existing loyalty API data.
+
+Next action:
+
+- Manual smoke in browser: login as buyer, open dashboard, click `Xem hạng hiện tại`, confirm `/loyalty` shows current tier, points, total spend, and next tier progress.
+
+## Done - Buyer Notification Priority Normalization - 2026-05-28
+
+Scope:
+
+- `/notifications`
+- Notification data adapter and card rendering.
+
+Files changed:
+
+- `src/app/services/api.ts`
+- `src/app/components/shared/NotificationCenterPage.tsx`
+
+Implemented behavior:
+
+- Backend notification priority is normalized to FE keys: `low`, `medium`, `high`, `urgent`.
+- Uppercase or unexpected priority values no longer crash notification cards.
+- Notification card priority badge/dot now falls back to `medium` config if runtime data is invalid.
+
+Verification:
+
+- `npx.cmd vite build --outDir dist-codex-check --emptyOutDir`: passed.
+
+Data:
+
+- No new seed data required.
+
+Next action:
+
+- Manual smoke in browser: refresh `/notifications`, verify list renders, mark read/delete still work, and action links navigate correctly.
+
+## Done - Buyer Category Count Demo Data Alignment - 2026-05-28
+
+Scope:
+
+- Buyer product listing category sidebar.
+- Backend catalog seed data and category `productCount` values.
+
+Files changed:
+
+- `be/src/main/resources/db/migration/V34__catalog_leaf_demo_products.sql`
+- `be/src/test/java/com/b2b/ecommerce/B2bEcommerceApiApplicationTests.java`
+- `be/docs/FE_CATALOG_CONTRACT.md`
+- `be/docs/DATABASE_SCHEMA_CURRENT.md`
+- `be/docs/PROGRESS.md`
+
+Implemented behavior:
+
+- Each visible leaf category now has 10 active products for demo browsing: iPhone, Samsung, Xiaomi, OPPO, Vivo, Tai nghe, Sac cap, Op lung.
+- Parent category counts now represent active products in the full subtree.
+- Existing charger product was moved from parent `Phu kien` to child `Sac cap` so the category tree does not show a direct parent-only product.
+- Demo products include one active variant, one primary image, and phone specs for phone categories.
+
+Verification:
+
+- `mvn test`: passed, 26 tests, 0 failures, 0 errors.
+- DB smoke query confirmed: leaf categories = 10 each, `Dien thoai` = 50, `Phu kien` = 30.
+
+Data:
+
+- Added enough demo products to bring every current leaf category to 10 active products.
+
+Next action:
+
+- Restart BE if the running API process was started before V34, then refresh `/products` to see the updated sidebar counts.
+
+## Done - Variant-Specific Product Gallery - 2026-05-27
+
+Routes:
+
+- `/products/:id`
+
+Files changed:
+
+- `src/app/services/api.ts`
+- `src/app/components/buyer/ProductDetailPage.tsx`
+
+BE contract used:
+
+- `be/docs/FE_CATALOG_CONTRACT.md`
+
+Implemented behavior:
+
+- FE preserves BE product image metadata through `imageDetails`.
+- When buyer selects a variant, product gallery uses images matching that variant's `variantId`.
+- If the selected variant has no dedicated images, gallery falls back to shared product-level images.
+- BE seeds 10 variant-specific demo images for visible gallery switching QA.
+
+Verification:
+
+- `npx.cmd vite build --outDir dist-codex-check --emptyOutDir`: passed.
+
+Next action:
+
+- Manually replace placeholder variant image URLs with real product/color photos for a polished final demo.
+
 Source of truth:
 
 - BA docs: `B2B eCommerce Platform Plan/ba-docs`
@@ -64,6 +308,48 @@ Data:
 Next action:
 
 - Implement cart and checkout wiring from `be/docs/FE_CART_CONTRACT.md`, then create or verify at least 10 cart/order-ready data scenarios.
+
+### Done - Product Detail Combo Cleanup - 2026-05-24
+
+Routes:
+
+- `/products/:id`
+
+Files changed:
+
+- `src/app/services/api.ts`
+- `src/app/components/buyer/ProductDetailPage.tsx`
+
+BE contract used:
+
+- `be/docs/FE_CATALOG_CONTRACT.md`
+
+Implemented behavior:
+
+- Product combo adapter now reads public BE endpoints:
+  - `GET /api/v1/combos`
+  - `GET /api/v1/combos/{id}`
+  - `GET /api/v1/products/{productId}/combos`
+- Product detail no longer calls legacy B2B `supplierApi` or mock chat conversation creation.
+- Store information is shown as CELLPHONES retail copy, matching the BE buyer gap note that supplier extras are not required for B2C display.
+- Combo purchase button now adds each combo item to the cart instead of only showing a local success toast.
+- Combo fallback is empty when BE is unavailable, so FE does not invent buyer combo deals.
+
+Verification:
+
+- `GET /api/v1/products?page=1&pageSize=1`: passed locally.
+- `GET /api/v1/products/{productId}/combos`: passed locally, returned 1 combo for the sampled product.
+- `/products/{productId}`: passed locally with HTTP 200.
+- `npm.cmd run build`: passed.
+
+Data:
+
+- BE combo data exists via `V25__buyer_public_combos.sql`.
+- Non-blocking BE data QA: review demo combo names/composition if seeded combo copy must match every contained product exactly.
+
+Next action:
+
+- Continue buyer-facing audit for profile, wishlist, reviews, warranty, returns, trade-in, and loyalty pages; remove or document any remaining mock-only behavior against the matching BE contracts.
 
 ### Done - Cart And Checkout Create
 
@@ -162,6 +448,35 @@ Data:
 Next action:
 
 - Wire buyer payment, invoice, and shipment pages from `be/docs/FE_PAYMENT_INVOICE_CONTRACT.md` and `be/docs/FE_SHIPMENT_CONTRACT.md`.
+
+### Done - Buyer Order Detail Legacy Chat Cleanup - 2026-05-24
+
+Routes:
+
+- `/orders/:id`
+
+Files changed:
+
+- `src/app/components/buyer/OrderDetailPage.tsx`
+
+BE contracts used:
+
+- `be/docs/FE_ORDER_CONTRACT.md`
+- `be/docs/FE_ORDER_FULFILLMENT_CONTRACT.md`
+
+Implemented behavior:
+
+- Removed buyer order detail `Nhắn tin` action that created a mock/B2B chat conversation.
+- Order detail keeps BE-backed actions for cancel, reorder through cart, invoice lookup, shipment lookup, review, and return request.
+- Support/contact behavior is not invented in FE until BE defines a customer support conversation contract.
+
+Verification:
+
+- `npm.cmd run build`: passed.
+
+Next action:
+
+- Continue buyer-facing audit for wishlist/profile UI mocks; document BE needs for wishlist folders, price tracking, profile stats, avatar/cover upload, and password change if those should be production features.
 
 ### Done - Buyer Payments, Invoices, Shipments
 
@@ -838,3 +1153,203 @@ Data:
 Next action:
 
 - Continue with source/mock data cleanup for remaining B2B demo content that can still appear as fallback data, especially banners, notifications, document-center mock documents, and email-template seed copy.
+
+### Done - Buyer Promotion Visibility and Product Application
+
+Routes / surfaces:
+
+- `/promotions`
+- `/products`
+- `/products/:id`
+- `/cart`
+
+Files changed:
+
+- `src/app/services/api.ts`
+- `src/app/components/buyer/ProductListPage.tsx`
+- `src/app/components/buyer/CartPage.tsx`
+
+Implemented behavior:
+
+- Buyer promotion API now reads active promotions from live BE `GET /api/v1/promotions` instead of the old mock-only path.
+- BE enum types `PERCENTAGE`, `FIXED_AMOUNT`, `BUY_X_GET_Y`, and `FREE_SHIPPING` are normalized for FE display.
+- Product detail promotion section now receives BE-backed promotions filtered by product id, category id, or brand.
+- Product listing now shows applicable promotion badges and copyable promotion codes per product.
+- Cart coupon validation now sends `cartTotal` and enriched `cartItems` to `POST /api/v1/promotions/validate`, so BE can enforce product/category/brand scope.
+
+Verification:
+
+- Local BE check: `GET http://localhost:8080/api/v1/promotions?page=1&pageSize=20` returned 8 active promotions.
+- `npx.cmd vite build --outDir dist-codex-check --emptyOutDir`: passed.
+
+Data:
+
+- Existing BE seed/admin promotions are enough. Promotion appears only when `isActive=true`, current time is between `startDate` and `endDate`, usage limit is not exhausted, and scope matches product id/category id/brand or scope is empty.
+
+Next action:
+
+- Improve admin promotion form UX by replacing raw product/category UUID CSV inputs with searchable product/category selectors, so admin can configure scopes without manually copying ids.
+
+### Done - Product Detail Single Variant Selector Visibility
+
+Routes / surfaces:
+
+- `/products/:id`
+
+Files changed:
+
+- `src/app/components/buyer/ProductDetailPage.tsx`
+
+Implemented behavior:
+
+- Product detail now displays the variant selector whenever BE returns at least one variant, including single-variant products such as `OPPO Demo 01`.
+- Variant option now shows variant name, price, and current stock so the buyer can still confirm the selected version before adding to cart.
+
+Verification:
+
+- Local BE check for `OPPO Demo 01` showed one variant: `128GB - Trang`, stock `77`.
+- `npx.cmd vite build --outDir dist-codex-check --emptyOutDir`: passed.
+
+Data:
+
+- No new data required. If a product should have multiple selectable variants, admin/BE needs to create additional rows through product variant management.
+
+Next action:
+
+- Review admin product variant creation flow and ensure demo products that need multiple choices have at least 2-3 variants with variant-linked images.
+
+### Done - Checkout Must Create Backend Order
+
+Routes / surfaces:
+
+- `/cart`
+
+Files changed:
+
+- `src/app/services/api.ts`
+- `src/app/components/buyer/CartPage.tsx`
+
+Implemented behavior:
+
+- Checkout confirmation already calls the backend order flow through `handlePlaceOrderWithBackend`.
+- Fixed `orderApi.create` so backend-shaped checkout payloads must succeed on `POST /api/v1/orders`; FE no longer falls back to a local mock order when BE rejects the request.
+- Cart checkout now surfaces the backend error message in the toast instead of the generic failure message.
+
+Verification:
+
+- `npx.cmd vite build --outDir dist-codex-check --emptyOutDir`: passed.
+
+Data:
+
+- No new data required.
+
+Next action:
+
+- Add an explicit success check in the demo flow: after buyer checkout, open `/orders` or admin `/admin/orders` and verify the new `PENDING` order number appears.
+
+### Done - Cart And Checkout Stock Guard
+
+Routes / surfaces:
+
+- `/products/:id`
+- `/products`
+- `/cart`
+
+Files changed:
+
+- `src/app/services/api.ts`
+- `src/app/components/buyer/ProductDetailPage.tsx`
+- `src/app/components/buyer/ProductListPage.tsx`
+- `src/app/components/buyer/CartPage.tsx`
+
+Implemented behavior:
+
+- Product detail clamps quantity by selected variant stock before add-to-cart.
+- Product detail disables add-to-cart when selected variant has no stock.
+- Product listing quick add now sends the first variant id for products that have variants.
+- Cart add/update no longer falls back to local mock data when backend rejects a UUID product/item because of stock or variant validation.
+- Cart quantity update now shows backend validation errors in toast instead of silently keeping mock behavior.
+- Checkout still calls backend cart validation and backend order creation; backend remains the source of truth for stock.
+
+Verification:
+
+- `npx.cmd vite build --outDir dist-codex-check --emptyOutDir`: passed.
+- BE `mvn package -DskipTests`: passed.
+- BE `mvn test`: blocked by local PostgreSQL connection refused on `localhost:5432`; rerun after DB is running.
+- BE `mvn test`: blocked by local PostgreSQL connection refused on `localhost:5432`; rerun when database service is running.
+
+Data:
+
+- No new data required. Existing product variant stock controls whether buyer can add to cart and checkout.
+
+Next action:
+
+- Restart BE after deploying the latest cart validation change, then test demo flow: choose a product variant, add more than stock, update cart above stock, and create checkout order.
+
+### Done - Local Runtime Mock Fallback Lockdown
+
+Routes / surfaces:
+
+- Buyer public and account routes that use `src/app/services/api.ts`
+- `/warranty`
+- `/loyalty`
+- Buyer layout and command palette
+- `/orders/:id`
+
+Files changed:
+
+- `src/app/services/api.ts`
+- `src/app/services/warrantyApi.ts`
+- `src/app/services/loyaltyApi.ts`
+- `src/app/components/buyer/BuyerLayout.tsx`
+- `src/app/components/buyer/BuyerProfilePage.tsx`
+- `src/app/components/buyer/OrderDetailPage.tsx`
+- `src/app/components/shared/CommandPalette.tsx`
+- `src/app/routes.tsx`
+
+Implemented behavior:
+
+- Local FE no longer silently falls back to mock/local data after backend API failure. Runtime mock fallback is disabled by default and can only be re-enabled explicitly with `VITE_USE_MOCK_FALLBACKS=true`.
+- Auth login/register now call backend `/auth/login` and `/auth/register` instead of checking FE `mockUsers`.
+- Removed buyer chat route, buyer profile chat button, and AI chatbot from runtime because they were mock-only.
+- Removed the mock-only saved-list action from buyer order detail.
+- Removed mock-only admin document center and report builder routes from runtime route registration.
+
+Verification:
+
+- `npx.cmd vite build --outDir dist-codex-check --emptyOutDir`: passed.
+- BE `mvn package -DskipTests`: passed.
+
+Residual BE note:
+
+- BE auth service is still in-memory/demo-token based. FE now consumes BE auth endpoints, but production auth still needs DB-backed users and real session/JWT handling if required for final hardening.
+
+Next action:
+
+- Restart FE/BE, keep `VITE_USE_MOCK_FALLBACKS` unset, then smoke test login, product list/detail, cart, checkout, order detail, warranty, loyalty, notifications, and admin pages. Any missing BE endpoint should now fail visibly instead of showing fake data.
+
+## Done - Buyer Invoice Promotion Discount - 2026-05-28
+
+- Buyer invoice mapper reads BE `discountAmount`.
+- Invoice subtotal is calculated as `totalAmount + discountAmount - taxAmount`.
+- Invoice detail and print preview show the promotion discount line before total.
+
+## Done - Real Buyer Registration Wiring - 2026-05-29
+
+- `/register` now sends the full registration payload to BE, including phone, companyName, taxCode, address, and city.
+- `authApi.register` consumes the DB-backed `/api/v1/auth/register` response and stores the returned UUID user id in `cellphones_auth_user`.
+- Auth mapper now keeps the returned phone so subsequent buyer API calls can pass the dev customer headers consistently.
+
+Next action:
+
+- Restart BE so Flyway applies `V36__auth_credentials.sql`, then smoke test `/register` with a new email and login again with that same password.
+
+## Done - Testcase Route Alias Compatibility - 2026-05-29
+
+- Added FE aliases for old testcase URLs: `/search`, `/category/:slug`, `/account/orders`, `/check-imei`, and `/admin/dashboard`.
+- Product listing now reads `q` on `/search?q=...` and keeps the URL in that shape.
+- Category alias `/category/:slug` feeds `categorySlug` into the existing product list API query.
+
+Next action:
+
+- Restart FE and BE, then rerun TC12-TC21 and return-flow checks against the real backend.

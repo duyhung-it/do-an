@@ -137,8 +137,9 @@ export function BuyerInvoiceDetail() {
       )}
 
       {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-4">
         <SummaryCard label="Tạm tính" value={formatPrice(invoice.subtotal)} icon={DollarSign} />
+        <SummaryCard label="Khuyến mãi" value={`-${formatPrice(invoice.discountAmount ?? 0)}`} icon={Receipt} />
         <SummaryCard label={`Thuế (${invoice.taxRate}%)`} value={formatPrice(invoice.taxAmount)} icon={Receipt} />
         <SummaryCard
           label="Tổng cộng"
@@ -257,6 +258,12 @@ export function BuyerInvoiceDetail() {
               <span className="text-muted-foreground">Thuế ({invoice.taxRate}%):</span>
               <span>{formatPrice(invoice.taxAmount)}</span>
             </div>
+            {(invoice.discountAmount ?? 0) > 0 && (
+              <div className="flex items-center gap-8 text-sm text-emerald-600">
+                <span>Khuyến mãi:</span>
+                <span>-{formatPrice(invoice.discountAmount ?? 0)}</span>
+              </div>
+            )}
             <Separator className="w-48" />
             <div className="flex items-center gap-8">
               <span className="font-medium">Tổng cộng:</span>

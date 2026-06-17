@@ -4,10 +4,11 @@
 // tranh chấp, hoàn tiền, AreaChart doanh thu, CSV
 // ============================================================
 
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo, type ReactNode } from 'react';
+import { Link } from 'react-router';
 import {
   DollarSign, ClipboardList, TrendingUp, Download, Truck, Wallet,
-  FileText, XCircle, CheckCircle2,
+  FileText, XCircle, CheckCircle2, Eye,
 } from 'lucide-react';
 import { DataTable } from '../shared/DataTable';
 import { FilterBar } from '../shared/FilterBar';
@@ -37,37 +38,59 @@ const formatPrice = (price: number) =>
 const formatCompact = (price: number) =>
   new Intl.NumberFormat('vi-VN', { notation: 'compact' }).format(price);
 
+type OrderTableColumn = ColumnConfig & { render?: (order: Order) => ReactNode };
+
+const getOrderDiscount = (order: Order) => Number(order.discountAmount ?? order.discount ?? 0);
+
+const renderPromotion = (order: Order) => {
+  const discount = getOrderDiscount(order);
+  if (!order.promotionCode && discount <= 0) return <span className="text-muted-foreground">-</span>;
+  return (
+    <div className="min-w-0 space-y-1">
+      {order.promotionCode && (
+        <Badge variant="outline" className="max-w-[120px] truncate border-orange-200 bg-orange-50 text-orange-700">
+          {order.promotionCode}
+        </Badge>
+      )}
+      {discount > 0 && <p className="text-xs font-medium text-emerald-600">-{formatPrice(discount)}</p>}
+    </div>
+  );
+};
+
 const ORDER_STATUS_OPTIONS = ['PENDING', 'CONFIRMED', 'SHIPPING', 'DELIVERED', 'CANCELLED', 'RETURNED'];
 const ORDER_STEPS = ['PENDING', 'CONFIRMED', 'SHIPPING', 'DELIVERED'];
+const ORDER_STATUS_LABELS: Record<string, string> = {
+  PENDING: 'Chờ xác nhận',
+  CONFIRMED: 'Đã xác nhận',
+  SHIPPING: 'Đang giao',
+  DELIVERED: 'Đã giao',
+  CANCELLED: 'Đã hủy',
+  RETURNED: 'Hoàn trả',
+};
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  UNPAID: 'Chưa thanh toán',
+  PAID: 'Đã thanh toán',
+  FAILED: 'Thất bại',
+  REFUNDED: 'Đã hoàn tiền',
+  PARTIALLY_REFUNDED: 'Hoàn một phần',
+};
 
-const columns: ColumnConfig[] = [
+const columns: OrderTableColumn[] = [
   { key: 'orderNumber', label: 'Mã đơn hàng', visible: true, sortable: true },
   { key: 'buyerName', label: 'Người mua', visible: true, sortable: true },
   { key: 'supplierName', label: 'Cửa hàng', visible: true, sortable: true },
   { key: 'totalAmount', label: 'Tổng tiền', visible: true, sortable: true },
+  { key: 'promotionCode', label: 'Khuyến mại', visible: true, sortable: false, width: '150px', render: renderPromotion },
   { key: 'status', label: 'Trạng thái', visible: true, sortable: true, editable: true, type: 'select',
     options: ORDER_STATUS_OPTIONS },
-  { key: 'paymentStatus', label: 'TT thanh toan', visible: true, sortable: true },
+  { key: 'paymentStatus', label: 'TT thanh toán', visible: true, sortable: true },
   { key: 'paymentMethod', label: 'Thanh toán', visible: true, sortable: false },
   { key: 'createdAt', label: 'Ngày tạo', visible: true, sortable: true },
 ];
 
 const filterConfigs: FilterConfig[] = [
-  { key: 'status', label: 'Trang thai', type: 'select', options: [
-    { label: 'PENDING', value: 'PENDING' },
-    { label: 'CONFIRMED', value: 'CONFIRMED' },
-    { label: 'SHIPPING', value: 'SHIPPING' },
-    { label: 'DELIVERED', value: 'DELIVERED' },
-    { label: 'CANCELLED', value: 'CANCELLED' },
-    { label: 'RETURNED', value: 'RETURNED' },
-  ]},
-  { key: 'paymentStatus', label: 'TT thanh toan', type: 'select', options: [
-    { label: 'UNPAID', value: 'UNPAID' },
-    { label: 'PAID', value: 'PAID' },
-    { label: 'FAILED', value: 'FAILED' },
-    { label: 'REFUNDED', value: 'REFUNDED' },
-    { label: 'PARTIALLY_REFUNDED', value: 'PARTIALLY_REFUNDED' },
-  ]},
+  { key: 'status', label: 'Trạng thái', type: 'select', options: ORDER_STATUS_OPTIONS.map(status => ({ label: ORDER_STATUS_LABELS[status], value: status })) },
+  { key: 'paymentStatus', label: 'TT thanh toán', type: 'select', options: Object.entries(PAYMENT_STATUS_LABELS).map(([value, label]) => ({ label, value })) },
 ];
 
 export function OrderOverview() {
@@ -90,6 +113,7 @@ export function OrderOverview() {
   // Action dialogs
   const [cancelDialog, setCancelDialog] = useState<Order | null>(null);
   const [cancelReason, setCancelReason] = useState('');
+  const [savingStatus, setSavingStatus] = useState(false);
   const fetchData = useCallback(async () => {
     setLoading(true);
     try {
@@ -105,7 +129,8 @@ export function OrderOverview() {
         const filtered = allRes.data.filter(o =>
           o.orderNumber.toLowerCase().includes(s) ||
           o.buyerName.toLowerCase().includes(s) ||
-          o.supplierName.toLowerCase().includes(s),
+          o.supplierName.toLowerCase().includes(s) ||
+          (o.promotionCode ?? '').toLowerCase().includes(s),
         );
         const activeFilterData = filters.length > 0
           ? filtered.filter(o => filters.every(f => String((o as unknown as Record<string, unknown>)[f.key]) === String(f.value)))
@@ -176,12 +201,41 @@ export function OrderOverview() {
     }
   };
 
+  const updateOrderStatusState = (id: string, status: Order['status']) => {
+    setOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+    setAllOrders(prev => prev.map(o => o.id === id ? { ...o, status } : o));
+    setSelectedOrder(prev => prev?.id === id ? { ...prev, status } : prev);
+  };
+
+  const reloadOrderSideData = async (order: Order) => {
+    const [ship, pay, inv] = await Promise.all([
+      customerShipmentApi.getByOrder(order.id).catch(() => null),
+      adminPaymentApi.getByOrder(order.id, order.orderNumber).catch(() => null),
+      orderInvoiceApi.getByOrder(order.id).catch(() => undefined),
+    ]);
+    setOrderShipment(ship ?? null);
+    setOrderPayment(pay ?? null);
+    setOrderInvoices(inv ? [inv] : []);
+  };
+
+  const handleStatusAction = async (status: Order['status'], note: string) => {
+    if (!selectedOrder || savingStatus) return;
+    setSavingStatus(true);
+    try {
+      const updated = await adminOrderApi.updateStatus(selectedOrder.id, status, note);
+      updateOrderStatusState(selectedOrder.id, updated.status);
+      await reloadOrderSideData({ ...selectedOrder, status: updated.status });
+      toast.success('Đã cập nhật trạng thái đơn hàng');
+    } finally {
+      setSavingStatus(false);
+    }
+  };
+
   // Cancel order
   const handleCancel = async () => {
     if (!cancelDialog || !cancelReason.trim()) { toast.error('Vui lòng nhập lý do'); return; }
-    await adminOrderApi.updateStatus(cancelDialog.id, 'CANCELLED', cancelReason);
-    setOrders(prev => prev.map(o => o.id === cancelDialog.id ? { ...o, status: 'CANCELLED' as Order['status'] } : o));
-    if (selectedOrder?.id === cancelDialog.id) setSelectedOrder(prev => prev ? { ...prev, status: 'CANCELLED' as Order['status'] } : null);
+    const updated = await adminOrderApi.updateStatus(cancelDialog.id, 'CANCELLED', cancelReason);
+    updateOrderStatusState(cancelDialog.id, updated.status);
     setCancelDialog(null);
     setCancelReason('');
     toast.success('Đã huỷ đơn hàng');
@@ -189,8 +243,18 @@ export function OrderOverview() {
 
   // CSV Export
   const handleExportCSV = () => {
-    const headers = ['Mã đơn', 'Người mua', 'Cửa hàng', 'Tổng tiền', 'Trạng thái', 'Thanh toán', 'Ngày tạo'];
-    const rows = allOrders.map(o => [o.orderNumber, o.buyerName, o.supplierName, o.totalAmount.toString(), o.status, o.paymentMethod, o.createdAt]);
+    const headers = ['Mã đơn', 'Người mua', 'Cửa hàng', 'Tổng tiền', 'Khuyến mại', 'Giảm giá', 'Trạng thái', 'Thanh toán', 'Ngày tạo'];
+    const rows = allOrders.map(o => [
+      o.orderNumber,
+      o.buyerName,
+      o.supplierName,
+      o.totalAmount.toString(),
+      o.promotionCode || '',
+      getOrderDiscount(o).toString(),
+      o.status,
+      o.paymentMethod,
+      o.createdAt,
+    ]);
     const csvContent = [headers.join(','), ...rows.map(r => r.map(c => `"${c}"`).join(','))].join('\n');
     const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -203,14 +267,33 @@ export function OrderOverview() {
   const renderListItem = (order: Order) => (
     <Card className="hover:shadow-md transition-shadow">
       <CardContent className="p-4">
-        <div className="flex items-center justify-between mb-2">
-          <span className="font-medium">{order.orderNumber}</span>
-          <StatusBadge status={order.status} />
+        <div className="flex items-start justify-between gap-3 mb-2">
+          <div className="min-w-0">
+            <span className="font-medium">{order.orderNumber}</span>
+            <div className="mt-1">
+              <StatusBadge status={order.status} />
+            </div>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={(event) => {
+              event.stopPropagation();
+              openDetail(order);
+            }}
+          >
+            <Eye className="mr-1 h-3.5 w-3.5" /> Chi tiết
+          </Button>
         </div>
         <div className="flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
           <span>Người mua: {order.buyerName}</span>
           <span>Cửa hàng: {order.supplierName}</span>
           <span className="text-primary">{formatPrice(order.totalAmount)}</span>
+          {getOrderDiscount(order) > 0 && (
+            <span className="text-emerald-600">
+              Khuyến mại: {order.promotionCode || '-'} (-{formatPrice(getOrderDiscount(order))})
+            </span>
+          )}
           <span>{order.createdAt}</span>
         </div>
       </CardContent>
@@ -306,6 +389,18 @@ export function OrderOverview() {
         renderListItem={renderListItem}
         loading={loading}
         viewModes={['table', 'list']}
+        renderActions={(order: Order) => (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={(event) => {
+              event.stopPropagation();
+              openDetail(order);
+            }}
+          >
+            <Eye className="mr-1 h-3.5 w-3.5" /> Chi tiết
+          </Button>
+        )}
       />
 
       {/* === Chi tiết đơn hàng modal (tabs) === */}
@@ -328,7 +423,7 @@ export function OrderOverview() {
                           ${done ? 'bg-primary text-white' : 'bg-muted text-muted-foreground'}`}>
                           {i + 1}
                         </div>
-                        <span className={`text-xs ${done ? 'text-primary' : 'text-muted-foreground'}`}>{step}</span>
+                        <span className={`text-xs ${done ? 'text-primary' : 'text-muted-foreground'}`}>{ORDER_STATUS_LABELS[step] ?? step}</span>
                         {i < ORDER_STEPS.length - 1 && <div className={`w-6 h-0.5 ${done ? 'bg-primary' : 'bg-muted'}`} />}
                       </div>
                     );
@@ -343,6 +438,33 @@ export function OrderOverview() {
               <div className="flex flex-wrap gap-2">
                 <StatusBadge status={selectedOrder.status} />
                 <div className="ml-auto flex gap-2">
+                  {selectedOrder.status === 'PENDING' && (
+                    <Button
+                      size="sm"
+                      onClick={() => handleStatusAction('CONFIRMED' as Order['status'], 'Admin xác nhận đơn hàng')}
+                      disabled={savingStatus}
+                    >
+                      <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Xác nhận đơn
+                    </Button>
+                  )}
+                  {selectedOrder.status === 'CONFIRMED' && (
+                    <Button
+                      size="sm"
+                      onClick={() => handleStatusAction('SHIPPING' as Order['status'], 'Admin chuyển đơn sang giao hàng')}
+                      disabled={savingStatus}
+                    >
+                      <Truck className="mr-1 h-3.5 w-3.5" /> Chuyển giao hàng
+                    </Button>
+                  )}
+                  {selectedOrder.status === 'SHIPPING' && (
+                    <Button
+                      size="sm"
+                      onClick={() => handleStatusAction('DELIVERED' as Order['status'], 'Admin xác nhận đã giao hàng')}
+                      disabled={savingStatus}
+                    >
+                      <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Đã giao
+                    </Button>
+                  )}
                   {selectedOrder.status !== 'CANCELLED' && selectedOrder.status !== 'DELIVERED' && (
                     <Button size="sm" variant="outline" className="text-red-600" onClick={() => { setCancelDialog(selectedOrder); }}>
                       <XCircle className="mr-1 h-3.5 w-3.5" /> Huỷ đơn
@@ -389,6 +511,12 @@ export function OrderOverview() {
                   <Separator />
                   <div className="space-y-2">
                     <div className="flex justify-between"><span className="text-muted-foreground">Tạm tính</span><span>{formatPrice(selectedOrder.subtotal)}</span></div>
+                    {(selectedOrder.promotionCode || getOrderDiscount(selectedOrder) > 0) && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Khuyến mại {selectedOrder.promotionCode ? `(${selectedOrder.promotionCode})` : ''}</span>
+                        <span className="text-emerald-600">-{formatPrice(getOrderDiscount(selectedOrder))}</span>
+                      </div>
+                    )}
                     <div className="flex justify-between"><span className="text-muted-foreground">Vận chuyển</span><span>{formatPrice(selectedOrder.shippingFee)}</span></div>
                     <div className="flex justify-between"><span className="text-muted-foreground">Thuế</span><span>{formatPrice(selectedOrder.tax)}</span></div>
                     <Separator />
@@ -422,8 +550,15 @@ export function OrderOverview() {
                 <TabsContent value="payment" className="mt-4">
                   {orderPayment ? (
                     <div className="space-y-3">
+                      <div className="flex justify-end">
+                        <Button asChild size="sm" variant="outline">
+                          <Link to={`/admin/payments?search=${encodeURIComponent(selectedOrder.orderNumber)}`}>
+                            <Wallet className="mr-1 h-3.5 w-3.5" /> Mở trong quản lý thanh toán
+                          </Link>
+                        </Button>
+                      </div>
                       <div className="grid grid-cols-2 gap-3">
-                        <div><p className="text-muted-foreground">Mã thanh toán</p><p>{orderPayment.paymentNumber}</p></div>
+                        <div><p className="text-muted-foreground">Mã thanh toán</p><p>{orderPayment.paymentNumber || orderPayment.id}</p></div>
                         <div><p className="text-muted-foreground">Phương thức</p><p>{orderPayment.method}</p></div>
                         <div><p className="text-muted-foreground">Số tiền</p><p className="text-primary">{formatPrice(orderPayment.amount)}</p></div>
                         <div><p className="text-muted-foreground">Trạng thái</p><StatusBadge status={orderPayment.status} /></div>

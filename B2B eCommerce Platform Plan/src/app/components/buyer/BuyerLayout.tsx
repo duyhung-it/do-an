@@ -16,11 +16,12 @@ import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
 import { MiniCart } from './MiniCart';
-import { AIChatbot } from '../shared/AIChatbot';
 import { toast } from 'sonner';
-import { productApi } from '../../services/api';
-import type { Product } from '../../types';
+import { categoryApi, productApi } from '../../services/api';
+import type { Category, Product } from '../../types';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
+import { productDetailPath } from '../../utils/productLinks';
+import { isAdminRole } from '../../utils/roles';
 
 
 const NAV_CATEGORIES = [
@@ -41,6 +42,72 @@ const PRICE_RANGES = [
   { label: 'Trên 20 triệu', href: '/products?minPrice=20000000' },
 ];
 
+const MENU_CATEGORY_CONFIG = [
+  { slug: 'dien-thoai', label: 'Điện thoại', icon: Smartphone },
+  { slug: 'phu-kien', label: 'Phụ kiện', icon: Tag },
+  { slug: 'tai-nghe', label: 'Tai nghe', icon: Headphones },
+  { slug: 'dong-ho-thong-minh', label: 'Đồng hồ TM', icon: Watch },
+  { slug: 'sac-pin', label: 'Sạc & Pin', icon: Battery },
+  { slug: 'thiet-bi-cong-nghe', label: 'Thiết bị CN', icon: Cpu },
+];
+
+type BuyerNavCategory = {
+  label: string;
+  href: string;
+  icon: React.ElementType;
+  categoryId?: string;
+  brands?: string[];
+};
+
+const flattenCategories = (categories: Category[]): Category[] =>
+  categories.flatMap(category => [category, ...flattenCategories(category.children ?? [])]);
+
+const collectCategoryIds = (category: Category): string[] => [
+  category.id,
+  ...(category.children ?? []).flatMap(child => collectCategoryIds(child)),
+];
+
+const buildPriceHref = (rangeHref: string, categoryId?: string) => {
+  if (!categoryId) return rangeHref;
+  return `${rangeHref}${rangeHref.includes('?') ? '&' : '?'}categoryId=${encodeURIComponent(categoryId)}`;
+};
+
+const buildBuyerNavCategories = (categories: Category[], products: Product[]): BuyerNavCategory[] => {
+  const flatCategories = flattenCategories(categories);
+
+  return [
+    ...MENU_CATEGORY_CONFIG.map(config => {
+      const category = flatCategories.find(item => item.slug === config.slug);
+      const categoryIds = category ? new Set(collectCategoryIds(category)) : new Set<string>();
+      const brands = Array.from(new Set(
+        products
+          .filter(product => categoryIds.has(product.categoryId))
+          .map(product => product.brand)
+          .filter(Boolean)
+      )).sort((a, b) => a.localeCompare(b, 'vi'));
+
+      return {
+        label: config.label,
+        href: category ? `/products?categoryId=${category.id}` : '/products',
+        icon: config.icon,
+        categoryId: category?.id,
+        brands,
+      };
+    }),
+    { label: 'Khuyến mãi', href: '/promotions', icon: Tag },
+  ];
+};
+
+const FALLBACK_NAV_CATEGORIES: BuyerNavCategory[] = [
+  ...MENU_CATEGORY_CONFIG.map(config => ({
+    label: config.label,
+    href: `/products?categorySlug=${config.slug}`,
+    icon: config.icon,
+    brands: [],
+  })),
+  { label: 'Khuyến mãi', href: '/promotions', icon: Tag },
+];
+
 export function BuyerLayout() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -55,6 +122,7 @@ export function BuyerLayout() {
   const [scrolled, setScrolled] = useState(false);
   const [searchResults, setSearchResults] = useState<Product[]>([]);
   const [autocompleteOpen, setAutocompleteOpen] = useState(false);
+  const [navCategories, setNavCategories] = useState<BuyerNavCategory[]>([]);
   const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -71,6 +139,22 @@ export function BuyerLayout() {
     }, 300);
     return () => clearTimeout(timer);
   }, [search]);
+
+  useEffect(() => {
+    let mounted = true;
+    Promise.all([
+      categoryApi.getAll(),
+      productApi.getPaginated({ page: 1, pageSize: 1000 }),
+    ])
+      .then(([categories, productsPage]) => {
+        if (!mounted) return;
+        setNavCategories(buildBuyerNavCategories(categories, productsPage.data));
+      })
+      .catch(() => {
+        if (mounted) setNavCategories([]);
+      });
+    return () => { mounted = false; };
+  }, []);
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
@@ -102,6 +186,8 @@ export function BuyerLayout() {
     toast.success('Đã đăng xuất');
     navigate('/');
   };
+
+  const displayedNavCategories = navCategories.length > 0 ? navCategories : FALLBACK_NAV_CATEGORIES;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -162,7 +248,7 @@ export function BuyerLayout() {
                       {searchResults.map(p => (
                         <Link 
                           key={p.id} 
-                          to={`/products/${p.id}`}
+                          to={productDetailPath(p)}
                           className="flex items-center gap-3 p-2 hover:bg-red-50 rounded-lg transition-colors group"
                         >
                           <div className="h-12 w-12 rounded-md overflow-hidden shrink-0 bg-white">
@@ -220,7 +306,9 @@ export function BuyerLayout() {
                       </div>
                       {[
                         { href: '/profile', label: 'Tài khoản của tôi', icon: User },
+                        { href: '/loyalty', label: 'Hạng thành viên', icon: Award },
                         { href: '/orders', label: 'Đơn hàng', icon: ShoppingCart },
+                        { href: '/returns', label: 'Trả hàng & hoàn tiền', icon: RotateCcw },
                         { href: '/wishlist', label: 'Yêu thích', icon: Heart },
                         { href: '/warranty', label: 'Bảo hành', icon: Shield },
                         { href: '/notifications', label: 'Thông báo', icon: Bell },
@@ -230,7 +318,7 @@ export function BuyerLayout() {
                           {item.label}
                         </Link>
                       ))}
-                      {user?.role === 'Quản trị viên' && (
+                      {isAdminRole(user?.role) && (
                         <Link to="/admin" className="flex items-center gap-2 px-4 py-2 text-sm text-[#e31837] hover:bg-red-50 transition-colors" onClick={() => setUserMenuOpen(false)}>
                           <Award className="h-4 w-4" />Admin Panel
                         </Link>
@@ -259,30 +347,30 @@ export function BuyerLayout() {
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-1 pb-1 border-t pt-1">
-            {NAV_CATEGORIES.map(cat => (
+            {displayedNavCategories.map(cat => (
               <div key={cat.label} className="relative group" onMouseLeave={() => setActiveMenu(null)}>
                 <Link
                   to={cat.href}
                   className="flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg hover:bg-red-50 hover:text-[#e31837] transition-colors group-hover:text-[#e31837]"
-                  onMouseEnter={() => cat.brands ? setActiveMenu(cat.label) : setActiveMenu(null)}
+                  onMouseEnter={() => cat.brands?.length ? setActiveMenu(cat.label) : setActiveMenu(null)}
                 >
                   <cat.icon className="h-3.5 w-3.5" />
                   {cat.label}
-                  {cat.brands && <ChevronDown className="h-3 w-3 opacity-60" />}
+                  {!!cat.brands?.length && <ChevronDown className="h-3 w-3 opacity-60" />}
                 </Link>
                 {/* Mega dropdown */}
-                {cat.brands && activeMenu === cat.label && (
+                {!!cat.brands?.length && activeMenu === cat.label && (
                   <div
-                    className="absolute top-full left-0 mt-1 w-[500px] bg-white shadow-xl rounded-xl border z-50 p-5"
+                    className="absolute top-full left-0 mt-1 w-[260px] bg-white shadow-xl rounded-xl border z-50 p-5"
                     onMouseEnter={() => setActiveMenu(cat.label)}
                     onMouseLeave={() => setActiveMenu(null)}
                   >
-                    <div className="grid grid-cols-2 gap-6">
+                    <div className="grid gap-5">
                       <div>
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">Thương hiệu</p>
                         <div className="space-y-1">
                           {cat.brands.map(b => (
-                            <Link key={b} to={`/products?brand=${b}`} className="flex items-center gap-2 p-2 rounded-lg hover:bg-red-50 hover:text-[#e31837] text-sm transition-colors" onClick={() => setActiveMenu(null)}>
+                            <Link key={b} to={`/products?brand=${encodeURIComponent(b)}${cat.categoryId ? `&categoryId=${encodeURIComponent(cat.categoryId)}` : ''}`} className="flex items-center gap-2 p-2 rounded-lg hover:bg-red-50 hover:text-[#e31837] text-sm transition-colors" onClick={() => setActiveMenu(null)}>
                               <cat.icon className="h-3.5 w-3.5" />{b}
                             </Link>
                           ))}
@@ -292,7 +380,7 @@ export function BuyerLayout() {
                         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-widest mb-3">Theo mức giá</p>
                         <div className="space-y-1">
                           {PRICE_RANGES.map(r => (
-                            <Link key={r.label} to={r.href} className="flex items-center gap-2 p-2 rounded-lg hover:bg-red-50 hover:text-[#e31837] text-sm transition-colors" onClick={() => setActiveMenu(null)}>
+                            <Link key={r.label} to={buildPriceHref(r.href, cat.categoryId)} className="flex items-center gap-2 p-2 rounded-lg hover:bg-red-50 hover:text-[#e31837] text-sm transition-colors" onClick={() => setActiveMenu(null)}>
                               <Tag className="h-3.5 w-3.5" />{r.label}
                             </Link>
                           ))}
@@ -317,7 +405,7 @@ export function BuyerLayout() {
                 </div>
               </form>
               <div className="space-y-1">
-                {NAV_CATEGORIES.map(cat => (
+                {displayedNavCategories.map(cat => (
                   <Link key={cat.label} to={cat.href} className="flex items-center gap-2 p-2.5 rounded-lg hover:bg-red-50 hover:text-[#e31837] text-sm">
                     <cat.icon className="h-4 w-4" />{cat.label}
                   </Link>
@@ -384,7 +472,7 @@ export function BuyerLayout() {
             {[
               { title: 'Mua sắm', links: [{ href: '/products?categoryId=cat-01', label: 'Điện thoại' }, { href: '/products?categoryId=cat-03', label: 'Tai nghe' }, { href: '/products?categoryId=cat-04', label: 'Đồng hồ TM' }, { href: '/promotions', label: 'Khuyến mãi' }, { href: '/products?isNew=true', label: 'Sản phẩm mới' }] },
               { title: 'Dịch vụ', links: [{ href: '/trade-in', label: 'Thu cũ đổi mới' }, { href: '/imei-check', label: 'Kiểm tra IMEI' }, { href: '/warranty', label: 'Tra cứu bảo hành' }, { href: '/stores', label: 'Hệ thống cửa hàng' }] },
-              { title: 'Thông tin', links: [{ href: '/blog', label: 'Blog công nghệ' }, { href: '/about', label: 'Về CELLPHONES' }, { href: '/contact', label: 'Liên hệ' }, { href: '/policy', label: 'Chính sách bảo hành' }] },
+              { title: 'Thông tin', links: [{ href: '/blog', label: 'Blog công nghệ' }, { href: '/stores', label: 'Hệ thống cửa hàng' }, { href: '/promotions', label: 'Ưu đãi hiện có' }, { href: '/warranty', label: 'Chính sách bảo hành' }] },
             ].map(col => (
               <div key={col.title}>
                 <h4 className="text-white font-semibold mb-4">{col.title}</h4>
@@ -469,9 +557,6 @@ export function BuyerLayout() {
         </div>
       </nav>
 
-      {/* AI Chatbot */}
-
-      <AIChatbot />
     </div>
   );
 }

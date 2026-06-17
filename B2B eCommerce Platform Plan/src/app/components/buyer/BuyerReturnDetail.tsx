@@ -84,7 +84,10 @@ export function BuyerReturnDetail() {
 
   const isRejected = returnReq.status === 'Từ chối';
   const stepIdx = getStepIndex(returnReq.status);
-  const totalItemValue = returnReq.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0);
+  const returnItems = returnReq.items ?? [];
+  const returnImages = returnReq.images ?? [];
+  const refundAmount = Number(returnReq.refundAmount ?? 0);
+  const totalItemValue = returnItems.reduce((s, i) => s + Number(i.quantity ?? 0) * Number(i.unitPrice ?? 0), 0);
 
   return (
     <div className="container mx-auto px-4 py-6 space-y-6">
@@ -174,10 +177,10 @@ export function BuyerReturnDetail() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        <SummaryCard label="Số SP trả" value={`${returnReq.items.length} sản phẩm`} icon={Package} />
+        <SummaryCard label="Số SP trả" value={`${returnItems.length} sản phẩm`} icon={Package} />
         <SummaryCard label="Giá trị SP" value={formatPrice(totalItemValue)} icon={DollarSign} />
-        <SummaryCard label="Hoàn tiền" value={formatPrice(returnReq.refundAmount)} icon={Banknote} highlight />
-        <SummaryCard label="Hình thức" value={returnReq.refundMethod} icon={Building2} />
+        <SummaryCard label="Hoàn tiền" value={formatPrice(refundAmount)} icon={Banknote} highlight />
+        <SummaryCard label="Hình thức" value={returnReq.refundMethod || 'ORIGINAL_PAYMENT'} icon={Building2} />
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -212,14 +215,14 @@ export function BuyerReturnDetail() {
           </CardHeader>
           <CardContent className="space-y-4">
             {/* Images */}
-            {returnReq.images.length > 0 ? (
+            {returnImages.length > 0 ? (
               <div>
                 <p className="text-sm text-muted-foreground mb-2">
                   <ImageIcon className="h-4 w-4 inline mr-1" />
-                  Hình ảnh đính kèm ({returnReq.images.length})
+                  Hình ảnh đính kèm ({returnImages.length})
                 </p>
                 <div className="grid grid-cols-3 gap-2">
-                  {returnReq.images.map((img, i) => (
+                  {returnImages.map((img, i) => (
                     <div key={i} className="aspect-square rounded-lg bg-muted flex items-center justify-center border overflow-hidden">
                       <ImageIcon className="h-8 w-8 text-muted-foreground/30" />
                     </div>
@@ -262,11 +265,11 @@ export function BuyerReturnDetail() {
       {/* Sản phẩm trả hàng */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Sản phẩm trả hàng ({returnReq.items.length})</CardTitle>
+          <CardTitle className="text-base">Sản phẩm trả hàng ({returnItems.length})</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {returnReq.items.map((item, idx) => (
+            {returnItems.map((item, idx) => (
               <div key={idx} className="flex items-center gap-4 p-3 rounded-lg bg-muted/30 border">
                 <div className="h-16 w-16 rounded-lg bg-muted flex items-center justify-center shrink-0 overflow-hidden">
                   {item.productImage ? (
@@ -301,7 +304,7 @@ export function BuyerReturnDetail() {
           </div>
           <div className="flex items-center justify-between mt-2">
             <span className="font-medium">Số tiền hoàn trả</span>
-            <span className="text-lg text-primary font-medium">{formatPrice(returnReq.refundAmount)}</span>
+            <span className="text-lg text-primary font-medium">{formatPrice(refundAmount)}</span>
           </div>
         </CardContent>
       </Card>

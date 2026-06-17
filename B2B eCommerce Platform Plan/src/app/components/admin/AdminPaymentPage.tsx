@@ -4,6 +4,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useSearchParams } from 'react-router';
 import {
   DollarSign, AlertTriangle, CheckCircle2, Clock, Download,
   Receipt, CreditCard, TrendingDown, ReceiptText, RotateCcw,
@@ -35,6 +36,21 @@ const formatCompact = (price: number) =>
 
 const PAYMENT_STATUS_OPTIONS = ['UNPAID', 'PAID', 'OVERDUE', 'FAILED', 'REFUNDED', 'PARTIALLY_REFUNDED'];
 const PAYMENT_METHOD_OPTIONS = ['CASH', 'BANK_TRANSFER', 'MOMO', 'VNPAY', 'COD'];
+const PAYMENT_STATUS_LABELS: Record<string, string> = {
+  UNPAID: 'Chưa thanh toán',
+  PAID: 'Đã thanh toán',
+  OVERDUE: 'Quá hạn',
+  FAILED: 'Thất bại',
+  REFUNDED: 'Đã hoàn tiền',
+  PARTIALLY_REFUNDED: 'Hoàn một phần',
+};
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  CASH: 'Tiền mặt',
+  BANK_TRANSFER: 'Chuyển khoản',
+  MOMO: 'MOMO',
+  VNPAY: 'VNPAY',
+  COD: 'COD',
+};
 
 // --- Cấu hình cột ---
 const columns: ColumnConfig[] = [
@@ -53,8 +69,8 @@ const columns: ColumnConfig[] = [
 
 // --- Cấu hình bộ lọc ---
 const filterConfigs: FilterConfig[] = [
-  { key: 'status', label: 'Trang thai', type: 'select', options: PAYMENT_STATUS_OPTIONS.map(status => ({ label: status, value: status })) },
-  { key: 'method', label: 'Phuong thuc', type: 'select', options: PAYMENT_METHOD_OPTIONS.map(method => ({ label: method, value: method })) },
+  { key: 'status', label: 'Trạng thái', type: 'select', options: PAYMENT_STATUS_OPTIONS.map(status => ({ label: PAYMENT_STATUS_LABELS[status], value: status })) },
+  { key: 'method', label: 'Phương thức', type: 'select', options: PAYMENT_METHOD_OPTIONS.map(method => ({ label: PAYMENT_METHOD_LABELS[method], value: method })) },
 ];
 
 // --- Form ghi nhận thanh toán ---
@@ -98,10 +114,17 @@ type AdminPayment = Payment & {
 const canMarkOverdue = (payment: AdminPayment) =>
   !['PAID', 'REFUNDED', 'PARTIALLY_REFUNDED'].includes(String(payment.status));
 
+const getRefundedAmount = (payment: AdminPayment) =>
+  Number(payment.refundAmount ?? 0);
+
+const getRefundableAmount = (payment: AdminPayment) =>
+  Math.max(Number(payment.paidAmount ?? 0) - getRefundedAmount(payment), 0);
+
 const canRefund = (payment: AdminPayment) =>
-  String(payment.status) === 'PAID' && Number(payment.paidAmount ?? 0) > 0;
+  ['PAID', 'PARTIALLY_REFUNDED'].includes(String(payment.status)) && getRefundableAmount(payment) > 0;
 
 export function AdminPaymentPage() {
+  const [searchParams] = useSearchParams();
   const [payments, setPayments] = useState<AdminPayment[]>([]);
   const [allPayments, setAllPayments] = useState<AdminPayment[]>([]);
   const [total, setTotal] = useState(0);
@@ -109,7 +132,7 @@ export function AdminPaymentPage() {
   const [pagination, setPagination] = useState<PaginationParams>({ page: 1, pageSize: 10 });
   const [sort, setSort] = useState<SortParams>({ field: 'createdAt', direction: 'desc' });
   const [filters, setFilters] = useState<ActiveFilter[]>([]);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('search') ?? '');
   const [selectedPayment, setSelectedPayment] = useState<AdminPayment | null>(null);
   const [showTxnForm, setShowTxnForm] = useState(false);
   const [txnForm, setTxnForm] = useState<TxnForm>(emptyTxnForm);
@@ -209,18 +232,18 @@ export function AdminPaymentPage() {
 
   const handleMarkOverdue = async (payment: AdminPayment) => {
     if (!canMarkOverdue(payment)) {
-      toast.error('BE chi cho mark overdue voi payment chua paid/refund');
+      toast.error('Chỉ có thể đánh dấu quá hạn với khoản chưa thanh toán');
       return;
     }
-    if (!confirm(`Danh dau qua han cho thanh toan ${payment.orderNumber}?`)) return;
+    if (!confirm(`Đánh dấu quá hạn cho thanh toán ${payment.orderNumber}?`)) return;
     setSavingAction(true);
     try {
       const updated = await adminPaymentApi.markOverdue(payment.id);
       syncPayment(updated as AdminPayment);
       await fetchData();
-      toast.success('Da danh dau qua han');
+      toast.success('Đã đánh dấu quá hạn');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Khong the danh dau qua han');
+      toast.error(err instanceof Error ? err.message : 'Không thể đánh dấu quá hạn');
     } finally {
       setSavingAction(false);
     }
@@ -228,21 +251,21 @@ export function AdminPaymentPage() {
 
   const handleRefund = async () => {
     if (!refundDialog || !refundForm.amount || !refundForm.reason.trim()) {
-      toast.error('Vui long nhap so tien va ly do hoan tien');
+      toast.error('Vui lòng nhập số tiền và lý do hoàn tiền');
       return;
     }
     const amount = Number(refundForm.amount);
+    const refundableAmount = getRefundableAmount(refundDialog);
     if (!canRefund(refundDialog)) {
-      toast.error('BE chi cho refund payment dang PAID');
+      toast.error('Khoản thanh toán này không còn số tiền có thể hoàn');
       return;
     }
-    const paidAmount = Number(refundDialog.paidAmount ?? 0);
     if (!Number.isFinite(amount) || amount <= 0) {
-      toast.error('So tien hoan khong hop le');
+      toast.error('Số tiền hoàn không hợp lệ');
       return;
     }
-    if (paidAmount > 0 && amount > paidAmount) {
-      toast.error('So tien hoan vuot qua so tien da thu');
+    if (amount > refundableAmount) {
+      toast.error('Số tiền hoàn vượt quá số tiền còn có thể hoàn');
       return;
     }
     setSavingAction(true);
@@ -256,9 +279,9 @@ export function AdminPaymentPage() {
       setRefundDialog(null);
       setRefundForm(emptyRefundForm);
       await fetchData();
-      toast.success('Da ghi nhan hoan tien');
+      toast.success('Đã ghi nhận hoàn tiền');
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'Hoan tien that bai');
+      toast.error(err instanceof Error ? err.message : 'Hoàn tiền thất bại');
     } finally {
       setSavingAction(false);
     }
@@ -288,7 +311,7 @@ export function AdminPaymentPage() {
     setRefundDialog(payment);
     setRefundForm({
       ...emptyRefundForm,
-      amount: String(payment.paidAmount ?? payment.amount),
+      amount: String(getRefundableAmount(payment)),
     });
   };
 
@@ -401,16 +424,16 @@ export function AdminPaymentPage() {
         viewModes={['table', 'list']}
         renderActions={(payment: AdminPayment) => (
           <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); setSelectedPayment(payment); }} title="View">
+            <Button variant="ghost" size="sm" onClick={(event) => { event.stopPropagation(); setSelectedPayment(payment); }} title="Xem chi tiết">
               <Receipt className="h-3.5 w-3.5" />
             </Button>
             {canMarkOverdue(payment) && (
-              <Button variant="ghost" size="sm" disabled={savingAction} onClick={(event) => { event.stopPropagation(); handleMarkOverdue(payment); }} title="Mark overdue">
+              <Button variant="ghost" size="sm" disabled={savingAction} onClick={(event) => { event.stopPropagation(); handleMarkOverdue(payment); }} title="Đánh dấu quá hạn">
                 <AlertTriangle className="h-3.5 w-3.5 text-red-600" />
               </Button>
             )}
             {canRefund(payment) && (
-              <Button variant="ghost" size="sm" disabled={savingAction} onClick={(event) => { event.stopPropagation(); openRefundDialog(payment); }} title="Refund">
+              <Button variant="ghost" size="sm" disabled={savingAction} onClick={(event) => { event.stopPropagation(); openRefundDialog(payment); }} title="Hoàn tiền">
                 <RotateCcw className="h-3.5 w-3.5 text-orange-600" />
               </Button>
             )}
@@ -439,7 +462,7 @@ export function AdminPaymentPage() {
                 {canMarkOverdue(selectedPayment) && (
                   <Button size="sm" variant="outline" disabled={savingAction} onClick={() => handleMarkOverdue(selectedPayment)}>
                     <AlertTriangle className="mr-1 h-3.5 w-3.5" />
-                    Mark overdue
+                    Đánh dấu quá hạn
                   </Button>
                 )}
                 {canRefund(selectedPayment) && (
@@ -451,7 +474,7 @@ export function AdminPaymentPage() {
                     onClick={() => openRefundDialog(selectedPayment)}
                   >
                     <RotateCcw className="mr-1 h-3.5 w-3.5" />
-                    Refund
+                    Hoàn tiền
                   </Button>
                 )}
               </div>
@@ -610,15 +633,16 @@ export function AdminPaymentPage() {
                 )}
               </div>
 
-              {selectedPayment.refundAmount && (
+              {Number(selectedPayment.refundAmount ?? 0) > 0 && (
                 <Card>
                   <CardContent className="p-3">
-                    <p className="font-medium text-orange-700">Refund</p>
+                    <p className="font-medium text-orange-700">Hoàn tiền</p>
                     <div className="mt-2 grid grid-cols-2 gap-3 text-sm">
-                      <div><p className="text-muted-foreground">Amount</p><p>{formatPrice(selectedPayment.refundAmount)}</p></div>
-                      <div><p className="text-muted-foreground">Method</p><p>{selectedPayment.refundMethod ?? '-'}</p></div>
-                      <div><p className="text-muted-foreground">Refunded at</p><p>{selectedPayment.refundedAt ?? '-'}</p></div>
-                      <div><p className="text-muted-foreground">Reason</p><p>{selectedPayment.refundReason ?? '-'}</p></div>
+                      <div><p className="text-muted-foreground">Đã hoàn</p><p>{formatPrice(getRefundedAmount(selectedPayment))}</p></div>
+                      <div><p className="text-muted-foreground">Còn có thể hoàn</p><p>{formatPrice(getRefundableAmount(selectedPayment))}</p></div>
+                      <div><p className="text-muted-foreground">Phương thức</p><p>{selectedPayment.refundMethod ?? '-'}</p></div>
+                      <div><p className="text-muted-foreground">Thời gian hoàn</p><p>{selectedPayment.refundedAt ?? '-'}</p></div>
+                      <div><p className="text-muted-foreground">Lý do</p><p>{selectedPayment.refundReason ?? '-'}</p></div>
                     </div>
                   </CardContent>
                 </Card>
@@ -633,24 +657,27 @@ export function AdminPaymentPage() {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-orange-600">
               <RotateCcw className="h-5 w-5" />
-              Refund payment
+              Hoàn tiền thanh toán
             </DialogTitle>
           </DialogHeader>
           {refundDialog && (
             <div className="space-y-3">
               <div className="rounded-md bg-orange-50 p-3 text-orange-800">
-                {refundDialog.orderNumber} - paid {formatPrice(Number(refundDialog.paidAmount ?? 0))}
+                <div>{refundDialog.orderNumber} - đã thu {formatPrice(Number(refundDialog.paidAmount ?? 0))}</div>
+                <div>Đã hoàn {formatPrice(getRefundedAmount(refundDialog))} - còn có thể hoàn {formatPrice(getRefundableAmount(refundDialog))}</div>
               </div>
               <div className="grid gap-2">
-                <Label>Refund amount *</Label>
+                <Label>Số tiền hoàn *</Label>
                 <Input
                   type="number"
+                  min={1}
+                  max={getRefundableAmount(refundDialog)}
                   value={refundForm.amount}
                   onChange={event => setRefundForm(current => ({ ...current, amount: event.target.value }))}
                 />
               </div>
               <div className="grid gap-2">
-                <Label>Method *</Label>
+                <Label>Phương thức *</Label>
                 <Select value={refundForm.method} onValueChange={value => setRefundForm(current => ({ ...current, method: value }))}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -662,20 +689,20 @@ export function AdminPaymentPage() {
                 </Select>
               </div>
               <div className="grid gap-2">
-                <Label>Reason *</Label>
+                <Label>Lý do *</Label>
                 <Textarea
                   rows={3}
                   value={refundForm.reason}
                   onChange={event => setRefundForm(current => ({ ...current, reason: event.target.value }))}
-                  placeholder="Customer cancelled after payment..."
+                  placeholder="Ví dụ: Khách hủy đơn sau khi đã thanh toán"
                 />
               </div>
               <div className="flex justify-end gap-2">
                 <Button variant="outline" onClick={() => { setRefundDialog(null); setRefundForm(emptyRefundForm); }}>
-                  Cancel
+                  Hủy
                 </Button>
                 <Button className="bg-orange-600 hover:bg-orange-700" onClick={handleRefund} disabled={savingAction}>
-                  {savingAction ? 'Processing...' : 'Confirm refund'}
+                  {savingAction ? 'Đang xử lý...' : 'Xác nhận hoàn tiền'}
                 </Button>
               </div>
             </div>

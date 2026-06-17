@@ -6,7 +6,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router';
 import {
-  RefreshCw, Package, Clock, CheckCircle2, Truck, XCircle,
+  RefreshCw, Package, Clock, CheckCircle2, Truck, XCircle, RotateCcw,
   ArrowRight, Building2, Calendar, Eye,
 } from 'lucide-react';
 import { DataTable } from '../shared/DataTable';
@@ -21,19 +21,21 @@ import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { toast } from 'sonner';
 import type { Order, PaginationParams, SortParams, ActiveFilter, FilterConfig, ColumnConfig } from '../../types';
+import { formatVietnamDateTime } from '../../utils/dateTime';
 
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
 
 const getOrderStoreName = (order: Pick<Order, 'supplierName'>) => order.supplierName || 'CELLPHONES';
 
-const columns: ColumnConfig[] = [
+const columns: (ColumnConfig & { render?: (order: Order) => string })[] = [
   { key: 'orderNumber', label: 'Mã đơn hàng', visible: true, sortable: true },
   { key: 'supplierName', label: 'Cửa hàng', visible: true, sortable: true },
   { key: 'totalAmount', label: 'Tổng tiền', visible: true, sortable: true },
   { key: 'status', label: 'Trạng thái', visible: true, sortable: true },
   { key: 'paymentMethod', label: 'Thanh toán', visible: true, sortable: false },
-  { key: 'createdAt', label: 'Ngày tạo', visible: true, sortable: true },
+  { key: 'createdAt', label: 'Ngày tạo', visible: true, sortable: true,
+    render: (order: Order) => formatVietnamDateTime(order.createdAt) },
 ];
 
 const filterConfigs: FilterConfig[] = [
@@ -251,6 +253,11 @@ export function OrderListPage() {
           <h1 style={{ fontFamily: 'var(--font-heading)' }}>Đơn hàng của tôi</h1>
           <p className="text-muted-foreground text-sm mt-0.5">Theo dõi và quản lý đơn hàng</p>
         </div>
+        <Link to="/returns">
+          <Button variant="outline" className="gap-2">
+            <RotateCcw className="h-4 w-4" /> Trả hàng & hoàn tiền
+          </Button>
+        </Link>
       </div>
 
       {/* E19.01: Status tabs */}

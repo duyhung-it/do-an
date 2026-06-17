@@ -7,9 +7,9 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link, useNavigate } from 'react-router';
 import {
-  Star, ShieldCheck, ShoppingCart, Minus, Plus, MessageCircle,
+  Star, ShoppingCart, Minus, Plus,
   GitCompareArrows, Send, Heart, Tag, ChevronLeft, ChevronRight,
-  Truck, RotateCcw, Shield, Building2, MapPin, Calendar,
+  Truck, RotateCcw, Shield,
   TrendingDown, Package, Zap, Cpu, Camera,
 } from 'lucide-react';
 import { Button } from '../ui/button';
@@ -26,14 +26,15 @@ import {
   StarDistributionBar, ReviewFilterBar, ReviewItem, WriteReviewDialog,
 } from '../shared/ReviewComponents';
 import { InstallmentSection } from '../shared/InstallmentSection';
-import { productApi, supplierApi, reviewApi, chatApi, promotionApi, comboApi } from '../../services/api';
+import { productApi, reviewApi, promotionApi, comboApi } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { useCart } from '../../context/CartContext';
 import { useWishlist } from '../../context/WishlistContext';
 import { useRecentlyViewed } from '../../hooks/useRecentlyViewed';
-import type { Product, Supplier, Review, Promotion, ProductCombo, PricePoint } from '../../types';
+import type { Product, Review, Promotion, ProductCombo, PricePoint } from '../../types';
 import { toast } from 'sonner';
 import { ImageWithFallback } from '../figma/ImageWithFallback';
+import { productDetailPath } from '../../utils/productLinks';
 
 const formatPrice = (price: number) =>
   new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(price);
@@ -54,12 +55,38 @@ const getProductRetailMeta = (product: Product) => {
   };
 };
 
+type ProductImageDetail = {
+  url: string;
+  variantId?: string | null;
+};
+
+const uniqueImages = (images: string[]) => Array.from(new Set(images.filter(Boolean)));
+
+const getVariantGalleryImages = (product: Product, variantId?: string) => {
+  const imageDetails = ((product as Product & { imageDetails?: ProductImageDetail[] }).imageDetails ?? [])
+    .filter(image => Boolean(image.url));
+  if (!variantId || imageDetails.length === 0) return product.images;
+
+  const variantImages = imageDetails.filter(image => image.variantId === variantId).map(image => image.url);
+  const productImages = imageDetails.filter(image => !image.variantId).map(image => image.url);
+
+  if (variantImages.length > 0) {
+    return uniqueImages([...variantImages, ...productImages]);
+  }
+
+  return productImages.length > 0 ? uniqueImages(productImages) : product.images;
+};
+
 // E17.06: Image Gallery component
 function ProductGallery({ images, name }: { images: string[]; name: string }) {
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [zoomed, setZoomed] = useState(false);
   const [zoomPos, setZoomPos] = useState({ x: 50, y: 50 });
   const mainRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSelectedIdx(0);
+  }, [images]);
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!mainRef.current) return;
@@ -207,7 +234,6 @@ export function ProductDetailPage() {
   const { isInWishlist, addToWishlist, removeFromWishlist } = useWishlist();
   const { addItem: addRecentItem } = useRecentlyViewed();
   const [product, setProduct] = useState<Product | null>(null);
-  const [supplier, setSupplier] = useState<Supplier | null>(null);
   const [reviews, setReviews] = useState<Review[]>([]);
   const [quantity, setQuantity] = useState(1);
   const [selectedVariant, setSelectedVariant] = useState(0);
@@ -250,7 +276,6 @@ export function ProductDetailPage() {
         setQuantity(retailMeta.minQty);
         // Save to recently viewed
         addRecentItem({ id: p.id, name: p.name, image: p.images[0], price: p.price, brand: p.brand ?? '' });
-        supplierApi.getById(retailMeta.storeId).then(s => s && setSupplier(s));
         promotionApi.getActiveForProduct(p.id).then(setPromotions);
         comboApi.getForProduct(p.id).then(setCombos);
         reviewApi.getStarDistribution(p.id).then(dist => {
@@ -289,35 +314,52 @@ export function ProductDetailPage() {
     if (!product) return;
     if (!isAuthenticated) {
       toast.error('Vui lòng đăng nhập để thêm vào giỏ hàng');
-      navigate('/login', { state: { from: `/products/${product.id}` } });
+      navigate('/login', { state: { from: productDetailPath(product) } });
       return;
     }
     const retailMeta = getProductRetailMeta(product);
-    await addItem({
-      productId: product.id,
-      productName: product.name,
-      productImage: product.images[0],
-      supplierId: retailMeta.storeId,
-      supplierName: retailMeta.storeName,
-      quantity,
-      unitPrice: product.variants[selectedVariant]?.price ?? product.price,
-      variantName: product.variants[selectedVariant]?.name,
-    });
-    toast.success('Đã thêm vào giỏ hàng');
+    const variant = product.variants[selectedVariant];
+    if (variant && quantity > variant.stock) {
+      toast.error(`Chỉ còn ${variant.stock} sản phẩm trong kho`);
+      return;
+    }
+    try {
+      await addItem({
+        productId: product.id,
+        productName: product.name,
+        productImage: product.images[0],
+        supplierId: retailMeta.storeId,
+        supplierName: retailMeta.storeName,
+        quantity,
+        unitPrice: variant?.price ?? product.price,
+        variantName: variant?.name,
+        variantId: variant?.id,
+      });
+      toast.success('Đã thêm vào giỏ hàng');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Không thể thêm vào giỏ hàng');
+    }
   };
 
-  const handleContactSupplier = async () => {
-    if (!isAuthenticated || !user || !product) {
-      toast.error('Vui lòng đăng nhập để nhắn tin');
+  const handleAddComboToCart = async (combo: ProductCombo) => {
+    if (!isAuthenticated) {
+      toast.error('Vui lòng đăng nhập để thêm combo vào giỏ hàng');
+      navigate('/login', { state: { from: product ? productDetailPath(product) : '/products' } });
       return;
     }
-    const retailMeta = getProductRetailMeta(product);
-    const conv = await chatApi.createConversation(
-      user.id, user.fullName,
-      retailMeta.storeId, retailMeta.storeName,
-      product.id, product.name,
-    );
-    navigate(`/chat?conv=${conv.id}`);
+
+    for (const item of combo.products) {
+      await addItem({
+        productId: item.productId,
+        productName: item.productName,
+        productImage: item.productImage,
+        supplierId: 'cellphones',
+        supplierName: 'CELLPHONES',
+        quantity: item.quantity,
+        unitPrice: item.comboPrice,
+      });
+    }
+    toast.success('Đã thêm combo vào giỏ hàng');
   };
 
   const handleSubmitReview = async (data: { rating: number; title: string; comment: string; tags: string[]; images: string[] }) => {
@@ -372,8 +414,11 @@ export function ProductDetailPage() {
   }
 
   const currentPrice = product.variants[selectedVariant]?.price ?? product.price;
+  const selectedVariantStock = product.variants[selectedVariant]?.stock;
+  const canAddToCart = selectedVariantStock === undefined || selectedVariantStock > 0;
   const wishlisted = isInWishlist(product.id);
   const retailMeta = getProductRetailMeta(product);
+  const galleryImages = getVariantGalleryImages(product, product.variants[selectedVariant]?.id);
 
   return (
     <div className="container mx-auto px-4 sm:px-6 py-6">
@@ -386,7 +431,7 @@ export function ProductDetailPage() {
 
       <div className="grid lg:grid-cols-2 gap-8">
         {/* E17.06: Image gallery */}
-        <ProductGallery images={product.images} name={product.name} />
+        <ProductGallery images={galleryImages} name={product.name} />
 
         {/* Product info */}
         <div className="space-y-5" ref={infoRef}>
@@ -451,19 +496,23 @@ export function ProductDetailPage() {
           )}
 
           {/* Variants */}
-          {product.variants.length > 1 && (
+          {product.variants.length > 0 && (
             <div>
-              <p className="text-sm mb-2" style={{ fontWeight: 500 }}>Phân loại:</p>
+              <p className="text-sm mb-2" style={{ fontWeight: 500 }}>Phiên bản:</p>
               <div className="flex flex-wrap gap-2">
                 {product.variants.map((v, i) => (
                   <Button
                     key={v.id}
                     variant={selectedVariant === i ? 'default' : 'outline'}
                     size="sm"
-                    onClick={() => setSelectedVariant(i)}
-                    className="transition-all"
+                    onClick={() => {
+                      setSelectedVariant(i);
+                      setQuantity(current => Math.min(Math.max(retailMeta.minQty, current), v.stock));
+                    }}
+                    className="transition-all h-auto min-h-10 flex-col items-start gap-0.5"
                   >
-                    {v.name} - {formatPrice(v.price)}
+                    <span>{v.name}</span>
+                    <span className="text-xs opacity-80">{formatPrice(v.price)} · Còn {v.stock}</span>
                   </Button>
                 ))}
               </div>
@@ -482,10 +531,19 @@ export function ProductDetailPage() {
                   type="number"
                   className="w-20 text-center border-0 border-x rounded-none h-10"
                   value={quantity}
-                  onChange={e => setQuantity(Math.max(retailMeta.minQty, Number(e.target.value)))}
+                  onChange={e => {
+                    const next = Math.max(retailMeta.minQty, Number(e.target.value));
+                    setQuantity(selectedVariantStock === undefined ? next : Math.min(next, selectedVariantStock));
+                  }}
                   min={retailMeta.minQty}
+                  max={selectedVariantStock}
                 />
-                <Button variant="ghost" className="h-10 w-10 rounded-none" onClick={() => setQuantity(quantity + 1)}>
+                <Button
+                  variant="ghost"
+                  className="h-10 w-10 rounded-none"
+                  onClick={() => setQuantity(selectedVariantStock === undefined ? quantity + 1 : Math.min(quantity + 1, selectedVariantStock))}
+                  disabled={selectedVariantStock !== undefined && quantity >= selectedVariantStock}
+                >
                   <Plus className="h-4 w-4" />
                 </Button>
               </div>
@@ -501,12 +559,10 @@ export function ProductDetailPage() {
             <Button
               size="lg"
               onClick={handleAddToCart}
+              disabled={!canAddToCart}
               className="flex-1 sm:flex-none font-bold bg-gradient-to-r from-[#e31837] to-[#c91432] hover:from-[#c91432] hover:to-[#a50f28] border-0 shadow-md hover:shadow-lg transition-all"
             >
               <ShoppingCart className="mr-2 h-5 w-5" /> Thêm vào giỏ hàng
-            </Button>
-            <Button size="lg" variant="outline" onClick={handleContactSupplier}>
-              <MessageCircle className="mr-2 h-5 w-5" /> Nhắn tin
             </Button>
             <Button
               size="lg"
@@ -544,51 +600,24 @@ export function ProductDetailPage() {
           </div>
 
           {/* E17.10: Store info card */}
-          {supplier && (
-            <Card className="border-0 shadow-sm overflow-hidden">
-              <div className="h-16 bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/20 dark:to-indigo-950/20 relative">
-                <ImageWithFallback src={supplier.coverUrl} alt="" className="w-full h-full object-cover opacity-40" />
+          <Card className="border-0 shadow-sm overflow-hidden">
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="truncate" style={{ fontWeight: 600 }}>{retailMeta.storeName}</p>
+                    <Badge className="bg-blue-500 text-white border-0 text-[10px] h-5">Chính hãng</Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Bán lẻ trực tiếp, bảo hành và hỗ trợ sau bán theo chính sách CELLPHONES.
+                  </p>
+                </div>
+                <Link to="/stores" className="shrink-0">
+                  <Button variant="outline" size="sm">Xem cửa hàng</Button>
+                </Link>
               </div>
-              <CardContent className="p-4 -mt-6 relative">
-                <div className="flex items-start gap-3">
-                  <div className="h-12 w-12 rounded-xl overflow-hidden shrink-0 border-2 border-white shadow-md">
-                    <ImageWithFallback src={supplier.logoUrl} alt={supplier.companyName} className="w-full h-full object-cover" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate" style={{ fontWeight: 600 }}>{supplier.companyName}</p>
-                      {supplier.isVerified && (
-                        <Badge className="bg-blue-500 text-white border-0 text-[10px] h-5 gap-0.5">
-                          <ShieldCheck className="h-3 w-3" /> Đã xác minh
-                        </Badge>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
-                      <span className="flex items-center gap-1"><MapPin className="h-3 w-3" /> {supplier.city}</span>
-                      <span className="flex items-center gap-1"><Calendar className="h-3 w-3" /> Từ {supplier.yearEstablished}</span>
-                      <span className="flex items-center gap-1"><Building2 className="h-3 w-3" /> {supplier.productCount} SP</span>
-                    </div>
-                    <div className="flex items-center gap-1.5 mt-1.5">
-                      <div className="flex">
-                        {[1, 2, 3, 4, 5].map(s => (
-                          <Star key={s} className={`h-3 w-3 ${s <= supplier.rating ? 'fill-amber-400 text-amber-400' : 'fill-muted text-muted'}`} />
-                        ))}
-                      </div>
-                      <span className="text-xs text-muted-foreground">({supplier.reviewCount})</span>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex gap-2 mt-3">
-                  <Link to="/stores" className="flex-1">
-                    <Button variant="outline" size="sm" className="w-full">Xem cửa hàng</Button>
-                  </Link>
-                  <Button variant="outline" size="sm" className="flex-1" onClick={handleContactSupplier}>
-                    <MessageCircle className="mr-1 h-3.5 w-3.5" /> Liên hệ
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          )}
+            </CardContent>
+          </Card>
         </div>
       </div>
 
@@ -623,6 +652,7 @@ export function ProductDetailPage() {
               <Button
                 size="lg"
                 onClick={handleAddToCart}
+                disabled={!canAddToCart}
                 className="font-bold bg-gradient-to-r from-[#e31837] to-[#c91432] hover:from-[#c91432] hover:to-[#a50f28] border-0 shadow-md"
               >
                 <ShoppingCart className="mr-2 h-4 w-4" /> Thêm vào giỏ
@@ -694,9 +724,7 @@ export function ProductDetailPage() {
                 </div>
                 <Button
                   className="w-full mt-4 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 border-0"
-                  onClick={() => {
-                    toast.success('Đã thêm combo vào giỏ hàng!');
-                  }}
+                  onClick={() => handleAddComboToCart(combo)}
                 >
                   <Package className="mr-2 h-4 w-4" />
                   Mua combo — {formatPrice(combo.comboPrice)}

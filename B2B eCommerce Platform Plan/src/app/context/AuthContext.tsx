@@ -5,6 +5,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
 import { authApi } from '../services/api';
 import type { AuthUser, LoginCredentials, RegisterData, UserRole } from '../types';
+import { isAdminRole, normalizeRole } from '../utils/roles';
 
 interface AuthContextValue {
   user: AuthUser | null;
@@ -49,8 +50,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }, []);
 
-  const isRole = useCallback((role: UserRole) => user?.role === role, [user]);
-  const isAdmin = user?.role === 'Quản trị viên';
+  const isRole = useCallback((role: UserRole) => normalizeRole(user?.role) === normalizeRole(role), [user]);
+  const isAdmin = isAdminRole(user?.role);
 
   return (
     <AuthContext.Provider value={{
